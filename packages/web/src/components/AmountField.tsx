@@ -1,7 +1,8 @@
+import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { fmtSignedTrim } from "../lib/amount";
-import { useTheme } from "../lib/contexts";
-import { localizePadExpression, parseAmount } from "../lib/format";
+import { useCurrency, useTheme } from "../lib/contexts";
+import { formatMoney, localizePadExpression, parseAmount } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useWideHost } from "../lib/shellContext";
 import { font } from "../lib/theme";
@@ -40,6 +41,24 @@ import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
  * body MUST pass `externalPad` (and host the pad as a sibling), and a raw `<AmountPadHost>` must
  * never sit inside one.
  */
+/** The statement-column look shared by both renderings of an `inline` field. */
+const inlineFigureStyle = (underline: string, color: string): React.CSSProperties => ({
+  width: 120,
+  maxWidth: "50%",
+  padding: "1px 0 2px",
+  border: "none",
+  borderBottom: `1px dotted ${underline}`,
+  borderRadius: 0,
+  background: "transparent",
+  color,
+  textAlign: "right",
+  fontSize: 13,
+  fontWeight: 650,
+  fontVariantNumeric: "tabular-nums",
+  boxSizing: "border-box",
+  outline: "none",
+});
+
 export function AmountField({
   value,
   onCommit,
@@ -47,6 +66,7 @@ export function AmountField({
   placeholder,
   allowNegative = false,
   externalPad,
+  inline = false,
 }: {
   /** Canonical `fmtSignedTrim` text — "" is a valid, unset value. */
   value: string;
@@ -60,9 +80,12 @@ export function AmountField({
   allowNegative?: boolean;
   /** See the docblock above — omit for the default self-contained pad. */
   externalPad?: readonly [AmountPadTarget | null, (target: AmountPadTarget | null) => void];
+  /** A figure inside a statement column: right-aligned, borderless, a dotted underline marks it editable. */
+  inline?: boolean;
 }) {
   const C = useTheme();
   const { lang } = useT();
+  const currency = useCurrency();
   const desktop = useWideHost()?.mode === "desktop";
   const [internalPad, setInternalPad] = useState<AmountPadTarget | null>(null);
   const [pad, setPad] = externalPad ?? [internalPad, setInternalPad];
@@ -125,19 +148,23 @@ export function AmountField({
           }
           onCommit(fmtSignedTrim(minor));
         }}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 9,
-          border: `1px solid ${err ? "var(--danger)" : C.line}`,
-          background: C.bg,
-          color: err ? "var(--danger)" : C.text,
-          fontSize: 14,
-          fontFamily: font,
-          fontVariantNumeric: "tabular-nums",
-          boxSizing: "border-box",
-          outline: "none",
-        }}
+        style={
+          inline
+            ? { ...inlineFigureStyle(C.mute, err ? "var(--danger)" : C.text), fontFamily: font }
+            : {
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 9,
+                border: `1px solid ${err ? "var(--danger)" : C.line}`,
+                background: C.bg,
+                color: err ? "var(--danger)" : C.text,
+                fontSize: 14,
+                fontFamily: font,
+                fontVariantNumeric: "tabular-nums",
+                boxSizing: "border-box",
+                outline: "none",
+              }
+        }
       />
     );
   }
@@ -149,23 +176,27 @@ export function AmountField({
       <input
         // `value` stays CANONICAL (fmtSignedTrim) — display only is localized, matching every
         // other pad-trigger field in the app.
-        value={localizePadExpression(value, lang)}
+        value={inline && parseAmount(value) !== null ? formatMoney(parseAmount(value)!, currency, lang) : localizePadExpression(value, lang)}
         readOnly
         placeholder={placeholder}
         onClick={openPad}
         onFocus={openPad}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 9,
-          border: `1px solid ${C.line}`,
-          background: C.bg,
-          color: C.text,
-          fontSize: 14,
-          fontFamily: font,
-          boxSizing: "border-box",
-          cursor: "pointer",
-        }}
+        style={
+          inline
+            ? { ...inlineFigureStyle(C.mute, C.text), fontFamily: font, cursor: "pointer" }
+            : {
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 9,
+                border: `1px solid ${C.line}`,
+                background: C.bg,
+                color: C.text,
+                fontSize: 14,
+                fontFamily: font,
+                boxSizing: "border-box",
+                cursor: "pointer",
+              }
+        }
       />
       {/* `externalPad` callers render this themselves, as a sibling of their own Surface/Sheet —
           see the docblock above. */}

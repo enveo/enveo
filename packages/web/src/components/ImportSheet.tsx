@@ -1,5 +1,4 @@
 import {
-  type BalanceMatchChange,
   buildImportBalanceArbiterPrompt,
   computeStateResponse,
   findBalanceMatches,
@@ -54,20 +53,13 @@ import { PHONE_COL } from "../lib/viewMode";
 import { AddScreen } from "../screens/Add";
 import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
 import { AiConsentSheet } from "./AiConsentSheet";
-import { AmountField } from "./AmountField";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Sheet } from "./chrome";
+import { type ImportBalanceMatchState, ImportBalanceReceipt } from "./ImportBalanceReceipt";
 import { LazyChunk, useOpenedOnce } from "./lazy";
 
 // Lazy like AccountsWidget: the reconcile body only loads when the import hands over a bank balance.
 const ReconcileSheet = lazy(() => import("./ReconcileSheet").then((m) => ({ default: m.ReconcileSheet })));
-
-type BalanceMatchState =
-  | { kind: "idle" }
-  | { kind: "searching" }
-  | { kind: "proposal"; changes: BalanceMatchChange[]; rationale: string | null; alternatives: number }
-  | { kind: "none" }
-  | { kind: "declined"; rationale: string };
 
 import { ImportProgress, importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "./ImportProgress";
 
@@ -133,7 +125,7 @@ export function ImportSheet({
   // hand-over to the reconcile sheet after adding. The pad is hosted as a sibling of the Sheet.
   const [bankValue, setBankValue] = useState("");
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
-  const [match, setMatch] = useState<BalanceMatchState>({ kind: "idle" });
+  const [match, setMatch] = useState<ImportBalanceMatchState>({ kind: "idle" });
   const [reconcileAfter, setReconcileAfter] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const reconcileMounted = useOpenedOnce(reconcileOpen);
@@ -486,6 +478,12 @@ export function ImportSheet({
           accounts: accountsNow,
         })
       : [];
+  const receiptSource =
+    balanceEffect.find((effect) => effect.accountId === accountId) ??
+    (() => {
+      const account = accountsNow.find((candidate) => candidate.id === accountId);
+      return account ? { accountId: account.id, name: account.name, before: account.balance, after: account.balance, delta: 0 } : null;
+    })();
   const bankBalance = parseAmount(bankValue);
   const sourceAfter = balanceEffect.find((effect) => effect.accountId === accountId)?.after ?? accountsNow.find((account) => account.id === accountId)?.balance;
   const difference = bankBalance !== null && sourceAfter !== undefined ? bankBalance - sourceAfter : null;
@@ -493,9 +491,8 @@ export function ImportSheet({
   const rowLabel = (rowId: string): string => {
     const row = items.find((candidate) => candidate.rowId === rowId);
     const edit = row ? edited[items.indexOf(row)] : undefined;
-    const name = edit?.name || row?.item?.name || row?.item?.tag || row?.rawTextLines[0] || rowId;
-    const amount = edit?.amount ?? row?.item?.amount ?? row?.amount;
-    return amount === null || amount === undefined ? name : `${name} · ${formatMoney(amount, currency, lang)}`;
+    // The figure column already carries the amount; the label names the row only.
+    return edit?.name || row?.item?.name || row?.item?.tag || row?.rawTextLines[0] || rowId;
   };
   const runBalanceMatch = async () => {
     if (difference === null || difference === 0 || !job?.result) return;
@@ -984,143 +981,23 @@ export function ImportSheet({
               </div>
             )}
 
-            {balanceEffect.length > 0 && (
-              <div data-testid="import-balance-effect" style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, background: tint(C.text, 0.05) }}>
-                <div style={label}>{t("Balance after import")}</div>
-                {balanceEffect.map((effect) => (
-                  <div
-                    key={effect.accountId}
-                    aria-label={t("{account}: {before} now, {after} after import", {
-                      account: effect.name,
-                      before: formatMoney(effect.before, currency, lang),
-                      after: formatMoney(effect.after, currency, lang),
-                    })}
-                    style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, fontSize: 13, lineHeight: 1.6 }}
-                  >
-                    <span style={{ color: C.soft, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{effect.name}</span>
-                    <span aria-hidden="true" style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                      <span style={{ color: C.mute }}>{formatMoney(effect.before, currency, lang)}</span>
-                      <span style={{ color: C.mute }}> → </span>
-                      <strong style={{ color: effect.delta < 0 ? CORAL : TEAL }}>{formatMoney(effect.after, currency, lang)}</strong>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {!sourceAccountUnavailable && (
-              <div data-testid="import-bank-balance" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, border: `1px solid ${C.line}` }}>
-                <AmountField
-                  value={bankValue}
-                  onCommit={setBankValue}
-                  label={t("Balance in the bank")}
-                  placeholder={t("Balance in the bank")}
-                  allowNegative
-                  externalPad={[pad, setPad]}
-                />
-                {difference !== null && (
-                  <div
-                    data-testid="import-bank-difference"
-                    role="status"
-                    style={{ marginTop: 8, fontSize: 13, fontVariantNumeric: "tabular-nums", color: difference === 0 ? TEAL : C.text }}
-                  >
-                    {difference === 0 ? t("Balance matches the bank") : t("Difference: {amount}", { amount: formatMoney(difference, currency, lang) })}
-                  </div>
-                )}
-                {difference !== null && difference !== 0 && match.kind !== "proposal" && (
-                  <button
-                    type="button"
-                    onClick={() => void runBalanceMatch()}
-                    disabled={match.kind === "searching"}
-                    style={{
-                      marginTop: 8,
-                      padding: "9px 12px",
-                      borderRadius: 10,
-                      border: `1px solid ${C.line}`,
-                      background: C.bg,
-                      color: C.text,
-                      fontWeight: 650,
-                      fontSize: 13,
-                      cursor: "pointer",
-                      opacity: match.kind === "searching" ? 0.6 : 1,
-                    }}
-                  >
-                    {match.kind === "searching" ? t("Choosing the best match…") : t("Match the selection to the bank balance")}
-                  </button>
-                )}
-                {match.kind === "proposal" && (
-                  <div data-testid="import-bank-proposal" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.45 }}>
-                    <div style={{ fontWeight: 650, marginBottom: 4 }}>{t("Suggested changes")}</div>
-                    {match.changes.map((change) => (
-                      <div key={`${change.id}:${change.action}`} style={{ color: C.text }}>
-                        {change.action === "exclude"
-                          ? t("Uncheck: {row}", { row: rowLabel(change.id) })
-                          : change.action === "include"
-                            ? t("Check: {row}", { row: rowLabel(change.id) })
-                            : t("Reverse direction: {row}", { row: rowLabel(change.id) })}
-                      </div>
-                    ))}
-                    {match.rationale && <div style={{ marginTop: 6, color: C.soft }}>{match.rationale}</div>}
-                    {match.alternatives > 0 && (
-                      <div style={{ marginTop: 4, color: C.mute }}>
-                        {tp("{n} other combination also fits the balance. | {n} other combinations also fit the balance.", match.alternatives)}
-                      </div>
-                    )}
-                    {!proposalFits && <div style={{ marginTop: 6, color: C.warn }}>{t("The selection changed since this suggestion. Match again.")}</div>}
-                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                      <button
-                        type="button"
-                        onClick={applyBalanceMatch}
-                        disabled={!proposalFits}
-                        style={{
-                          flex: 1,
-                          padding: "9px 8px",
-                          borderRadius: 10,
-                          border: "none",
-                          background: TEAL,
-                          color: "#fff",
-                          fontWeight: 650,
-                          cursor: "pointer",
-                          opacity: proposalFits ? 1 : 0.5,
-                        }}
-                      >
-                        {t("Apply changes")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setMatch({ kind: "idle" })}
-                        style={{
-                          flex: 1,
-                          padding: "9px 8px",
-                          borderRadius: 10,
-                          border: `1px solid ${C.line}`,
-                          background: C.bg,
-                          color: C.soft,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {t("Dismiss")}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {(match.kind === "none" || match.kind === "declined") && difference !== null && difference !== 0 && (
-                  <div data-testid="import-bank-no-match" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.45, color: C.text }}>
-                    <div>
-                      {match.kind === "none"
-                        ? t("No combination of uncertain rows explains the difference.")
-                        : t("The assistant found no convincing combination.")}
-                    </div>
-                    {match.kind === "declined" && match.rationale && <div style={{ marginTop: 4, color: C.soft }}>{match.rationale}</div>}
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, cursor: "pointer" }}>
-                      <input type="checkbox" checked={reconcileAfter} onChange={(e) => setReconcileAfter(e.target.checked)} />
-                      <span>{t("Reconcile the account to the bank balance after adding")}</span>
-                    </label>
-                  </div>
-                )}
-              </div>
-            )}
+            <ImportBalanceReceipt
+              source={receiptSource}
+              others={balanceEffect.filter((effect) => effect.accountId !== accountId)}
+              money={(minor) => formatMoney(minor, currency, lang)}
+              bankValue={bankValue}
+              onBankValue={setBankValue}
+              pad={[pad, setPad]}
+              difference={difference}
+              match={match}
+              proposalFits={proposalFits}
+              rowLabel={rowLabel}
+              reconcileAfter={reconcileAfter}
+              onReconcileAfter={setReconcileAfter}
+              onMatch={() => void runBalanceMatch()}
+              onApply={applyBalanceMatch}
+              onDismiss={() => setMatch({ kind: "idle" })}
+            />
 
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button
