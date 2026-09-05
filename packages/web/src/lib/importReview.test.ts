@@ -202,7 +202,7 @@ describe("screenshot import review view model", () => {
     expect(review[0]).toMatchObject({ include: true, requiresReview: true, blockingIssues: [], editable: true });
   });
 
-  it("shows a selected financial FX row as guidance without blocking other rows", () => {
+  it("shows a financial exchange entry as an ordinary expense with the FX badge", () => {
     const validated = validateImportExtraction({
       batch: { rows: [row("financial-fx", { semanticKind: "fx_conversion", rowRole: "financial_event" })] },
       budgetCurrency: "EUR",
@@ -225,9 +225,10 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "EUR",
     });
 
-    expect(review[0]).toMatchObject({ include: true, item: null, blockingIssues: ["unknown_kind"] });
+    expect(review[0]).toMatchObject({ include: true, blockingIssues: [] });
+    expect(review[0]!.item).toMatchObject({ type: "expense", amount: 2500 });
     expect(reviewRowControlLabels(review[0]!, 0).select).not.toBeNull();
-    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toEqual([]);
+    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
   });
 
   it("keeps every extracted row visible while all new financial events start selected", () => {
@@ -724,6 +725,13 @@ describe("matching the selection to the bank balance", () => {
       ]),
     ).toBe(481_237);
     expect(bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: ["Available balance: -1,234.50 EUR"] }])).toBe(-123_450);
+    // a statement header: labels on one line, the figures under them on the next; closing wins over opening
+    expect(
+      bankBalanceHint([
+        { rowRole: "ui_metadata", rawTextLines: ["[account]  TOTAL INCOME  OPENING BALANCE", "PLN 4 321.00  PLN 1 234.56"] },
+        { rowRole: "ui_metadata", rawTextLines: ["Global IBAN: [account]  TOTAL OUTCOME  CLOSING BALANCE", "PLN -3 210.99  PLN 2 344.57"] },
+      ]),
+    ).toBe(234_457);
     expect(bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: ["28.08.2026"] }])).toBeNull();
   });
 });

@@ -365,7 +365,14 @@ const mappingFor = (
         reviewReasons: ["unknown_transfer_endpoint"],
       };
     case "fx_conversion":
-      return { type: null, isRefund: false, expectedDirection: null, reviewReasons: [] };
+      // On a statement an exchange is its own settlement entry (the foreign purchase it paid
+      // for never appears separately): money out is an expense, money in is income.
+      return {
+        type: direction === "debit" ? "expense" : direction === "credit" ? "income" : null,
+        isRefund: false,
+        expectedDirection: null,
+        reviewReasons: [],
+      };
     case "unknown":
       return { type: null, isRefund: false, expectedDirection: null, reviewReasons: ["unknown_kind"] };
   }

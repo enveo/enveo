@@ -35,6 +35,13 @@ describe("durable import image decoding", () => {
     ]);
   });
 
+  it("accepts a statement text page as a position, bounded by its own size limit", () => {
+    const page = `data:text/plain;base64,${Buffer.from("1 Aug 2026  Card payment  PLN -34.99  PLN 2887.72", "utf8").toString("base64")}`;
+    expect(decodeImportJobImages([page])[0]).toMatchObject({ mimeType: "text/plain" });
+    expect(errorCode(() => decodeImportJobImages([`data:text/plain;base64,${Buffer.alloc(256 * 1024 + 1, 0x41).toString("base64")}`]))).toBe("too_large");
+    expect(errorCode(() => decodeImportJobImages(["data:text/plain;base64,"]))).toBe("invalid_image");
+  });
+
   it("rejects unsupported MIME types, mismatched magic bytes, and non-canonical base64", () => {
     expect(errorCode(() => decodeImportJobImages([imageUrl("image/gif", new Uint8Array([0x47, 0x49, 0x46, 0x38]))]))).toBe("invalid_image");
     expect(errorCode(() => decodeImportJobImages([imageUrl("image/png", JPEG)]))).toBe("invalid_image");

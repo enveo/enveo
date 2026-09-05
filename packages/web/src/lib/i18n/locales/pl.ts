@@ -198,7 +198,16 @@ export const pl: Dict = {
   "Add expense": "Dodaj wydatek",
   "Add income": "Dodaj przychód",
   "Add refund": "Dodaj zwrot",
-  "Add screenshots": "Dodaj zrzuty",
+  "Statement pages ({n}/{max})": "Strony wyciągu ({n}/{max})",
+  "Statement page {n}": "Strona wyciągu {n}",
+  "Page {n}": "Strona {n}",
+  "One import takes either screenshots or a PDF statement, not both.": "Jeden import to albo zrzuty ekranu, albo wyciąg PDF, nie oba naraz.",
+  "This PDF has no text layer (a scan). Use screenshots instead.": "Ten PDF nie ma warstwy tekstu (to skan). Użyj zrzutów ekranu.",
+  "{n} page was left out — import it in another job. | {n} pages were left out — import them in another job.": {
+    one: "{n} strona została pominięta — zaimportuj ją osobno.",
+    few: "{n} strony zostały pominięte — zaimportuj je osobno.",
+    many: "{n} stron zostało pominiętych — zaimportuj je osobno.",
+  },
   "Add the account you spend from. The balance can be approximate — it is easy to adjust later.":
     "Dodaj konto, z którego wydajesz. Saldo możesz podać w przybliżeniu — łatwo je później poprawić.",
   "Add to Home Screen": "Dodaj do ekranu początkowego",

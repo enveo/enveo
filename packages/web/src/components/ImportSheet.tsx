@@ -2,9 +2,11 @@ import {
   type BalanceMatchChange,
   buildImportBalanceArbiterPrompt,
   computeStateResponse,
+  decodeImportTextPage,
   findBalanceMatches,
   findNearestBalanceMatch,
   IMPORT_JOB_MAX_IMAGES,
+  isImportTextPage,
   parseImportBalanceArbiterResponse,
 } from "@enveo/shared";
 import { useQuery } from "@tanstack/react-query";
@@ -66,6 +68,7 @@ import { LazyChunk, useOpenedOnce } from "./lazy";
 // Lazy like AccountsWidget: the reconcile body only loads when the import hands over a bank balance.
 const ReconcileSheet = lazy(() => import("./ReconcileSheet").then((m) => ({ default: m.ReconcileSheet })));
 
+import { PdfWithoutTextError, statementPagesFromPdf } from "../lib/pdfText";
 import { ImportProgress, importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "./ImportProgress";
 
 /**
@@ -273,15 +276,31 @@ export function ImportSheet({
     setError(null);
     setNotice(null);
     try {
-      const list = [...files].slice(0, Math.max(0, IMPORT_JOB_MAX_IMAGES - images.length));
-      const leftOut = files.length - list.length;
-      if (leftOut > 0) {
-        setNotice(tp("{n} screenshot was left out — add it in another import. | {n} screenshots were left out — add them in another import.", leftOut));
+      // A PDF statement contributes one text page per PDF page; pages and screenshots share
+      // the job's position cap, and a job is either pages or screenshots.
+      const incoming: string[] = [];
+      for (const file of files) {
+        if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) incoming.push(...(await statementPagesFromPdf(file)));
+        else incoming.push(await downscale(file));
       }
-      const urls = await Promise.all(list.map((f) => downscale(f)));
-      setImages((prev) => [...prev, ...urls]);
-    } catch {
-      setError(t("Failed to load the image."));
+      const existingKind = images.length === 0 ? null : isImportTextPage(images[0]) ? "pages" : "screenshots";
+      const incomingKind = incoming.length === 0 ? null : isImportTextPage(incoming[0]) ? "pages" : "screenshots";
+      if (incoming.some((url) => isImportTextPage(url) !== (incomingKind === "pages")) || (existingKind && incomingKind && existingKind !== incomingKind)) {
+        setError(t("One import takes either screenshots or a PDF statement, not both."));
+        return;
+      }
+      const list = incoming.slice(0, Math.max(0, IMPORT_JOB_MAX_IMAGES - images.length));
+      const leftOut = incoming.length - list.length;
+      if (leftOut > 0) {
+        setNotice(
+          incomingKind === "pages"
+            ? tp("{n} page was left out — import it in another job. | {n} pages were left out — import them in another job.", leftOut)
+            : tp("{n} screenshot was left out — add it in another import. | {n} screenshots were left out — add them in another import.", leftOut),
+        );
+      }
+      setImages((prev) => [...prev, ...list]);
+    } catch (e) {
+      setError(e instanceof PdfWithoutTextError ? t("This PDF has no text layer (a scan). Use screenshots instead.") : t("Failed to load the image."));
     }
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -619,15 +638,42 @@ export function ImportSheet({
               ))}
             </select>
 
-            <div style={label}>{t("Screenshots ({n}/{max})", { n: images.length, max: IMPORT_JOB_MAX_IMAGES })}</div>
+            <div style={label}>
+              {images[0] && isImportTextPage(images[0])
+                ? t("Statement pages ({n}/{max})", { n: images.length, max: IMPORT_JOB_MAX_IMAGES })
+                : t("Screenshots ({n}/{max})", { n: images.length, max: IMPORT_JOB_MAX_IMAGES })}
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
               {images.map((url, i) => (
                 <div key={i} style={{ position: "relative" }}>
-                  <img
-                    src={url}
-                    alt={t("Screenshot {n}", { n: i + 1 })}
-                    style={{ width: "100%", height: 96, objectFit: "cover", borderRadius: 10, display: "block" }}
-                  />
+                  {isImportTextPage(url) ? (
+                    <div
+                      aria-label={t("Statement page {n}", { n: i + 1 })}
+                      style={{
+                        height: 96,
+                        borderRadius: 10,
+                        border: `1px solid ${C.line}`,
+                        background: C.bg,
+                        padding: "8px 10px",
+                        boxSizing: "border-box",
+                        overflow: "hidden",
+                        fontSize: 10,
+                        lineHeight: 1.3,
+                        color: C.soft,
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("Page {n}", { n: i + 1 })}</div>
+                      {(decodeImportTextPage(url) ?? "").split("\n").slice(0, 5).join("\n")}
+                    </div>
+                  ) : (
+                    <img
+                      src={url}
+                      alt={t("Screenshot {n}", { n: i + 1 })}
+                      style={{ width: "100%", height: 96, objectFit: "cover", borderRadius: 10, display: "block" }}
+                    />
+                  )}
                   <button
                     onClick={() => setImages(images.filter((_, x) => x !== i))}
                     aria-label={t("Remove screenshot {n}", { n: i + 1 })}
@@ -679,7 +725,7 @@ export function ImportSheet({
                 </button>
               )}
             </div>
-            <input ref={fileRef} type="file" accept="image/*" multiple onChange={(e) => addFiles(e.target.files)} style={{ display: "none" }} />
+            <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple onChange={(e) => addFiles(e.target.files)} style={{ display: "none" }} />
 
             {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
             {notice && (
