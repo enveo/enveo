@@ -10,11 +10,13 @@ import { AppProviders } from "./lib/contexts";
 import { loadLocale, uiLang } from "./lib/i18n";
 import { startImportJobManager } from "./lib/importJobs/bootstrap";
 import { initInstallPrompt } from "./lib/installPrompt";
+import { preventIosFocusZoom } from "./lib/iosFocusZoom";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } },
 });
 
+preventIosFocusZoom(); // before any field can take focus — iOS reads the viewport at focus time
 initInstallPrompt(); // capture beforeinstallprompt as early as possible
 // Install once at the composition root. The tiny eager bootstrap publishes failures to the
 // shell, while the durable Stage A pipeline stays outside the initial render closure.
