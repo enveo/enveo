@@ -1,4 +1,5 @@
 import { isSupportedCurrency } from "./currency";
+import { printedAmountIn } from "./importAmounts";
 import { buildImportDupIndex, classifyImportDup, existingImportRowsForAccount, type ImportDupStatus, importCandidateDirection } from "./importDedupe";
 import type { Account, Category, Envelope, Transaction } from "./types";
 
@@ -39,6 +40,7 @@ export const IMPORT_REVIEW_REASONS = [
   "possible_duplicate",
   "inferred_date",
   "suspicious_text",
+  "fx_converted",
 ] as const;
 
 export type ImportSemanticKind = (typeof IMPORT_SEMANTIC_KINDS)[number];
@@ -285,7 +287,17 @@ const relationSupportedByFacts = (row: ImportExtractRow, target: ImportExtractRo
         row.currency !== target.currency
       );
     case "duplicate_of":
-      return hasComparablePostingFacts(row) && hasComparablePostingFacts(target) && samePostingFacts(row, target);
+      // A repeated capture may show the entry with or without its sign (pending entries often
+      // carry none); only a visible contradiction separates two rows.
+      return (
+        isCalendarDate(row.date) &&
+        row.date === target.date &&
+        hasPositiveMinorAmount(row.amount) &&
+        row.amount === target.amount &&
+        row.currency !== null &&
+        row.currency === target.currency &&
+        (row.direction === "unknown" || target.direction === "unknown" || row.direction === target.direction)
+      );
     case "refund_of":
       return (
         (row.semanticKind === "merchant_refund" || row.semanticKind === "chargeback") &&
@@ -405,10 +417,13 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     if (!relationSupportedByFacts(row, target)) continue;
     acceptedRelations.set(row.rowId, row.relation);
     shapeChangingRelations.add(row.rowId);
-    shapeChangingRelations.add(target.rowId);
+    // A duplicate's original is unchanged by the repeat being dropped; every other relation
+    // reshapes both rows' ledger entries.
+    if (row.relation.kind !== "duplicate_of") shapeChangingRelations.add(target.rowId);
   }
 
   const budgetCurrencySupported = isSupportedCurrency(budgetCurrency);
+  const fxByEvent = foreignAmountsInBudgetCurrency(rows, rowsById, budgetCurrency);
   const proposals = rows.map((row) => {
     const mapping = mappingFor(row.semanticKind, row.direction);
     const relation = acceptedRelations.get(row.rowId) ?? null;
@@ -416,9 +431,12 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     if (row.rowRole !== "financial_event") {
       return proposalFrom(row, { disposition: "supporting", type: null, relation, reviewReasons: [], selected: false });
     }
-    if (row.postingStatus === "pending" || row.postingStatus === "declined") {
+    // A pending entry has already left the account: the bank shows it and the money is spent, so
+    // it is an ordinary transaction dated when it happened (that is how the ledger sees it too).
+    // Only a declined or cancelled entry never moves money.
+    if (row.postingStatus === "declined") {
       return proposalFrom(row, {
-        disposition: row.postingStatus,
+        disposition: "declined",
         type: mapping.type,
         isRefund: mapping.isRefund,
         relation,
@@ -426,6 +444,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
         selected: false,
       });
     }
+    const converted = fxByEvent.get(row.rowId);
 
     let disposition: ImportProposal["disposition"] = "candidate";
     let type = mapping.type;
@@ -452,9 +471,10 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
       disposition = "unresolved";
       reasons = addReasons(reasons, "unknown_kind");
     }
-    if (mapping.expectedDirection && row.direction !== mapping.expectedDirection) {
+    if (mapping.expectedDirection && row.direction !== "unknown" && row.direction !== mapping.expectedDirection) {
       reasons = addReasons(reasons, "inconsistent_direction");
     }
+    if (converted !== undefined) reasons = addReasons(reasons, "fx_converted");
 
     if (row.postingStatus === "unknown") reasons = addReasons(reasons, "unknown_posting_status");
     if (row.dateInferred) reasons = addReasons(reasons, "inferred_date");
@@ -462,10 +482,44 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     // pre-selected: whatever the text asked for, the human decides with the flag in view.
     if (row.suspiciousText) reasons = addReasons(reasons, "suspicious_text");
 
-    return proposalFrom(row, { disposition, type, isRefund: mapping.isRefund, relation, reviewReasons: reasons, selected: !row.suspiciousText });
+    return proposalFrom(row, {
+      disposition,
+      type,
+      isRefund: mapping.isRefund,
+      relation,
+      reviewReasons: reasons,
+      selected: !row.suspiciousText,
+      ...(converted !== undefined ? { amount: converted, currency: budgetCurrency } : {}),
+    });
   });
 
   return { rows, proposals };
+}
+
+/**
+ * A card payment in another currency is shown with the conversion the bank applied ("18.21 EUR <
+ * 79.26 PLN"), linked to the payment by an fx_for relation in either direction. The ledger keeps
+ * one currency, so the proposal takes the printed account-currency figure; the row keeps what
+ * was read. Nothing is computed from a rate — only a figure printed on the screen is used.
+ */
+function foreignAmountsInBudgetCurrency(
+  rows: ReadonlyArray<ImportExtractRow>,
+  rowsById: ReadonlyMap<string, ImportExtractRow>,
+  budgetCurrency: string,
+): Map<string, number> {
+  const converted = new Map<string, number>();
+  const isFx = (row: ImportExtractRow | undefined): row is ImportExtractRow =>
+    row !== undefined && row.rowRole === "supporting_detail" && row.semanticKind === "fx_conversion";
+  for (const row of rows) {
+    if (row.relation?.kind !== "fx_for") continue;
+    const target = rowsById.get(row.relation.rowId);
+    const [fx, event] = isFx(row) ? [row, target] : isFx(target) ? [target, row] : [undefined, undefined];
+    if (!fx || !event || event.rowRole !== "financial_event" || event.currency === null || event.currency === budgetCurrency) continue;
+    if (!hasPositiveMinorAmount(event.amount)) continue;
+    const figure = printedAmountIn(fx.rawTextLines, budgetCurrency);
+    if (figure !== null && figure > 0) converted.set(event.rowId, figure);
+  }
+  return converted;
 }
 
 /** Applies current-ledger evidence without mutating model facts or creating transaction destinations. */
@@ -491,7 +545,12 @@ export function reconcileImportProposals(input: {
     let reviewReasons = proposal.reviewReasons;
     let duplicateStatus: ImportDupStatus = "new";
 
-    if (isCalendarDate(proposal.date) && hasPositiveMinorAmount(proposal.amount)) {
+    if (proposal.relation?.kind === "duplicate_of" && proposal.disposition === "candidate") {
+      // A repeat of another captured row (validated against its facts) is that row, not a new one.
+      duplicateStatus = "exists";
+      disposition = "declined";
+      selected = false;
+    } else if (isCalendarDate(proposal.date) && hasPositiveMinorAmount(proposal.amount)) {
       duplicateStatus = classifyImportDup(
         {
           date: proposal.date,

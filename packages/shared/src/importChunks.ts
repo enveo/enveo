@@ -255,10 +255,14 @@ export function importEnrichmentBatches<T>(rows: ReadonlyArray<T>, batchSize = I
 /* ── Deterministic repair of what the model cannot be trusted with: relation targets and dates ── */
 
 const isFinancialTwinCandidate = (row: ImportExtractRow): boolean =>
-  row.rowRole === "financial_event" && row.amount !== null && row.amount > 0 && row.currency !== null && row.direction !== "unknown";
+  row.rowRole === "financial_event" && row.amount !== null && row.amount > 0 && row.currency !== null;
 
-/** Identity of a visibly repeated entry: its text plus the facts that never differ between two captures. */
-const twinKey = (row: ImportExtractRow): string => `${seamText(row)}|${row.amount}|${row.currency}|${row.direction}`;
+/** Identity of a visibly repeated entry: its text plus the facts that never differ between two
+ *  captures. The sign is NOT part of it: a pending entry often shows none, and the same entry
+ *  can be read with and without one; a visible contradiction is filtered out separately. */
+const twinKey = (row: ImportExtractRow): string => `${seamText(row)}|${row.amount}|${row.currency}`;
+const compatibleDirections = (left: ImportExtractRow, right: ImportExtractRow): boolean =>
+  left.direction === "unknown" || right.direction === "unknown" || left.direction === right.direction;
 
 const ordered = (rows: ReadonlyArray<ImportExtractRow>): ImportExtractRow[] =>
   rows
@@ -303,6 +307,11 @@ export function repairImportRelations(batch: ImportExtractBatch): ImportRelation
   const rows = batch.rows.map((row): ImportExtractRow => {
     if (row.relation?.kind !== "duplicate_of") return row;
     const target = rowsById.get(row.relation.rowId);
+    // Two rows naming each other as the duplicate would both be dropped and the entry lost:
+    // the earlier capture is the original, so only the later one keeps the claim.
+    if (target?.relation?.kind === "duplicate_of" && target.relation.rowId === row.rowId && seamPair(row, target).earlierRowId === row.rowId) {
+      return { ...row, relation: null };
+    }
     const plausible =
       target !== undefined &&
       target.rowId !== row.rowId &&
@@ -311,7 +320,7 @@ export function repairImportRelations(batch: ImportExtractBatch): ImportRelation
       target.currency === row.currency;
     if (plausible) return row;
     const candidates = isFinancialTwinCandidate(row)
-      ? (twins.get(twinKey(row)) ?? []).filter((twin) => twin.rowId !== row.rowId && twin.imageIndex !== row.imageIndex)
+      ? (twins.get(twinKey(row)) ?? []).filter((twin) => twin.rowId !== row.rowId && twin.imageIndex !== row.imageIndex && compatibleDirections(row, twin))
       : [];
     if (candidates.length !== 1) return { ...row, relation: null };
     const twin = candidates[0]!;
@@ -367,7 +376,7 @@ function screenshotAboveOffset(layouts: ReadonlyMap<number, ScreenshotLayout>, r
   for (const group of twins.values()) {
     for (const left of group) {
       for (const right of group) {
-        if (right.imageIndex !== left.imageIndex + 1) continue;
+        if (right.imageIndex !== left.imageIndex + 1 || !compatibleDirections(left, right)) continue;
         const lower = layouts.get(left.imageIndex)!;
         const upper = layouts.get(right.imageIndex)!;
         if (lower.leading.includes(left) && upper.trailing.includes(right)) votes += 1;
@@ -406,7 +415,7 @@ export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch 
   for (const group of twins.values()) {
     for (const row of group) {
       if (row.date !== null) continue;
-      const dated = group.filter((twin) => twin.date !== null && Math.abs(twin.imageIndex - row.imageIndex) === 1);
+      const dated = group.filter((twin) => twin.date !== null && Math.abs(twin.imageIndex - row.imageIndex) === 1 && compatibleDirections(row, twin));
       const dates = new Set(dated.map((twin) => twin.date));
       if (dates.size !== 1) continue;
       set(row, dated[0]!.date!);
@@ -427,14 +436,62 @@ export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch 
     if (known.size === 1) fillLeading(layout, [...known][0]!);
   }
 
-  // 3. The neighbour's last divider.
+  // 3. The neighbour's last divider — for empty dates, and for dates the model took from the
+  //    neighbour on the WRONG side (it reads screenshots as if they continued downward; when the
+  //    overlap proves the list continues upward, a leading block dated like the divider at the
+  //    bottom of the screenshot below actually belongs to the divider at the bottom of the one
+  //    above). Only an exact match with the wrong side's divider is corrected: a date that
+  //    matches neither is the model's reading and stays.
   const above = screenshotAboveOffset(layouts, rows);
   if (above !== null) {
+    const lastDividerTowards = (from: ScreenshotLayout, step: 1 | -1): string | null => {
+      let neighbour = layouts.get(from.imageIndex + step);
+      while (neighbour && neighbour.lastDividerDate === null && neighbour.rows.length > 0) neighbour = layouts.get(neighbour.imageIndex + step);
+      return neighbour?.lastDividerDate ?? null;
+    };
     for (const layout of layouts.values()) {
-      if (!layout.leading.some((row) => row.rowRole !== "ui_metadata" && row.date === null)) continue;
-      let neighbour = layouts.get(layout.imageIndex + above);
-      while (neighbour && neighbour.lastDividerDate === null && neighbour.rows.length > 0) neighbour = layouts.get(neighbour.imageIndex + above);
-      if (neighbour?.lastDividerDate) fillLeading(layout, neighbour.lastDividerDate);
+      const leading = layout.leading.filter((row) => row.rowRole !== "ui_metadata");
+      if (leading.length === 0) continue;
+      const right = lastDividerTowards(layout, above);
+      if (right === null) continue;
+      const wrong = lastDividerTowards(layout, above === 1 ? -1 : 1);
+      for (const row of leading) {
+        if (row.date === null || (wrong !== null && wrong !== right && row.date === wrong)) set(row, right);
+      }
+    }
+  }
+
+  // 4. The same entry captured twice in NON-adjacent screenshots (the user's screenshots do not
+  //    always tile the list; a pending entry can also be shown under two dates by the bank app).
+  //    Identical text, amount and currency in another screenshot is one entry when at most one
+  //    of the two sits under a divider of its own screenshot: that one is the anchor, the other
+  //    (dated only by inference, or by the model's guess for a leading block) takes its date and
+  //    is linked as its duplicate. Two rows each under their own divider with different dates are
+  //    two transactions and are left alone; identical rows inside ONE screenshot are separate.
+  const anchored = layoutScreenshots(rows);
+  const underOwnDivider = (row: ImportExtractRow): boolean => !row.dateInferred && !anchored.get(row.imageIndex)!.leading.includes(row);
+  for (const group of twinIndex(rows).values()) {
+    if (group.length < 2) continue;
+    const anchors = group.filter(underOwnDivider);
+    for (const row of group) {
+      if (underOwnDivider(row) || (row.relation !== null && row.relation.kind !== "fx_for")) continue;
+      const matches = anchors.filter((anchor) => anchor.imageIndex !== row.imageIndex && compatibleDirections(row, anchor));
+      const dates = new Set(matches.map((anchor) => anchor.date));
+      if (matches.length === 0 || dates.size !== 1) continue;
+      const anchor = matches[0]!;
+      const target = byId.get(row.rowId)!;
+      if (anchor.date !== null && target.date !== anchor.date) set(target, anchor.date);
+      // The anchor already names this row as its original (the model's claim, or the overlap
+      // rule above): one claim is enough, two would drop both.
+      if (anchor.relation?.kind === "duplicate_of" && anchor.relation.rowId === row.rowId) continue;
+      if (target.relation?.kind === "fx_for") {
+        // The capture that carries the exchange line is the one worth keeping: the anchor lends
+        // its date and steps back as the duplicate, so the conversion is not lost with it.
+        const anchorRow = byId.get(anchor.rowId)!;
+        if (anchorRow.relation === null) anchorRow.relation = { kind: "duplicate_of", rowId: row.rowId };
+        continue;
+      }
+      target.relation = { kind: "duplicate_of", rowId: anchor.rowId };
     }
   }
 

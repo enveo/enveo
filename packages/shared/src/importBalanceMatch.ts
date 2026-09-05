@@ -98,11 +98,20 @@ export interface BalanceMatchNearest {
   residual: number;
 }
 
+/** Each extra change costs this share of the difference, and never less than
+ *  `BALANCE_MATCH_MIN_CHANGE_PENALTY` minor units: four small tweaks that shave a few cents more
+ *  than one cancelled top-up are over-fitting, and a difference of a few units is not worth
+ *  unchecking anything for. */
+export const BALANCE_MATCH_CHANGE_PENALTY = 0.02;
+export const BALANCE_MATCH_MIN_CHANGE_PENALTY = 500;
+
 /**
- * When nothing explains the difference exactly, the change set that comes CLOSEST — smallest
- * remaining difference, then fewest changes — is still useful: applied, it leaves a residual small
- * enough to name (a single missing row, a fee) and to settle with a balance adjustment. Bounded
- * like the exact search but one change shallower, since every combination must be visited.
+ * When nothing explains the difference exactly, the change set that comes CLOSEST is still
+ * useful: applied, it leaves a residual small enough to name (a single missing row, a fee) and to
+ * settle with a balance adjustment. "Closest" weighs the remaining difference against the number
+ * of changes (`BALANCE_MATCH_CHANGE_PENALTY` of the difference per change), so one large, plausible
+ * change beats several small ones that fit marginally better. Bounded like the exact search but
+ * one change shallower, since every combination must be visited.
  */
 export function findNearestBalanceMatch(
   candidates: ReadonlyArray<BalanceMatchCandidate>,
@@ -119,14 +128,14 @@ export function findNearestBalanceMatch(
   if (pool.length === 0) return null;
 
   let best: BalanceMatchNearest | null = null;
+  let bestCost = Number.POSITIVE_INFINITY;
+  const penalty = Math.max(BALANCE_MATCH_MIN_CHANGE_PENALTY, Math.round(Math.abs(difference) * BALANCE_MATCH_CHANGE_PENALTY));
   const chosen: BalanceMatchChange[] = [];
   const consider = (sum: number) => {
     const residual = difference - sum;
-    if (
-      best === null ||
-      Math.abs(residual) < Math.abs(best.residual) ||
-      (Math.abs(residual) === Math.abs(best.residual) && chosen.length < best.changes.length)
-    ) {
+    const cost = Math.abs(residual) + chosen.length * penalty;
+    if (cost < bestCost) {
+      bestCost = cost;
       best = { changes: [...chosen], residual };
     }
   };
@@ -142,6 +151,6 @@ export function findNearestBalanceMatch(
     }
   };
   search(0, 0);
-  // An improvement over doing nothing is the only nearest fit worth showing.
-  return best !== null && Math.abs((best as BalanceMatchNearest).residual) < Math.abs(difference) ? best : null;
+  // Only a fit that beats doing nothing, penalties included, is worth showing.
+  return best !== null && bestCost < Math.abs(difference) ? best : null;
 }

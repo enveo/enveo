@@ -2,7 +2,7 @@ import type { BalanceMatchChange, BalanceMatchNearest } from "@enveo/shared";
 import type { ReactNode } from "react";
 import { useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
-import type { ImportBalanceDiagnosis, ImportBalanceEffect, ImportPendingHolds } from "../lib/importReview";
+import type { ImportBalanceDiagnosis, ImportBalanceEffect } from "../lib/importReview";
 import { CORAL, TEAL } from "../lib/theme";
 import { AmountField } from "./AmountField";
 import type { AmountPadTarget } from "./AmountPadSheet";
@@ -22,9 +22,6 @@ export type ImportBalanceMatchState =
   | { kind: "none"; nearest: BalanceMatchNearest | null }
   | { kind: "declined"; rationale: string };
 
-/** Which figure the bank screen shows: available (holds already taken off) or booked. */
-export type ImportBankBalanceKind = "available" | "booked";
-
 export function ImportBalanceReceipt({
   source,
   others,
@@ -32,9 +29,6 @@ export function ImportBalanceReceipt({
   bankValue,
   onBankValue,
   pad,
-  holds,
-  balanceKind,
-  onBalanceKind,
   difference,
   diagnosis,
   match,
@@ -55,11 +49,7 @@ export function ImportBalanceReceipt({
   bankValue: string;
   onBankValue: (value: string) => void;
   pad: readonly [AmountPadTarget | null, (target: AmountPadTarget | null) => void];
-  /** Pending entries on the screenshots: what separates the booked balance from the available one. */
-  holds: ImportPendingHolds;
-  balanceKind: ImportBankBalanceKind;
-  onBalanceKind: (kind: ImportBankBalanceKind) => void;
-  /** Bank balance minus the comparable balance after import; null until a bank figure is typed. */
+  /** Bank balance minus balance after import; null until a bank figure is typed. */
   difference: number | null;
   /** Why nothing fits, computed only when the search came back empty. */
   diagnosis: ImportBalanceDiagnosis | null;
@@ -130,19 +120,6 @@ export function ImportBalanceReceipt({
       {line(t("Selected rows"), figure(source.delta, "soft"))}
       {line(t("After import"), figure(source.after), { strong: true, rule: true, testId: "import-balance-after" })}
       {others.map((effect) => line(t("{account} after import", { account: effect.name }), figure(effect.after)))}
-      {holds.count > 0 && (
-        <>
-          {line(
-            holds.unconverted > 0
-              ? t("Pending on the screenshots ({n} in another currency not counted)", { n: holds.unconverted })
-              : t("Pending on the screenshots"),
-            figure(holds.total, "soft"),
-            { testId: "import-pending-holds" },
-          )}
-          {line(t("Available after import"), figure(source.after + holds.total), { testId: "import-available-after" })}
-        </>
-      )}
-
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, padding: "3px 0", fontSize: 13 }}>
         <span style={{ color: C.soft }}>{t("Bank shows")}</span>
         <AmountField
@@ -155,17 +132,6 @@ export function ImportBalanceReceipt({
           externalPad={pad}
         />
       </div>
-      {holds.count > 0 && (
-        <div role="radiogroup" aria-label={t("Which balance the bank shows")} style={{ display: "flex", gap: 14, padding: "0 0 4px", fontSize: 12.5 }}>
-          {(["available", "booked"] as const).map((kind) => (
-            <label key={kind} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: balanceKind === kind ? C.text : C.soft }}>
-              <input type="radio" name="import-bank-balance-kind" value={kind} checked={balanceKind === kind} onChange={() => onBalanceKind(kind)} />
-              <span>{kind === "available" ? t("available balance") : t("booked balance")}</span>
-            </label>
-          ))}
-        </div>
-      )}
-
       {difference !== null &&
         line(
           difference === 0 ? t("Matches the bank") : t("Difference"),

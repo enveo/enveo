@@ -35,7 +35,6 @@ import {
   type ImportReviewRow,
   importBalanceDiagnosis,
   importBalanceEffect,
-  importPendingHolds,
   importPeriodStart,
   reviewBadges,
   reviewedImportRowsForApply,
@@ -61,7 +60,7 @@ import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect"
 import { AiConsentSheet } from "./AiConsentSheet";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Sheet } from "./chrome";
-import { type ImportBalanceMatchState, ImportBalanceReceipt, type ImportBankBalanceKind } from "./ImportBalanceReceipt";
+import { type ImportBalanceMatchState, ImportBalanceReceipt } from "./ImportBalanceReceipt";
 import { LazyChunk, useOpenedOnce } from "./lazy";
 
 // Lazy like AccountsWidget: the reconcile body only loads when the import hands over a bank balance.
@@ -130,13 +129,12 @@ export function ImportSheet({
   // Bank-balance reconciliation of the review: the typed balance, the matcher's state and the
   // hand-over to the reconcile sheet after adding. The pad is hosted as a sibling of the Sheet.
   const [bankValue, setBankValue] = useState("");
-  const [balanceKind, setBalanceKind] = useState<ImportBankBalanceKind>("available");
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
   const [match, setMatch] = useState<ImportBalanceMatchState>({ kind: "idle" });
   const [diagnosis, setDiagnosis] = useState<ImportBalanceDiagnosis | null>(null);
   const [reconcileAfter, setReconcileAfter] = useState(false);
-  // Frozen when adding starts: the job's rows (and with them the holds) leave the sheet's state
-  // once the job is applied, and the reconcile target must still be the BOOKED figure.
+  // Frozen when adding starts: the job leaves the sheet's state once it is applied, and the
+  // reconcile target must survive that.
   const [reconcileFigure, setReconcileFigure] = useState<number | null>(null);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const reconcileMounted = useOpenedOnce(reconcileOpen);
@@ -498,13 +496,9 @@ export function ImportSheet({
     })();
   const bankBalance = parseAmount(bankValue);
   const sourceAfter = balanceEffect.find((effect) => effect.accountId === accountId)?.after ?? accountsNow.find((account) => account.id === accountId)?.balance;
-  // The screenshots' pending entries separate the bank's booked balance from its available one;
-  // the import adds neither, so the typed figure is compared with the matching side.
-  const holds = useMemo(() => importPendingHolds(job?.result?.rows ?? [], currency), [job?.result, currency]);
-  const holdsApplied = balanceKind === "available" ? holds.total : 0;
-  const difference = bankBalance !== null && sourceAfter !== undefined ? bankBalance - (sourceAfter + holdsApplied) : null;
-  /** The booked figure the ledger should reach: what Reconcile targets after adding. */
-  const reconcileTarget = bankBalance !== null ? bankBalance - holdsApplied : null;
+  const difference = bankBalance !== null && sourceAfter !== undefined ? bankBalance - sourceAfter : null;
+  /** What Reconcile targets after adding: the figure the bank shows. */
+  const reconcileTarget = bankBalance;
   const proposalFits = match.kind === "proposal" && difference !== null && match.changes.reduce((sum, change) => sum + change.delta, 0) === difference;
   const rowLabel = (rowId: string): string => {
     const row = items.find((candidate) => candidate.rowId === rowId);
@@ -1019,9 +1013,6 @@ export function ImportSheet({
               bankValue={bankValue}
               onBankValue={setBankValue}
               pad={[pad, setPad]}
-              holds={holds}
-              balanceKind={balanceKind}
-              onBalanceKind={setBalanceKind}
               difference={difference}
               diagnosis={match.kind === "none" ? diagnosis : null}
               match={match}

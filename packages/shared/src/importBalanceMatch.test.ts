@@ -77,6 +77,21 @@ describe("the closest fit when nothing is exact", () => {
     });
   });
 
+  it("prefers one large plausible change over several small ones that fit a few cents better", () => {
+    // given: the Zen review — a cancelled 1339.07 top-up explains −1344.06 to within 4.99, while
+    // unchecking four unrelated rows would land within 4.91
+    const nearest = findNearestBalanceMatch(
+      [candidate("cancelled", 133907), candidate("carrefour", -16761), candidate("topup-a", 100000), candidate("lidl", -48342), candidate("topup-b", 100000)],
+      -134406,
+    );
+
+    expect(nearest).toEqual({ changes: [{ id: "cancelled", action: "exclude", delta: -133907 }], residual: -499 });
+  });
+
+  it("leaves a difference of a few units alone rather than unchecking rows to chase it", () => {
+    expect(findNearestBalanceMatch([candidate("a", -20000), candidate("b", -3400), candidate("c", 15000, false)], -499)).toBeNull();
+  });
+
   it("offers nothing when no change brings the difference closer, or when it is already zero", () => {
     expect(findNearestBalanceMatch([candidate("a", -500)], -700)).toBeNull(); // excluding a spend moves the wrong way
     expect(findNearestBalanceMatch([candidate("a", -500)], 0)).toBeNull();
