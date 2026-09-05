@@ -27,7 +27,9 @@ function stripComments(src: string): string {
     src
       // `/*` directly before a quote is a glob inside a string (`accept="image/*"`), not a comment:
       // treating it as one blanked everything up to the next real `*/`, closers included.
-      .replace(/\/\*(?!["'`])[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+      // A block comment never follows a word character: `accept="image/*,application/pdf"` is a
+      // MIME wildcard, not a comment opener (the earlier `(?!["'`])` guard covered only `image/*"`).
+      .replace(/(?<![A-Za-z0-9])\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
       .replace(/(^|[^:"'])\/\/[^\n]*/gm, (m, prefix: string) => prefix + " ".repeat(m.length - prefix.length))
   );
 }

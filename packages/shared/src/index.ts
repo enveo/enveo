@@ -13,6 +13,7 @@ export * from "./importDedupe";
 export * from "./importHistory";
 export * from "./importJobs";
 export * from "./importRecognition";
+export * from "./importStatement";
 export * from "./ops";
 export * from "./preferences";
 export * from "./reports";
