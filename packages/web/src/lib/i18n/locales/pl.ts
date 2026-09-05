@@ -207,6 +207,7 @@ export const pl: Dict = {
     one: "{n} strona została pominięta — zaimportuj ją osobno.",
     few: "{n} strony zostały pominięte — zaimportuj je osobno.",
     many: "{n} stron zostało pominiętych — zaimportuj je osobno.",
+    other: "{n} strony zostało pominiętych — zaimportuj je osobno.",
   },
   "Add the account you spend from. The balance can be approximate — it is easy to adjust later.":
     "Dodaj konto, z którego wydajesz. Saldo możesz podać w przybliżeniu — łatwo je później poprawić.",
