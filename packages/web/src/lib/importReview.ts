@@ -430,17 +430,33 @@ const NUMBER_TOKEN = /-?\d[\d\s\u00a0.,]*\d|-?\d/g;
 
  
 export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLines: string[] }>): number | null {
-  for (const row of rows) {
-    if (row.rowRole !== "ui_metadata") continue;
-    const line = row.rawTextLines.find((text) => BALANCE_LABEL.test(text));
-    if (!line) continue;
-    const tokens = line.replace(BALANCE_LABEL, "").match(NUMBER_TOKEN) ?? [];
-    for (const token of tokens) {
-      const parsed = parseDisplayAmount(token);
-      if (parsed !== null) return parsed;
+  
+
+  for (const label of [CLOSING_BALANCE_LABEL, BALANCE_LABEL]) {
+    for (const row of rows) {
+      if (row.rowRole !== "ui_metadata") continue;
+      const index = row.rawTextLines.findIndex((text) => label.test(text));
+      if (index === -1) continue;
+      const found = balanceFigure(row.rawTextLines[index]!, row.rawTextLines[index + 1], label);
+      if (found !== null) return found;
     }
   }
   return null;
+}
+
+const CLOSING_BALANCE_LABEL = /closing balance|saldo (końcowe|zamknięcia|dostępne)|dost[eę]pn|available/i;
+
+
+
+function balanceFigure(line: string, next: string | undefined, label: RegExp): number | null {
+  const own = (line.replace(label, "").match(NUMBER_TOKEN) ?? []).map(parseDisplayAmount).find((value) => value !== null);
+  if (own !== undefined) return own;
+  if (!next) return null;
+  const cells = line.split(/\s{2,}/);
+  const column = cells.findIndex((cell) => label.test(cell));
+  const below = next.split(/\s{2,}/);
+  const cell = below[column] ?? below[below.length - 1];
+  return (cell?.match(NUMBER_TOKEN) ?? []).map(parseDisplayAmount).find((value) => value !== null) ?? null;
 }
 
  
