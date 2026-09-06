@@ -306,12 +306,7 @@ export function ImportSheet({
         e instanceof PdfWithoutTextError
           ? t("This PDF has no text layer (a scan). Use screenshots instead.")
           : pdfInvolved
-            ? t("Could not read the file: {reason}", {
-                reason:
-                  e instanceof Error
-                    ? `${e.message} @ ${(e.stack ?? "").split("\n").slice(0, 2).join(" ← ").slice(0, 300)} · ${navigator.userAgent}`
-                    : String(e),
-              })
+            ? t("Could not read the file: {reason}", { reason: e instanceof Error ? e.message : String(e) })
             : t("Failed to load the image."),
       );
     }
