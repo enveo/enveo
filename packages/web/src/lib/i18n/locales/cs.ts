@@ -43,7 +43,6 @@ export const cs: Dict = {
   "Add expense": "Přidat výdaj",
   "Add income": "Přidat příjem",
   "Add refund": "Přidat vratku",
-  "Add screenshots": "Přidat snímky obrazovky",
   "Add the account you spend from. The balance can be approximate — it is easy to adjust later.":
     "Přidej účet, ze kterého utrácíš. Zůstatek může být přibližný — snadno ho později upravíš.",
   "Add to Home Screen": "Přidat na plochu",
@@ -74,8 +73,6 @@ export const cs: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "Probíhá upgrade nebo obnova: rozpočet účtu na serveru zatím není rozpočtem tohoto zařízení. Jakmile bude, synchronizace se sama rozběhne.",
   "Another account's data": "Data jiného účtu",
-  "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
-    "Apple Wallet nebo historie z banky — AI rozpozná transakce, duplicity přeskočíme",
   "Apply ({n})": "Použít ({n})",
   Archive: "Archivovat",
   Archived: "Archivováno",
@@ -232,7 +229,6 @@ export const cs: Dict = {
   "Finance & shopping": "Finance a nákupy",
   "Food & drink": "Jídlo a pití",
   "From account": "Z účtu",
-  "From screenshot": "Ze snímku obrazovky",
   Fun: "Zábava",
   "Generate suggestion": "Vygenerovat návrh",
   "Generating…": "Generuji…",
@@ -259,7 +255,6 @@ export const cs: Dict = {
     "Pokud jsou to tvá data, přihlas se předchozím účtem — kopie je v pořádku. Po obnově serveru ze zálohy může být id účtu nové, i když e-mail je stejný.",
   "If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.":
     "Pokud se při každém otevření aplikace objeví „Poslední spuštění: staženo ze serveru“, iOS mezi relacemi maže lokální kopii — proto je první načtení pomalé. „Trvalé úložiště: Ano“ riziko takového vyhození snižuje.",
-  "Import from screenshots": "Import ze snímků obrazovky",
   "Imported item": "Importovaná položka",
   Income: "Příjem",
   Install: "Nainstalovat",
@@ -355,7 +350,6 @@ export const cs: Dict = {
   "Previous month": "Předchozí měsíc",
   Privacy: "Soukromí",
   "Previously selected model — it stays available until you pick a tier.": "Dříve zvolený model — zůstává k dispozici, dokud nezvolíš úroveň.",
-  "Process screenshots": "Zpracovat snímky obrazovky",
   Prompt: "Zadání",
   RESET: "RESET",
   "Rainy day": "Železná rezerva",

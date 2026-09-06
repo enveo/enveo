@@ -237,7 +237,7 @@ describe("durable import foreground and Activity view models", () => {
     expect(source).toContain('{t("Imports")}');
     expect(source).not.toContain("Imports continue independently of this screen.");
     expect(source).toContain('{t("No imports")}');
-    expect(source).toContain('{t("Add screenshots with the + button.")}');
+    expect(source).toContain('{t("Add screenshots or a PDF statement with the + button.")}');
     expect(source).toContain("data-activity-content");
     expect(source).toContain('boxSizing: "border-box"');
     expect(source).toContain('gridTemplateColumns: wideHost ? "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" : "1fr"');

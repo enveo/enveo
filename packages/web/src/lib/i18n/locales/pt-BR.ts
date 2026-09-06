@@ -43,7 +43,6 @@ export const ptBR: Dict = {
   "Add expense": "Adicionar despesa",
   "Add income": "Adicionar receita",
   "Add refund": "Adicionar reembolso",
-  "Add screenshots": "Adicionar capturas de tela",
   "Add the account you spend from. The balance can be approximate — it is easy to adjust later.":
     "Adicione a conta de onde você gasta. O saldo pode ser aproximado — é fácil ajustar depois.",
   "Add to Home Screen": "Adicionar à tela de início",
@@ -68,8 +67,6 @@ export const ptBR: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "Há uma atualização ou uma restauração em andamento: o orçamento da conta no servidor ainda não é o deste dispositivo. Assim que for, a sincronização volta sozinha.",
   "Another account's data": "Dados de outra conta",
-  "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
-    "Apple Wallet ou o extrato do banco — a IA reconhece as transações e as duplicadas são ignoradas",
   "Apply ({n})": "Aplicar ({n})",
   Archive: "Arquivar",
   Archived: "Arquivado",
@@ -226,7 +223,6 @@ export const ptBR: Dict = {
   "Finance & shopping": "Finanças e compras",
   "Food & drink": "Alimentação",
   "From account": "Da conta",
-  "From screenshot": "De uma captura de tela",
   Fun: "Lazer",
   "Generate suggestion": "Gerar sugestão",
   "Generating…": "Gerando…",
@@ -253,7 +249,6 @@ export const ptBR: Dict = {
     "Se estes dados são seus, entre com a conta anterior — a cópia está intacta. Depois de restaurar um servidor a partir de um backup, o id da conta pode ser novo mesmo que o e-mail seja o mesmo.",
   "If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.":
     "Se “Último início: baixado do servidor” aparece toda vez que você abre o app, o iOS está apagando a cópia local entre as sessões — por isso o primeiro carregamento é lento. “Armazenamento persistente: Sim” reduz o risco dessa remoção.",
-  "Import from screenshots": "Importar de capturas de tela",
   "Imported item": "Item importado",
   Income: "Receita",
   Install: "Instalar",
@@ -352,7 +347,6 @@ export const ptBR: Dict = {
   "Previous month": "Mês anterior",
   Privacy: "Privacidade",
   "Previously selected model — it stays available until you pick a tier.": "Modelo escolhido anteriormente — continua disponível até você escolher um nível.",
-  "Process screenshots": "Processar as capturas de tela",
   Prompt: "Instrução",
   RESET: "REDEFINIR",
   "Rainy day": "Imprevistos",
