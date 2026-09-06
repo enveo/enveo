@@ -449,6 +449,7 @@ export const pl: Dict = {
   "Export backup (JSON)": "Eksportuj kopię (JSON)",
   "Export backup and sign out": "Eksportuj kopię i wyloguj się",
   "Failed to load the image.": "Nie udało się wczytać obrazka.",
+  "Could not read the file: {reason}": "Nie udało się wczytać pliku: {reason}",
   "Fill all goals ›": "Wypełnij wszystkie cele ›",
   
 
