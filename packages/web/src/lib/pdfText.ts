@@ -1,4 +1,5 @@
 import { encodeImportTextPage, redactStatementPage, statementLinesFromTextItems } from "@enveo/shared";
+import "./pdfPolyfills";
 
 export const PDF_MAX_PAGES = 30;
 
@@ -20,20 +21,28 @@ export async function statementPagesFromPdf(file: File): Promise<string[]> {
   // friends), which the iPhone this app lives on does not guarantee; legacy is transpiled and
   // polyfilled, and it is a lazy chunk either way.
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const worker = await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url");
-  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
-  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
-  const document = await task.promise;
-  const pages: string[] = [];
-  for (let number = 1; number <= Math.min(document.numPages, PDF_MAX_PAGES); number += 1) {
-    const page = await document.getPage(number);
-    const items = (await readTextItems(page)).flatMap((item) => ("str" in item ? [{ str: item.str, x: item.transform[4]!, y: item.transform[5]! }] : []));
-    const text = redactStatementPage(statementLinesFromTextItems(items).join("\n"));
-    if (text.trim() !== "") pages.push(encodeImportTextPage(text));
+  // Our own worker entry (pdfWorker.ts) runs the same polyfills BEFORE pdf.js's worker code; a
+  // worker started from pdf.js's own file would lack them and hang the import on older engines.
+  // A classic (non-module) worker so engines without module workers (Firefox < 114) load it too.
+  const worker = new Worker(new URL("./pdfWorker.ts", import.meta.url));
+  pdfjs.GlobalWorkerOptions.workerPort = worker;
+  try {
+    const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+    const document = await task.promise;
+    const pages: string[] = [];
+    for (let number = 1; number <= Math.min(document.numPages, PDF_MAX_PAGES); number += 1) {
+      const page = await document.getPage(number);
+      const items = (await readTextItems(page)).flatMap((item) => ("str" in item ? [{ str: item.str, x: item.transform[4]!, y: item.transform[5]! }] : []));
+      const text = redactStatementPage(statementLinesFromTextItems(items).join("\n"));
+      if (text.trim() !== "") pages.push(encodeImportTextPage(text));
+    }
+    await task.destroy();
+    if (pages.length === 0) throw new PdfWithoutTextError();
+    return pages;
+  } finally {
+    pdfjs.GlobalWorkerOptions.workerPort = null;
+    worker.terminate();
   }
-  await task.destroy();
-  if (pages.length === 0) throw new PdfWithoutTextError();
-  return pages;
 }
 
 /**
