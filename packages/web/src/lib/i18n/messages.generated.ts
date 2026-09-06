@@ -208,6 +208,7 @@ export const MESSAGES = [
   "Could not check model availability right now — every tier stays selectable.",
   "Could not create the account — please try again.",
   "Could not reach the AI service — check the network connection and try again.",
+  "Could not read the file: {reason}",
   "Could not sign in — please try again.",
   "Cover it ›",
   "Cover the overspend in {name}",

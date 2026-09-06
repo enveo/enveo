@@ -16,8 +16,11 @@ export class PdfWithoutTextError extends Error {
  * is refused — the screenshots path is the one for pictures.
  */
 export async function statementPagesFromPdf(file: File): Promise<string[]> {
-  const pdfjs = await import("pdfjs-dist");
-  const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+  // The LEGACY build: the modern one assumes the newest engines (Promise.withResolvers and
+  // friends), which the iPhone this app lives on does not guarantee; legacy is transpiled and
+  // polyfilled, and it is a lazy chunk either way.
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const worker = await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url");
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
   const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
   const document = await task.promise;
