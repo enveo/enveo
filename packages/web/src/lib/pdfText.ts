@@ -27,8 +27,7 @@ export async function statementPagesFromPdf(file: File): Promise<string[]> {
   const pages: string[] = [];
   for (let number = 1; number <= Math.min(document.numPages, PDF_MAX_PAGES); number += 1) {
     const page = await document.getPage(number);
-    const content = await page.getTextContent();
-    const items = content.items.flatMap((item) => ("str" in item ? [{ str: item.str, x: item.transform[4]!, y: item.transform[5]! }] : []));
+    const items = (await readTextItems(page)).flatMap((item) => ("str" in item ? [{ str: item.str, x: item.transform[4]!, y: item.transform[5]! }] : []));
     const text = redactStatementPage(statementLinesFromTextItems(items).join("\n"));
     if (text.trim() !== "") pages.push(encodeImportTextPage(text));
   }
@@ -36,3 +35,20 @@ export async function statementPagesFromPdf(file: File): Promise<string[]> {
   if (pages.length === 0) throw new PdfWithoutTextError();
   return pages;
 }
+
+/**
+ * `page.getTextContent()` iterates its ReadableStream with `for await`, and Safari before 26
+ * (iOS 18 included) has no `Symbol.asyncIterator` on streams — "undefined is not a function
+ * (near '...i of e...')" on the phone this app lives on. A reader works everywhere.
+ */
+async function readTextItems(page: { streamTextContent(): ReadableStream<{ items: unknown[] }> }) {
+  const reader = page.streamTextContent().getReader();
+  const items: TextItem[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return items;
+    items.push(...(value.items as TextItem[]));
+  }
+}
+
+type TextItem = { str: string; transform: number[] } | { type: string };
