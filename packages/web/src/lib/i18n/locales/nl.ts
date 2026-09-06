@@ -43,7 +43,6 @@ export const nl: Dict = {
   "Add expense": "Uitgave toevoegen",
   "Add income": "Inkomsten toevoegen",
   "Add refund": "Terugbetaling toevoegen",
-  "Add screenshots": "Schermafbeeldingen toevoegen",
   "Add the account you spend from. The balance can be approximate — it is easy to adjust later.":
     "Voeg de rekening toe waarvan je uitgeeft. Het saldo mag bij benadering zijn — je past het later makkelijk aan.",
   "Add to Home Screen": "Zet op het beginscherm",
@@ -64,8 +63,6 @@ export const nl: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "Er loopt een upgrade of een herstel: het budget van het account op de server is nog niet dat van dit apparaat. Zodra dat wel zo is, hervat de synchronisatie vanzelf.",
   "Another account's data": "Gegevens van een ander account",
-  "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
-    "Apple Wallet of je bankafschriften — de AI herkent de transacties, dubbele worden overgeslagen",
   "Apply ({n})": "Toepassen ({n})",
   Archive: "Archiveren",
   Archived: "Gearchiveerd",
@@ -225,7 +222,6 @@ export const nl: Dict = {
   "Finance & shopping": "Financiën en aankopen",
   "Food & drink": "Eten en drinken",
   "From account": "Van rekening",
-  "From screenshot": "Uit schermafbeelding",
   Fun: "Vrije tijd",
   "Generate suggestion": "Suggestie genereren",
   "Generating…": "Bezig met genereren…",
@@ -252,7 +248,6 @@ export const nl: Dict = {
     "Als dit jouw gegevens zijn, meld je dan aan met het vorige account — de kopie is intact. Na het terugzetten van een server uit een back-up kan het account-id nieuw zijn, ook al is het e-mailadres hetzelfde.",
   "If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.":
     "Als bij elke opening van de app ‘Laatste start: opgehaald van de server’ verschijnt, verwijdert iOS de lokale kopie tussen sessies — daarom is de eerste keer laden traag. ‘Permanente opslag: Ja’ verkleint de kans op zo'n verwijdering.",
-  "Import from screenshots": "Importeren uit schermafbeeldingen",
   "Imported item": "Geïmporteerde regel",
   Income: "Inkomsten",
   Install: "Installeren",
@@ -353,7 +348,6 @@ export const nl: Dict = {
   "Previous month": "Vorige maand",
   Privacy: "Privacy",
   "Previously selected model — it stays available until you pick a tier.": "Eerder gekozen model — het blijft beschikbaar totdat je een niveau kiest.",
-  "Process screenshots": "Schermafbeeldingen verwerken",
   Prompt: "Instructie",
   RESET: "RESET",
   "Rainy day": "Onvoorzien",

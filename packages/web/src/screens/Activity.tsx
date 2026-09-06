@@ -298,7 +298,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
               <Ico d="M4 7h16v12H4zM7 4h10M8 11l2.5 2.5L14.5 9l3.5 5" size={28} color={C.soft} sw={1.7} />
             </div>
             <div style={{ color: C.text, fontSize: 16, fontWeight: 700 }}>{t("No imports")}</div>
-            <div style={{ marginTop: 6, fontSize: 12.5 }}>{t("Add screenshots with the + button.")}</div>
+            <div style={{ marginTop: 6, fontSize: 12.5 }}>{t("Add screenshots or a PDF statement with the + button.")}</div>
           </div>
         )}
         {list(msg("Ready"), sections.ready)}

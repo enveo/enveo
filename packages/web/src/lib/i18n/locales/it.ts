@@ -43,7 +43,6 @@ export const it: Dict = {
   "Add expense": "Aggiungi spesa",
   "Add income": "Aggiungi entrata",
   "Add refund": "Aggiungi rimborso",
-  "Add screenshots": "Aggiungi screenshot",
   "Add the account you spend from. The balance can be approximate — it is easy to adjust later.":
     "Aggiungi il conto da cui spendi. Il saldo può essere approssimativo: è facile correggerlo dopo.",
   "Add to Home Screen": "Aggiungi alla schermata Home",
@@ -64,8 +63,6 @@ export const it: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "È in corso un aggiornamento o un ripristino: il budget dell'account sul server non è ancora quello di questo dispositivo. Appena lo sarà, la sincronizzazione riprenderà da sola.",
   "Another account's data": "Dati di un altro account",
-  "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
-    "Apple Wallet o la lista movimenti della banca: l'IA riconoscerà le transazioni, i duplicati verranno saltati",
   "Apply ({n})": "Applica ({n})",
   Archive: "Archivia",
   Archived: "Archiviato",
@@ -224,7 +221,6 @@ export const it: Dict = {
   "Finance & shopping": "Finanza e acquisti",
   "Food & drink": "Cibo e bevande",
   "From account": "Dal conto",
-  "From screenshot": "Da screenshot",
   Fun: "Svago",
   "Generate suggestion": "Genera un suggerimento",
   "Generating…": "Generazione…",
@@ -251,7 +247,6 @@ export const it: Dict = {
     "Se questi dati sono tuoi, accedi con l'account precedente: la copia è intatta. Dopo il ripristino di un server da un backup, l'id dell'account può essere nuovo anche se l'e-mail è la stessa.",
   "If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.":
     "Se a ogni apertura dell'app compare «Ultimo avvio: scaricato dal server», iOS sta cancellando la copia locale tra una sessione e l'altra: per questo il primo caricamento è lento. «Archiviazione persistente: Sì» riduce il rischio di questo sfratto.",
-  "Import from screenshots": "Importa dagli screenshot",
   "Imported item": "Voce importata",
   Income: "Entrata",
   Install: "Installa",
@@ -352,7 +347,6 @@ export const it: Dict = {
   "Previous month": "Mese precedente",
   Privacy: "Privacy",
   "Previously selected model — it stays available until you pick a tier.": "Modello scelto in precedenza: resta disponibile finché non scegli un livello.",
-  "Process screenshots": "Elabora gli screenshot",
   Prompt: "Istruzione",
   RESET: "REIMPOSTA",
   "Rainy day": "Imprevisti",

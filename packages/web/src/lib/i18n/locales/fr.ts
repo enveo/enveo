@@ -44,7 +44,6 @@ export const fr: Dict = {
   "Add expense": "Ajouter une dépense",
   "Add income": "Ajouter un revenu",
   "Add refund": "Ajouter un remboursement",
-  "Add screenshots": "Ajouter des captures",
   "Add the account you spend from. The balance can be approximate — it is easy to adjust later.":
     "Ajoutez le compte depuis lequel vous dépensez. Le solde peut être approximatif — il est facile à corriger ensuite.",
   "Add to Home Screen": "Ajouter à l'écran d'accueil",
@@ -65,8 +64,6 @@ export const fr: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "Une mise à niveau ou une restauration est en cours : le budget du compte sur le serveur n'est pas encore celui de cet appareil. Dès qu'il le sera, la synchronisation reprendra d'elle-même.",
   "Another account's data": "Données d'un autre compte",
-  "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
-    "Apple Wallet ou l'historique bancaire — l'IA reconnaîtra les transactions, les doublons seront ignorés",
   "Apply ({n})": "Appliquer ({n})",
   Archive: "Archiver",
   Archived: "Archivé",
@@ -226,7 +223,6 @@ export const fr: Dict = {
   "Finance & shopping": "Finances et achats",
   "Food & drink": "Alimentation",
   "From account": "Du compte",
-  "From screenshot": "Depuis une capture",
   Fun: "Loisirs",
   "Generate suggestion": "Générer une suggestion",
   "Generating…": "Génération…",
@@ -253,7 +249,6 @@ export const fr: Dict = {
     "Si ces données sont les vôtres, connectez-vous avec le compte précédent — la copie est intacte. Après la restauration d'un serveur depuis une sauvegarde, l'identifiant du compte peut être nouveau même si l'e-mail est le même.",
   "If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.":
     "Si « Dernier lancement : téléchargé depuis le serveur » apparaît à chaque ouverture de l'application, iOS supprime la copie locale entre les sessions — d'où la lenteur du premier chargement. « Stockage persistant : Oui » réduit le risque d'une telle éviction.",
-  "Import from screenshots": "Importer depuis des captures",
   "Imported item": "Ligne importée",
   Income: "Revenu",
   Install: "Installer",
@@ -352,7 +347,6 @@ export const fr: Dict = {
   Privacy: "Confidentialité",
   "Previously selected model — it stays available until you pick a tier.":
     "Modèle choisi précédemment — il reste disponible tant que vous n'avez pas choisi de niveau.",
-  "Process screenshots": "Traiter les captures",
   Prompt: "Consigne",
   RESET: "REINITIALISER",
   "Rainy day": "Imprévus",

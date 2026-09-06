@@ -306,7 +306,12 @@ export function ImportSheet({
         e instanceof PdfWithoutTextError
           ? t("This PDF has no text layer (a scan). Use screenshots instead.")
           : pdfInvolved
-            ? t("Could not read the file: {reason}", { reason: e instanceof Error ? e.message : String(e) })
+            ? t("Could not read the file: {reason}", {
+                reason:
+                  e instanceof Error
+                    ? `${e.message} @ ${(e.stack ?? "").split("\n").slice(0, 2).join(" ← ").slice(0, 300)} · ${navigator.userAgent}`
+                    : String(e),
+              })
             : t("Failed to load the image."),
       );
     }
@@ -618,9 +623,9 @@ export function ImportSheet({
       <Sheet show={show} onClose={close} wideDialog>
         {phase === "pick" && (
           <>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Import from screenshots")}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Import from a file")}</div>
             <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 16 }}>
-              {t("Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped")}
+              {t("Screenshots of Apple Wallet or your bank history, or a PDF statement — AI will recognize the transactions, duplicates will be skipped")}
             </div>
 
             <div style={label}>{t("Account")}</div>
@@ -647,9 +652,11 @@ export function ImportSheet({
             </select>
 
             <div style={label}>
-              {images[0] && isImportTextPage(images[0])
-                ? t("Statement pages ({n}/{max})", { n: images.length, max: IMPORT_JOB_MAX_IMAGES })
-                : t("Screenshots ({n}/{max})", { n: images.length, max: IMPORT_JOB_MAX_IMAGES })}
+              {images.length === 0
+                ? t("Files ({n}/{max})", { n: 0, max: IMPORT_JOB_MAX_IMAGES })
+                : isImportTextPage(images[0])
+                  ? t("Statement pages ({n}/{max})", { n: images.length, max: IMPORT_JOB_MAX_IMAGES })
+                  : t("Screenshots ({n}/{max})", { n: images.length, max: IMPORT_JOB_MAX_IMAGES })}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
               {images.map((url, i) => (
@@ -729,7 +736,8 @@ export function ImportSheet({
                     color={C.soft}
                     sw={1.5}
                   />
-                  <span style={{ fontSize: 11, fontWeight: 600 }}>{t("Add screenshots")}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600 }}>{t("Add files")}</span>
+                  <span style={{ fontSize: 10, lineHeight: 1.2, textAlign: "center", padding: "0 6px" }}>{t("Screenshots or a PDF statement")}</span>
                 </button>
               )}
             </div>
@@ -763,7 +771,7 @@ export function ImportSheet({
                 opacity: images.length === 0 || busy ? 0.5 : 1,
               }}
             >
-              {busy ? t("Recognizing…") : t("Process screenshots")}
+              {busy ? t("Recognizing…") : t("Process files")}
             </button>
           </>
         )}

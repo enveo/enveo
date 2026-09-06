@@ -71,7 +71,7 @@ export const DEFAULT_QUICK_ACTIONS: QuickActionKey[] = ["expense", "transfer", "
 export const QUICK_ACTION_DEFS: Record<QuickActionKey, { label: Message; glyph?: string; d?: string }> = {
   expense: { label: msg("Expense"), d: "M12 5v14M5 12h14" },
   transfer: { label: msg("Transfer"), d: "M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4" },
-  import: { label: msg("From screenshot"), glyph: "camera" },
+  import: { label: msg("Import a file"), glyph: "camera" },
   suggest: { label: msg("Suggest"), d: "M12 3v3.5M12 17.5V21M3 12h3.5M17.5 12H21M5.8 5.8l2.4 2.4M15.8 15.8l2.4 2.4M18.2 5.8l-2.4 2.4M8.2 15.8l-2.4 2.4" },
   discreet: { label: msg("Discreet mode"), d: "M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z M12 14.2a2.2 2.2 0 100-4.4 2.2 2.2 0 000 4.4z" },
   darkMode: { label: msg("Light / Dark"), d: "M20.5 13.5A8.5 8.5 0 1110.5 3.5a7 7 0 0010 10z" },
