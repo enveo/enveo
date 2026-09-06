@@ -449,6 +449,7 @@ export const pl: Dict = {
   "Export backup (JSON)": "Eksportuj kopię (JSON)",
   "Export backup and sign out": "Eksportuj kopię i wyloguj się",
   "Failed to load the image.": "Nie udało się wczytać obrazka.",
+  "Could not read the file: {reason}": "Nie udało się wczytać pliku: {reason}",
   "Fill all goals ›": "Wypełnij wszystkie cele ›",
   // Short form: the rail pill fits 78.5px of text and "Wypełnij wg celów" (100px) wrapped to two
   // lines beside the single-line "Zasugeruj"; "Zasil cele" measures 61px. Verb-first like its

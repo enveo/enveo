@@ -300,7 +300,15 @@ export function ImportSheet({
       }
       setImages((prev) => [...prev, ...list]);
     } catch (e) {
-      setError(e instanceof PdfWithoutTextError ? t("This PDF has no text layer (a scan). Use screenshots instead.") : t("Failed to load the image."));
+      // The reason travels to the screen: a phone has no console to read it from.
+      const pdfInvolved = [...files].some((file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name));
+      setError(
+        e instanceof PdfWithoutTextError
+          ? t("This PDF has no text layer (a scan). Use screenshots instead.")
+          : pdfInvolved
+            ? t("Could not read the file: {reason}", { reason: e instanceof Error ? e.message : String(e) })
+            : t("Failed to load the image."),
+      );
     }
     if (fileRef.current) fileRef.current.value = "";
   };
