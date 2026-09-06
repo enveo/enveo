@@ -43,7 +43,6 @@ export const sv: Dict = {
   "Add expense": "Lägg till utgift",
   "Add income": "Lägg till inkomst",
   "Add refund": "Lägg till återbetalning",
-  "Add screenshots": "Lägg till skärmbilder",
   "Add the account you spend from. The balance can be approximate — it is easy to adjust later.":
     "Lägg till kontot du betalar från. Saldot får vara ungefärligt — det är lätt att justera senare.",
   "Add to Home Screen": "Lägg till på hemskärmen",
@@ -64,8 +63,6 @@ export const sv: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "En uppgradering eller en återställning pågår: kontots budget på servern är ännu inte den här enhetens budget. Så snart den är det återupptas synkroniseringen av sig själv.",
   "Another account's data": "Data från ett annat konto",
-  "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
-    "Apple Wallet eller bankens historik — AI känner igen transaktionerna, dubbletter hoppas över",
   "Apply ({n})": "Använd ({n})",
   Archive: "Arkivera",
   Archived: "Arkiverat",
@@ -224,7 +221,6 @@ export const sv: Dict = {
   "Finance & shopping": "Ekonomi och shopping",
   "Food & drink": "Mat och dryck",
   "From account": "Från konto",
-  "From screenshot": "Från skärmbild",
   Fun: "Nöje",
   "Generate suggestion": "Ta fram ett förslag",
   "Generating…": "Tar fram…",
@@ -251,7 +247,6 @@ export const sv: Dict = {
     "Om det här är dina data, logga in med det tidigare kontot — kopian är intakt. Efter att en server återställts från en säkerhetskopia kan konto-id:t vara nytt även om e-postadressen är densamma.",
   "If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.":
     "Om ”Senaste start: hämtad från servern” dyker upp varje gång du öppnar appen raderar iOS den lokala kopian mellan sessionerna — därför är den första inläsningen långsam. ”Beständig lagring: Ja” minskar risken för en sådan utrensning.",
-  "Import from screenshots": "Importera från skärmbilder",
   "Imported item": "Importerad rad",
   Income: "Inkomst",
   Install: "Installera",
@@ -348,7 +343,6 @@ export const sv: Dict = {
   "Previous month": "Föregående månad",
   Privacy: "Integritet",
   "Previously selected model — it stays available until you pick a tier.": "Tidigare vald modell — den finns kvar tills du väljer en nivå.",
-  "Process screenshots": "Bearbeta skärmbilderna",
   Prompt: "Instruktion",
   RESET: "RESET",
   "Rainy day": "Buffert",

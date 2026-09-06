@@ -153,7 +153,7 @@ export function AddHeader({
         ) : (
           <button
             onClick={onOpenImport}
-            aria-label={t("From screenshot")}
+            aria-label={t("Import from a file")}
             style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", flexShrink: 0 }}
           >
             <Ico
