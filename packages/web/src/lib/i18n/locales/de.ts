@@ -43,7 +43,6 @@ export const de: Dict = {
   "Add expense": "Ausgabe hinzufügen",
   "Add income": "Einnahme hinzufügen",
   "Add refund": "Erstattung hinzufügen",
-  "Add screenshots": "Screenshots hinzufügen",
   "Add the account you spend from. The balance can be approximate — it is easy to adjust later.":
     "Füge das Konto hinzu, von dem du bezahlst. Der Saldo darf ungefähr sein — er lässt sich später leicht korrigieren.",
   "Add to Home Screen": "Zum Home-Bildschirm hinzufügen",
@@ -64,8 +63,6 @@ export const de: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "Ein Upgrade oder eine Wiederherstellung läuft: Das Budget des Kontos auf dem Server ist noch nicht das Budget dieses Geräts. Sobald es das ist, läuft die Synchronisierung von selbst weiter.",
   "Another account's data": "Daten eines anderen Kontos",
-  "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
-    "Apple Wallet oder Kontoauszug — die KI erkennt die Transaktionen, Duplikate werden übersprungen",
   "Apply ({n})": "Übernehmen ({n})",
   Archive: "Archivieren",
   Archived: "Archiviert",
@@ -226,7 +223,6 @@ export const de: Dict = {
   "Finance & shopping": "Finanzen & Einkäufe",
   "Food & drink": "Essen & Trinken",
   "From account": "Von Konto",
-  "From screenshot": "Vom Screenshot",
   Fun: "Freizeit",
   "Generate suggestion": "Vorschlag erzeugen",
   "Generating…": "Wird erzeugt…",
@@ -253,7 +249,6 @@ export const de: Dict = {
     "Wenn das deine Daten sind, melde dich mit dem vorherigen Konto an — die Kopie ist intakt. Nach der Wiederherstellung eines Servers aus einer Sicherung kann die Konto-ID neu sein, obwohl die E-Mail dieselbe ist.",
   "If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.":
     "Wenn bei jedem Öffnen der App „Letzter Start: vom Server geladen“ erscheint, löscht iOS die lokale Kopie zwischen den Sitzungen — deshalb ist der erste Ladevorgang langsam. „Dauerhafter Speicher: Ja“ senkt das Risiko einer solchen Verdrängung.",
-  "Import from screenshots": "Aus Screenshots importieren",
   "Imported item": "Importierte Position",
   Income: "Einnahme",
   Install: "Installieren",
@@ -354,7 +349,6 @@ export const de: Dict = {
   "Previous month": "Vorheriger Monat",
   Privacy: "Privatsphäre",
   "Previously selected model — it stays available until you pick a tier.": "Zuvor gewähltes Modell — es bleibt verfügbar, bis du eine Stufe wählst.",
-  "Process screenshots": "Screenshots verarbeiten",
   Prompt: "Prompt",
   RESET: "RESET",
   "Rainy day": "Notgroschen",
