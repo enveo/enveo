@@ -4,7 +4,8 @@
 # calls the same file on the tagged commit (§3d). Neither workflow keeps a second, hand-written
 # list of package commands, and neither can drift from `bun run verify:ci`.
 #
-# E2E (agent-browser) stays outside CI — it runs locally against a throwaway stack.
+# The browser smoke test (`bun run e2e`) is part of verify:ci; exploratory E2E with agent-browser
+# stays local, against a throwaway stack.
 name: CI
 
 on:
