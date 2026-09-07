@@ -67,7 +67,7 @@ export function reconcileImportJobResult(args: {
       ...proposal,
       assignmentUnavailable:
         previous.assignmentUnavailable === true ||
-        (previous.envelopeId !== null && proposal.envelopeId === null) ||
+        (proposal.type !== "income" && previous.envelopeId !== null && proposal.envelopeId === null) ||
         (previous.categoryId !== null && proposal.categoryId === null),
     };
   });
@@ -177,7 +177,7 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
 
     const namedEnvelope = cleanName(item.envelopeName);
     const importedEnvelopeId =
-      item.type === "transfer"
+      item.type !== "expense"
         ? null
         : item.automaticEnvelopeDefault !== undefined
           ? item.envelopeId
