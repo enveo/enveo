@@ -53,7 +53,7 @@ registered user, so your account sees it after a reload.
 
 | Command | What it does |
 |---|---|
-| `bun run verify` | What you run before pushing: `typecheck` + `lint` + `test` + `build` + `policy:sources`. Offline, no database. |
+| `bun run verify` | What you run before pushing: `typecheck` + `lint` + `test` + `build` + `policy:sources` + `policy:web-security` + `policy:docs`. Offline, no database. |
 | `bun run lint` | Non-mutating Biome check (format + lint + import organization) over the whole repository. |
 | `bun run format` | The **only** command that rewrites files (`biome format --write`). Run it yourself and review the diff — nothing else ever formats for you. |
 | `bun run format:check` | Non-mutating formatter check. |
@@ -62,8 +62,10 @@ registered user, so your account sees it after a reload.
 | `bun run typecheck` | Shared, API, web app, web tests and repository tooling. |
 | `bun run build` | The production web/PWA build. |
 | `bun run security:audit` | `bun audit` evaluated against `security/audit-policy.json`. |
+| `bun run policy:docs` | `AGENTS.md` is the byte-identical mirror of `CLAUDE.md`. |
+| `bun run e2e` | Browser smoke test (`scripts/e2e.ts`): the **built** PWA served by the real API in headless Chromium — first account, sample data, an expense, a reload, a second sign-in. Needs a throwaway PostgreSQL like `test:db` and `bunx playwright install chromium` once. |
 | `bun run policy:sources` | Self-host source policy: every Enveo image reference in the canonical docs is `ghcr.io/enveo/enveo:latest`, and `scripts/deploy.sh` downloads nothing. Offline — it never asks GHCR anything. |
-| `bun run verify:ci` | What CI runs: `typecheck` + `lint:ci` + `test:db` + `build` + `policy:sources` + `security:audit`. |
+| `bun run verify:ci` | What CI runs: `verify` with `lint:ci`, `test:db`, plus `security:audit` and `e2e`. |
 
 CI and the release pipeline both call the same reusable workflow to run `verify:ci`, so
 neither keeps a second list of commands — a phase is added by editing the root
@@ -82,6 +84,10 @@ docker run -d --rm --name enveotest \
 
 TEST_DATABASE_URL=postgres://enveo:enveo@127.0.0.1:5499/enveotest \
 ENVEO_TEST_DB_ACK=throwaway bun run test:db
+
+# the browser smoke test takes the same two variables (build the web app first)
+bun run build:web && TEST_DATABASE_URL=postgres://enveo:enveo@127.0.0.1:5499/enveotest \
+ENVEO_TEST_DB_ACK=throwaway bun run e2e
 ```
 
 Create a **fresh** container for this; the sentinel proves you meant it, not that the

@@ -5,7 +5,7 @@
 # and neither caller may keep a second hand-written list of commands.
 #
 # The gate itself is `bun run verify:ci` (typecheck → lint:ci → test:db → build → policies →
-# security:audit) — the same command a developer runs locally. Add a phase by editing root package.json, never here.
+# security:audit → e2e) — the same command a developer runs locally. Add a phase by editing root package.json, never here.
 #
 # The caller passes an explicit ref. On the release path that is the SHA the tag resolved to,
 # never a branch name and never `github.sha` (which on a workflow_dispatch is the default branch
@@ -74,6 +74,11 @@ jobs:
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
 
+      # The browser for `bun run e2e` (scripts/e2e.ts). Playwright's own pinned Chromium build,
+      # not the runner's Chrome, so the engine under test does not change with the runner image.
+      - name: Install Chromium for the browser smoke test
+        run: bunx playwright install --with-deps chromium
+
       # The authoritative gate. Each phase announces itself in the log:
       #   "$ bun run typecheck:*"            — shared, api, web app, web tests, tooling
       #   "run-tests: mode=db …"             — the full suite with DB-backed groups REQUIRED
@@ -81,5 +86,7 @@ jobs:
       #   "policy:sources: …"                — the self-host documentation/bootstrap source policy
       #   "$ diff -u CLAUDE.md AGENTS.md"    — AGENTS.md is the byte-identical mirror of CLAUDE.md
       #   "security:audit — bun audit --json"— the fail-closed dependency policy gate
+      #   "e2e: OK"                          — the built PWA, driven in headless Chromium against
+      #                                        the real API and the throwaway PostgreSQL above
       - name: Verify
         run: bun run verify:ci
