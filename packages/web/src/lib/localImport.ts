@@ -119,7 +119,7 @@ export function importReviewItem(result: ImportApplyResponse["results"][number],
     ...result,
     envelopeId: selection.envelopeId,
     automaticEnvelopeDefault: selection.provenance === "automatic",
-    include: result.status !== "exists",
+    include: result.status === "added",
   };
 }
 

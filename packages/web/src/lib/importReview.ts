@@ -38,6 +38,12 @@ export interface ImportReviewRow {
   item: LocalImportReviewItem | null;
 }
 
+/** Keep explicit choices, but newly discovered duplicate evidence needs a fresh selection. */
+export function reviewSelectionAfterRefresh(row: ImportReviewRow, previous: ImportReviewRow | undefined): boolean {
+  if (row.duplicateStatus === "exists" || (row.duplicateStatus === "probable" && previous?.duplicateStatus !== "probable")) return false;
+  return previous?.include ?? row.include;
+}
+
 export function visibleImportReviewRows<T extends Pick<ImportReviewRow, "disposition">>(rows: readonly T[]): { row: T; index: number; position: number }[] {
   const visible: { row: T; index: number; position: number }[] = [];
   rows.forEach((row, index) => {
@@ -259,7 +265,7 @@ export function buildImportReviewRows(args: {
       date: proposal.date,
       amount: proposal.amount,
       currency: proposal.currency,
-      include: duplicateStatus !== "exists" && !skippedRowIds.has(rawRow.rowId) && (reviewItem !== null || proposal.selected),
+      include: duplicateStatus === "new" && !skippedRowIds.has(rawRow.rowId) && (reviewItem !== null || proposal.selected),
       editable: reviewItem !== null,
       item: reviewItem ? { ...reviewItem, include: reviewItem.include } : null,
     };

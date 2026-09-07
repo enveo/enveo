@@ -25,6 +25,7 @@ import {
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
+  reviewSelectionAfterRefresh,
   visibleImportReviewRows,
 } from "./importReview";
 import { type LocalImportReviewItem, recognitionCandidatesForDryRun } from "./localImport";
@@ -303,7 +304,7 @@ describe("screenshot import review view model", () => {
     ]);
   });
 
-  it("defaults every non-exact candidate to included even when an old proposal selection was false", () => {
+  it("defaults a new candidate to included even when an old proposal selection was false", () => {
     // given: a durable Stage-A candidate carries a creation-time selection that is no longer authoritative
     const result = recognition([row("new")], [proposal("new", { selected: false, duplicateStatus: "new" })]);
 
@@ -459,13 +460,51 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "EUR",
     });
 
-    expect(review[0]).toMatchObject({ duplicateStatus: "probable", include: true, requiresReview: true, editable: true });
-    expect(review[0]!.item).toMatchObject({ status: "probable", include: true });
+    expect(review[0]).toMatchObject({ duplicateStatus: "probable", include: false, requiresReview: true, editable: true });
+    expect(review[0]!.item).toMatchObject({ status: "probable", include: false });
     expect(reviewBadges(review[0]!).map((badge) => badge.label)).toContain("Probable duplicate");
     expect(reviewRowControlLabels(review[0]!, 0)).toEqual({
       select: { message: "Select recognized row {n}", values: { n: 1 } },
       edit: { message: "Edit item {n}", values: { n: 1 } },
     });
+    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toEqual([]);
+    // A new history hit must not inherit the automatic check from when this row was new.
+    const previouslyNew = { ...review[0]!, duplicateStatus: "new" as const, include: true };
+    expect(reviewSelectionAfterRefresh(review[0]!, previouslyNew)).toBe(false);
+    // An explicit choice made with the probable warning visible does survive re-checking.
+    expect(reviewSelectionAfterRefresh(review[0]!, { ...review[0]!, include: true })).toBe(true);
+    expect(reviewSelectionAfterRefresh(review[0]!, { ...review[0]!, include: false })).toBe(false);
+    review[0]!.include = true;
+    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
+  });
+
+  it("leaves a cropped probable duplicate unchecked even when its saved proposal was selected", () => {
+    // given: only the amount was visible; the old job kept this unresolved row selected
+    const review = buildImportReviewRows({
+      recognition: recognition(
+        [row("cropped", { amount: 6100, rawTextLines: ["61.00 EUR"], semanticKind: "unknown" })],
+        [
+          proposal("cropped", {
+            amount: 6100,
+            disposition: "unresolved",
+            type: null,
+            selected: true,
+            duplicateStatus: "probable",
+            reviewReasons: ["unknown_kind"],
+          }),
+        ],
+      ),
+      ledger: ledger(),
+      dryRunResults: [],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+
+    // then: uncertainty stays visible without preselecting the row or inventing multiple matches
+    expect(review[0]).toMatchObject({ duplicateStatus: "probable", include: false, item: null, sourceRef: "61.00 EUR" });
+    expect(reviewBadges(review[0]!).map((badge) => badge.label)).toEqual(["Unresolved — needs review", "Probable duplicate", "Unknown transaction type"]);
+    expect(reviewRowControlLabels(review[0]!, 0).select).not.toBeNull();
+    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toEqual([]);
   });
 
   it("shows transfer, relation, duplicate, refund, reward, and review-warning badges", () => {
@@ -491,7 +530,7 @@ describe("screenshot import review view model", () => {
     expect(reviewBadges(review[2]!).map((badge) => badge.label)).toContain("Refund");
     expect(reviewBadges(review[3]!).map((badge) => badge.label)).toContain("Reward / income");
     expect(reviewBadges(review[4]!).map((badge) => badge.label)).toContain("Probable duplicate");
-    expect(review[4]!.include).toBe(true);
+    expect(review[4]!.include).toBe(false);
   });
 
   it("presents history ambiguity separately and never invents duplicate evidence from it", () => {
