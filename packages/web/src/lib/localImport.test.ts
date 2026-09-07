@@ -198,8 +198,8 @@ describe("local E2EE import planning", () => {
     expect(once.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
     expect(once.proposals[1]).toMatchObject({
       duplicateStatus: "probable",
-      selected: true,
-      reviewReasons: ["multiple_history_candidates"],
+      selected: false,
+      reviewReasons: [],
     });
     expect(once.proposals[2]).toMatchObject({
       envelopeId: null,

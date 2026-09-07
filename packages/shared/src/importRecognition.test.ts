@@ -615,8 +615,8 @@ describe("screenshot import proposal reconciliation", () => {
     expect(probable).toMatchObject({
       duplicateStatus: "probable",
       disposition: "candidate",
-      selected: true,
-      reviewReasons: ["multiple_history_candidates"],
+      selected: false,
+      reviewReasons: [],
     });
   });
 

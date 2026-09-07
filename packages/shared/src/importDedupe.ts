@@ -26,7 +26,12 @@ export interface ImportCandidate {
   direction?: ImportMoneyDirection;
 }
 
-const norm = (value: string | null | undefined): string => (value ?? "").trim().toLowerCase();
+// A status clock before an amount is not payment identity. Keep signs and merchant text intact.
+const norm = (value: string | null | undefined): string =>
+  (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^[\t ]*[◷🕐-🕧]\uFE0F?\s*(?=[+-]?\d)/gmu, "");
 const candidateRefs = (value: string | null | undefined): string[] => {
   const whole = norm(value);
   if (!whole) return [];

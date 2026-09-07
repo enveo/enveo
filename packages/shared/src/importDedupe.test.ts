@@ -27,6 +27,26 @@ describe("shared import duplicate classification", () => {
     expect(classifyImportDup({ date: "2026-07-01", amount: 5000, rawPlace: "LIDL 123" }, empty)).toBe("exists");
     expect(classifyImportDup({ date: "2026-07-01", amount: 5000, rawPlace: "ORLEN 77" }, empty)).toBe("new");
   });
+
+  it.each(["◷", "🕒"])("ignores the %s status clock when matching a repeated payment", (clock) => {
+    // given: two readings differ only in whether the pending clock was transcribed
+    const payment = { date: "2026-09-06", amount: 2500, rawPlace: "25.00 EUR\nTEST RESTAURANT\n1234" };
+    const withClock = `${clock} ${payment.rawPlace}`;
+    const existing = buildImportDupIndex([{ ...payment, sourceRef: withClock }]);
+
+    // when/then: history and within-batch matching use the same identity, in either direction
+    expect(classifyImportDup(payment, existing)).toBe("exists");
+    const batch = buildImportDupIndex([]);
+    batch.markSeen(payment);
+    expect(classifyImportDup({ ...payment, rawPlace: withClock }, batch)).toBe("exists");
+
+    // and: a clock never substitutes for the date, amount or full merchant evidence
+    expect(classifyImportDup({ ...payment, date: "2026-09-07" }, existing)).toBe("new");
+    expect(classifyImportDup({ ...payment, amount: 2600 }, existing)).toBe("new");
+    expect(classifyImportDup({ ...payment, rawPlace: "25.00 EUR" }, existing)).toBe("probable");
+    expect(classifyImportDup({ ...payment, rawPlace: payment.rawPlace.replace("TEST", "OTHER") }, existing)).toBe("probable");
+    expect(classifyImportDup({ ...payment, rawPlace: `+${payment.rawPlace}` }, existing)).toBe("probable");
+  });
 });
 
 describe("transfers as duplicate evidence", () => {
