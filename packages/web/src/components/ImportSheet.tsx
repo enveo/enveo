@@ -41,6 +41,7 @@ import {
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
+  reviewSelectionAfterRefresh,
   visibleImportReviewRows,
 } from "../lib/importReview";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
@@ -386,7 +387,7 @@ export function ImportSheet({
         budgetCurrency: ledger.budgets[0]?.currency ?? currency,
         appliedRowIds: previouslyApplied.appliedRowIds,
         skippedRowIds: previouslyApplied.skippedRowIds,
-      }).map((row) => ({ ...row, include: row.duplicateStatus === "exists" ? false : (previousById.get(row.rowId)?.include ?? row.include) }));
+      }).map((row) => ({ ...row, include: reviewSelectionAfterRefresh(row, previousById.get(row.rowId)) }));
       const currentEdited = { ...edited };
       let invalidatedEdit = false;
       const activeAccountIds = new Set(ledger.accounts.filter((account) => !account.archived).map((account) => account.id));
@@ -484,7 +485,7 @@ export function ImportSheet({
               budgetCurrency: ledger.budgets[0]?.currency ?? currency,
               appliedRowIds: recoveredProgress.appliedRowIds,
               skippedRowIds: recoveredProgress.skippedRowIds,
-            }).map((row) => ({ ...row, include: row.duplicateStatus === "exists" ? false : (previousById.get(row.rowId)?.include ?? row.include) })),
+            }).map((row) => ({ ...row, include: reviewSelectionAfterRefresh(row, previousById.get(row.rowId)) })),
           );
           setSourceAccountUnavailable(accountInvalid);
         }
