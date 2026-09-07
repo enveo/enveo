@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
+  applyOp,
   type ClientLedger,
+  computeBudgetState,
   createDefaultBudgetPreferences,
   type ImportExtractRow,
   type ImportProposal,
@@ -19,6 +21,7 @@ import {
   reconcileImportJobResult,
   reviewedImportItemsForApply,
 } from "./localImport";
+import { prepareTxnCreate } from "./mutate";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const ledger = (): ClientLedger => ({
@@ -525,6 +528,39 @@ describe("local E2EE import planning", () => {
     expect(spy.created.transactions[0]).toMatchObject({ type: "income", accountId: U(2) });
     expect(spy.created.transactions[0]).not.toHaveProperty("allocationFromEnvelopeId");
     expect(spy.created.transactions[0]).not.toHaveProperty("allocationToEnvelopeId");
+  });
+
+  it.each([
+    { type: "income" as const, linked: false, refund: false, assigned: 0, ready: 1290 },
+    { type: "income" as const, linked: true, refund: false, assigned: 1290, ready: 0 },
+    { type: "expense" as const, linked: false, refund: true, assigned: 1290, ready: 0 },
+  ])("routes new $type with linked=$linked and refund=$refund", ({ type, linked, refund, assigned, ready }) => {
+    const current = ledger();
+    current.transactions = [];
+    current.accounts[0]!.automaticEnvelopeId = linked ? U(9) : null;
+    const before = structuredClone(current);
+    const plan = planLocalImport({
+      ledger: current,
+      globalAccountId: U(2),
+      dryRun: false,
+      items: [item({ type, isRefund: refund, amount: 1290, envelopeId: U(5), envelopeName: "Food" })],
+    });
+    expect(plan.results[0]!.envelopeId).toBe(type === "income" ? null : U(5));
+    const payload = prepareTxnCreate(current, plan.transactions[0]!.payload);
+    const after = applyOp(current, { opId: U(21), kind: "txn.create", payload: { ...payload, id: U(20) } });
+    const budget = computeBudgetState(after, "2026-08");
+    expect(budget.accounts[0]!.balance).toBe(1290);
+    expect(budget.toBeBudgeted).toBe(ready);
+    expect(budget.envelopes.find((row) => row.envelope.id === (linked ? U(9) : U(5)))!.available).toBe(assigned);
+    expect(budget.monthIncome).toBe(type === "income" ? 1290 : 0);
+    expect(budget.monthExpense).toBe(refund ? -1290 : 0);
+    expect(current).toEqual(before);
+  });
+
+  it("does not flag a discarded income envelope as an unavailable assignment", () => {
+    const proposal = recognitionProposal("cashback", { type: "income", isRefund: false, envelopeId: U(5), categoryId: null });
+    const result = reconcileImportJobResult({ result: { rows: [], proposals: [proposal] }, ledger: ledger(), accountId: U(2) });
+    expect(result.proposals[0]).toMatchObject({ envelopeId: null, assignmentUnavailable: false });
   });
 
   it("preserves automatic, explicit-empty, and explicit-ID provenance from editor review through local apply", () => {

@@ -599,6 +599,17 @@ describe("screenshot import proposal reconciliation", () => {
     ...over,
   });
 
+  it.each(["cashback_or_reward", "salary", "merchant_refund"] as const)("keeps envelope assignments only for expenses: %s", (kind) => {
+    const candidate = { ...proposalFor(kind, "credit"), envelopeId: "envelope-1" };
+    const [actual] = reconcileImportProposals(input({ proposals: [candidate] }));
+    expect(actual).toMatchObject({
+      type: kind === "merchant_refund" ? "expense" : "income",
+      isRefund: kind === "merchant_refund",
+      envelopeId: kind === "merchant_refund" ? "envelope-1" : null,
+    });
+    expect(candidate.envelopeId).toBe("envelope-1");
+  });
+
   it("clears stale assignments and uses exact and probable duplicate evidence", () => {
     const stale = { ...proposal(), envelopeId: "missing-envelope", categoryId: "missing-category" };
     const exact = reconcileImportProposals(input({ proposals: [stale], transactions: [transaction()] }))[0]!;
