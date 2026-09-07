@@ -545,7 +545,8 @@ export function reconcileImportProposals(input: {
   const duplicates = buildImportDupIndex(existingImportRowsForAccount(input.transactions, input.selectedAccountId));
 
   return input.proposals.map((proposal) => {
-    const envelopeId = proposal.envelopeId && envelopeIds.has(proposal.envelopeId) ? proposal.envelopeId : null;
+    // Income destinations come from account settings, never model/history annotations.
+    const envelopeId = proposal.type !== "income" && proposal.envelopeId && envelopeIds.has(proposal.envelopeId) ? proposal.envelopeId : null;
     const categoryId = proposal.categoryId && categoryIds.has(proposal.categoryId) ? proposal.categoryId : null;
     let disposition = proposal.disposition;
     let selected = proposal.selected;
