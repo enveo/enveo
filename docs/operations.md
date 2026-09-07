@@ -46,7 +46,8 @@ not a downgrade path.
 ```bash
 # Back up: before every update, and on a schedule
 docker compose exec -T db pg_dump -U enveo enveo | gzip > enveo-$(date +%F).sql.gz
-gzip -t enveo-*.sql.gz                       # no output = the archive is intact
+# Check the DUMP, not just the archive: a failed pg_dump still leaves a valid, empty gzip.
+zcat enveo-$(date +%F).sql.gz | tail -n 1 | grep -q 'PostgreSQL database dump complete' && echo OK
 
 # Restore into an empty database
 zcat enveo-2026-07-13.sql.gz | docker compose exec -T db psql -U enveo -d enveo
