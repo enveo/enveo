@@ -61,7 +61,8 @@ point `make reset` / `db:seed` at data you care about.
 ## Tests
 
 ```bash
-bun test packages/shared packages/api packages/web/src/lib
+bun run verify        # the offline gate: types, lint, tests, build, source policies
+bun run e2e           # browser smoke test on the built PWA — see CONTRIBUTING.md for the setup
 ```
 
 Property tests guard the budget invariant, carry-over semantics, client↔server
