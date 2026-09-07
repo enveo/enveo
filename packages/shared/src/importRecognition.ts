@@ -579,7 +579,7 @@ export function reconcileImportProposals(input: {
         }
         reviewReasons = addReasons(reviewReasons, "history_conflict");
       } else if (duplicateStatus === "probable") {
-        reviewReasons = addReasons(reviewReasons, "multiple_history_candidates");
+        selected = false;
       } else if (proposal.disposition === "candidate") {
         duplicates.markSeen({ date: proposal.date, amount: proposal.amount, rawPlace: proposal.rawPlace });
       }
