@@ -4,9 +4,8 @@
 # must run the SAME gate as an ordinary pull request, on the exact commit it is about to publish,
 # and neither caller may keep a second hand-written list of commands.
 #
-# The gate itself is `bun run verify:ci` (typecheck → test:db → build → policy:sources →
-# security:audit) — the
-# same command a developer runs locally. Add a phase by editing root package.json, never here.
+# The gate itself is `bun run verify:ci` (typecheck → lint:ci → test:db → build → policies →
+# security:audit) — the same command a developer runs locally. Add a phase by editing root package.json, never here.
 #
 # The caller passes an explicit ref. On the release path that is the SHA the tag resolved to,
 # never a branch name and never `github.sha` (which on a workflow_dispatch is the default branch
@@ -68,11 +67,6 @@ jobs:
           # A shallow checkout makes that safety gate fail before it can inspect either side.
           fetch-depth: 0
 
-      # AGENTS.md is the byte-identical public mirror of CLAUDE.md (agent-standard filename);
-      # they have drifted before — this is the guard.
-      - name: AGENTS.md mirrors CLAUDE.md
-        run: diff -u CLAUDE.md AGENTS.md
-
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -85,6 +79,7 @@ jobs:
       #   "run-tests: mode=db …"             — the full suite with DB-backed groups REQUIRED
       #   "vite build"                       — the production PWA build
       #   "policy:sources: …"                — the self-host documentation/bootstrap source policy
+      #   "$ diff -u CLAUDE.md AGENTS.md"    — AGENTS.md is the byte-identical mirror of CLAUDE.md
       #   "security:audit — bun audit --json"— the fail-closed dependency policy gate
       - name: Verify
         run: bun run verify:ci
