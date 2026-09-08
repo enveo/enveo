@@ -1,8 +1,8 @@
-import type { ThemeMode } from "@enveo/shared";
+import type { AccountAccentTheme, ThemeMode } from "@enveo/shared";
 import { type ReactNode, useState } from "react";
 import { EditWidgetsSheet } from "../../components/EditWidgetsSheet";
 import { useStateQuery } from "../../lib/api";
-import { useAccountPreferences, useCurrency, useDevicePreferences, useSettings, useTheme } from "../../lib/contexts";
+import { accentChoicePatch, useAccountPreferences, useCurrency, useDevicePreferences, useSettings, useTheme } from "../../lib/contexts";
 import { SUPPORTED_CURRENCIES } from "../../lib/currency";
 import { todayISO } from "../../lib/dates";
 import { type Lang, LOCALES, loadLocale, type Message, msg, useT } from "../../lib/i18n";
@@ -24,7 +24,8 @@ const TRANSLATION_ISSUES_URL = "https://github.com/enveo/enveo/issues/new?templa
  *  picker now (contexts.tsx normalizes any stored value to "teal") but the AccentTheme
  *  type and THEMES entries stay so settings persisted by older devices remain parseable. */
 const THEME_IDS: Array<"teal" | "duet"> = ["teal", "duet"];
-const THEME_LABEL: Record<"teal" | "duet", Message> = {
+const THEME_LABEL: Record<AccountAccentTheme, Message> = {
+  auto: msg("Auto"),
   teal: msg("Cisza"),
   duet: msg("Duet"),
 };
@@ -37,24 +38,42 @@ const THEME_LABEL: Record<"teal" | "duet", Message> = {
  */
 function ThemeTiles() {
   const C = useTheme();
-  const { settings, setSettings } = useSettings();
+  const { settings } = useSettings();
+  const { preferences: account, update: updateAccount } = useAccountPreferences();
+  const { preferences: device, update: updateDevice } = useDevicePreferences();
   const { t } = useT();
   const isDark =
     settings.themeMode === "auto" ? typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches : settings.themeMode === "dark";
+  // What the tiles SELECT is the stored choice, not the resolved colour: with "auto" stored the
+  // screen may be painted Duet while the Auto tile is the one pressed. A per-device override is
+  // always a concrete theme, so while one is active the Auto tile has nothing to say and is not
+  // offered — "All devices" above clears the override and brings it back.
+  const overridden = device.accentThemeOverride !== null;
+  const choice: AccountAccentTheme = device.accentThemeOverride ?? account.accentTheme;
+  const ids: AccountAccentTheme[] = overridden ? THEME_IDS : ["auto", ...THEME_IDS];
+  const preview = (id: "teal" | "duet") => {
+    const tk = themeTokens(id, isDark);
+    // Themes with a band header (duet) preview their band color, not the plain surface —
+    // otherwise duet's light-mode bg (cream) reads near-identical to koral's.
+    return { bg: tk.palette.headerStyle === "band" ? tk.palette.headerBg : tk.palette.bg, dot: id === "duet" ? tk.vars["--cta"] : tk.vars["--accent"] };
+  };
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 0", borderBottom: `1px solid ${C.line}` }}>
-      {THEME_IDS.map((id) => {
-        const tk = themeTokens(id, isDark);
-        const accent = tk.vars["--accent"];
-        const dot = id === "duet" ? tk.vars["--cta"] : accent;
-        // Themes with a band header (duet) preview their band color, not the plain surface —
-        // otherwise duet's light-mode bg (cream) reads near-identical to koral's.
-        const previewBg = tk.palette.headerStyle === "band" ? tk.palette.headerBg : tk.palette.bg;
-        const active = settings.accentTheme === id;
+    <div
+      style={{ display: "grid", gridTemplateColumns: overridden ? "1fr 1fr" : "1fr 1fr 1fr", gap: 10, padding: "14px 0", borderBottom: `1px solid ${C.line}` }}
+    >
+      {ids.map((id) => {
+        const accent = themeTokens(id === "auto" ? settings.accentTheme : id, isDark).vars["--accent"];
+        const active = choice === id;
+        // The Auto tile previews both halves of its rule: Duet (phone) on the left, Cisza on the right.
+        const halves = id === "auto" ? [preview("duet"), preview("teal")] : [preview(id)];
         return (
           <button
             key={id}
-            onClick={() => setSettings({ ...settings, accentTheme: id })}
+            onClick={() => {
+              const patch = accentChoicePatch(id, overridden);
+              if (patch.account) updateAccount(patch.account);
+              if (patch.device) updateDevice(patch.device);
+            }}
             aria-pressed={active}
             style={{
               display: "flex",
@@ -68,19 +87,12 @@ function ThemeTiles() {
               boxShadow: active ? `0 0 0 1px ${accent}` : "none",
             }}
           >
-            <div
-              style={{
-                height: 44,
-                borderRadius: 8,
-                background: previewBg,
-                border: `1px solid ${C.line}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "flex-end",
-                padding: "0 9px",
-              }}
-            >
-              <div style={{ width: 9, height: 9, borderRadius: "50%", background: dot }} />
+            <div style={{ height: 44, borderRadius: 8, border: `1px solid ${C.line}`, display: "flex", overflow: "hidden" }}>
+              {halves.map((half, i) => (
+                <div key={i} style={{ flex: 1, background: half.bg, display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 9px" }}>
+                  <div style={{ width: 9, height: 9, borderRadius: "50%", background: half.dot }} />
+                </div>
+              ))}
             </div>
             <span style={{ textAlign: "center", fontSize: 12, fontWeight: 650, color: C.text }}>{t(THEME_LABEL[id])}</span>
           </button>

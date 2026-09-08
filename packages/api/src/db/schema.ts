@@ -54,7 +54,7 @@ export const accountPreferences = pgTable(
   (t) => ({
     langValid: check("account_preferences_lang_valid", sql`${t.lang} IN ('en','pl','de','es','fr','it','nl','pt-BR','cs','sv')`),
     themeModeValid: check("account_preferences_theme_mode_valid", sql`${t.themeMode} IN ('light','dark','auto')`),
-    accentThemeValid: check("account_preferences_accent_theme_valid", sql`${t.accentTheme} IN ('teal','duet')`),
+    accentThemeValid: check("account_preferences_accent_theme_valid", sql`${t.accentTheme} IN ('auto','teal','duet')`),
     revisionNonnegative: check("account_preferences_revision_nonnegative", sql`${t.revision} >= 0`),
   }),
 );

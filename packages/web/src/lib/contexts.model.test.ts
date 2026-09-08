@@ -7,6 +7,7 @@
 import { describe, expect, it } from "bun:test";
 import { createDefaultBudgetPreferences } from "@enveo/shared";
 import {
+  accentChoicePatch,
   DEFAULT_OPENAI_MODEL,
   type DeviceOverrideActive,
   effectiveAccentTheme,
@@ -87,12 +88,19 @@ describe("settings scope routing", () => {
 describe("effective theme resolution (override ?? account)", () => {
   it("falls back to the account preference when no device override is set", () => {
     expect(effectiveThemeMode("light", null)).toBe("light");
-    expect(effectiveAccentTheme("teal", null)).toBe("teal");
+    expect(effectiveAccentTheme("teal", null, true)).toBe("teal");
+    expect(effectiveAccentTheme("duet", null, false)).toBe("duet");
   });
 
   it("prefers an active device override over the account preference", () => {
     expect(effectiveThemeMode("light", "dark")).toBe("dark");
-    expect(effectiveAccentTheme("teal", "duet")).toBe("duet");
+    expect(effectiveAccentTheme("teal", "duet", true)).toBe("duet");
+    expect(effectiveAccentTheme("auto", "teal", true)).toBe("teal");
+  });
+
+  it("resolves the 'auto' account value by device class: Duet on a phone, Cisza anywhere wider", () => {
+    expect(effectiveAccentTheme("auto", null, true)).toBe("duet");
+    expect(effectiveAccentTheme("auto", null, false)).toBe("teal");
   });
 
   it("keeps an overridden device unaffected by a later account-wide change", () => {
@@ -121,5 +129,24 @@ describe("BYOK model registry", () => {
     // compile-time: the union still accepts a legacy value
     const legacy: OpenAiModel = "gpt-5.5-mini";
     expect(OPENAI_MODELS).toContain(legacy);
+  });
+});
+
+describe("accentChoicePatch — a theme tile names where its choice is written", () => {
+  it("writes a concrete choice to the account when no device override is active", () => {
+    expect(accentChoicePatch("duet", false)).toEqual({ account: { accentTheme: "duet" } });
+  });
+
+  it("writes a concrete choice to the device override while one is active", () => {
+    expect(accentChoicePatch("teal", true)).toEqual({ device: { accentThemeOverride: "teal" } });
+  });
+
+  it("'auto' always goes to the account — it is not a value a device override can hold", () => {
+    expect(accentChoicePatch("auto", false)).toEqual({ account: { accentTheme: "auto" } });
+  });
+
+  it("choosing the theme the phone ALREADY resolves 'auto' to still produces a write (the resolved-diff path would drop it)", () => {
+    expect(effectiveAccentTheme("auto", null, true)).toBe("duet");
+    expect(accentChoicePatch("duet", false)).toEqual({ account: { accentTheme: "duet" } });
   });
 });

@@ -56,7 +56,7 @@ async function main() {
 
     await emitChildResult(SENTINEL, {
       defaults: {
-        responseIsDefault: JSON.stringify(defaults) === JSON.stringify({ schemaVersion: 1, lang: "en", themeMode: "light", accentTheme: "teal", revision: 0 }),
+        responseIsDefault: JSON.stringify(defaults) === JSON.stringify({ schemaVersion: 1, lang: "en", themeMode: "light", accentTheme: "auto", revision: 0 }),
         rowWasNotCreated: initialRows.length === 0,
       },
       concurrent: { lang: concurrent.lang, themeMode: concurrent.themeMode, accentTheme: concurrent.accentTheme, revision: concurrent.revision },
