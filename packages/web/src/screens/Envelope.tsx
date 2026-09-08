@@ -211,7 +211,8 @@ export function EnvelopeScreen({
                 <div key={c.categoryId ?? "none"} style={{ margin: `0 ${P}px 10px` }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                     <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {c.name}
+                      {/* the shared summary keeps its Polish fallback verbatim (server parity); the label is translated here */}
+                      {c.categoryId === null ? t("No category") : c.name}
                     </span>
                     <span style={{ fontSize: 11.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{share.toFixed(1)}%</span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(c.amount)}</span>
