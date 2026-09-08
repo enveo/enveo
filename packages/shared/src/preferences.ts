@@ -9,6 +9,16 @@ export type ThemeMode = (typeof THEME_MODES)[number];
 export const ACCENT_THEMES = ["teal", "duet"] as const;
 export type AccentTheme = (typeof ACCENT_THEMES)[number];
 
+/** What the ACCOUNT may store: a concrete theme, or "auto" — the default since 4.7.0 — which
+ *  resolves per device class (`resolveAccentTheme`): Duet on a phone, Cisza ("teal") on anything
+ *  wider. A per-device override (`DevicePreferences.accentThemeOverride`) is always concrete. */
+export const ACCOUNT_ACCENT_THEMES = ["auto", ...ACCENT_THEMES] as const;
+export type AccountAccentTheme = (typeof ACCOUNT_ACCENT_THEMES)[number];
+
+export function resolveAccentTheme(account: AccountAccentTheme, phone: boolean): AccentTheme {
+  return account === "auto" ? (phone ? "duet" : "teal") : account;
+}
+
 export const OPENAI_MODELS = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.5", "gpt-5.5-mini"] as const;
 export type OpenAiModel = (typeof OPENAI_MODELS)[number];
 
@@ -92,7 +102,7 @@ export interface AccountPreferences {
   schemaVersion: 1;
   lang: Lang;
   themeMode: ThemeMode;
-  accentTheme: AccentTheme;
+  accentTheme: AccountAccentTheme;
 }
 
 export type AccountPreferenceField = "lang" | "themeMode" | "accentTheme";
@@ -112,7 +122,7 @@ export type BudgetPreferencesPatch = Partial<Pick<BudgetPreferences, BudgetPrefe
 
 const langSchema = z.enum(LANGS);
 const themeModeSchema = z.enum(THEME_MODES);
-const accentThemeSchema = z.enum(ACCENT_THEMES);
+const accentThemeSchema = z.enum(ACCOUNT_ACCENT_THEMES);
 const openAiModelSchema = z.enum(OPENAI_MODELS);
 const uuidSchema = z.string().uuid();
 
@@ -306,7 +316,7 @@ export function createDefaultWideWidgets(): WideWidgetConfig[] {
 }
 
 export function createDefaultAccountPreferences(lang: Lang = "en"): AccountPreferences {
-  return { schemaVersion: 1, lang, themeMode: "light", accentTheme: "teal" };
+  return { schemaVersion: 1, lang, themeMode: "light", accentTheme: "auto" };
 }
 
 export function createDefaultBudgetPreferences(): BudgetPreferences {

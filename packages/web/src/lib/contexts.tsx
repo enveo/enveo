@@ -1,10 +1,12 @@
 import {
   type AccentTheme,
+  type AccountAccentTheme,
   type AccountPreferencesPatch,
   type BudgetPreferencesPatch,
   createDefaultBudgetPreferences,
   OPENAI_MODELS,
   type OpenAiModel,
+  resolveAccentTheme,
   type ThemeMode,
   type WidgetConfig,
   type WidgetId,
@@ -21,6 +23,7 @@ import { detectLang, type Lang } from "./i18n/registry";
 import { startupPresentation } from "./startupSplash";
 import { store } from "./store";
 import { light, type Theme, themeTokens } from "./theme";
+import { useViewMode } from "./viewMode";
 
 export type AiMode = "off" | "server" | "byok";
 /** BYOK model registry. `gpt-5.6-luna` is the default for FRESH settings only — a persisted
@@ -89,6 +92,15 @@ export function splitSettingsPatch(
   return { account, budget, device };
 }
 
+/** Where a theme TILE's choice is written. Not `splitSettingsPatch`: that diffs RESOLVED values, and
+ *  with "auto" stored a phone already resolves to Duet, so choosing Duet explicitly would diff as
+ *  "no change" and never be saved. The tile therefore names its target itself: the device override
+ *  while one is active (Auto is not offered then), the account otherwise. */
+export function accentChoicePatch(choice: AccountAccentTheme, overridden: boolean): { account?: AccountPreferencesPatch; device?: DevicePreferencesPatch } {
+  if (choice === "auto") return { account: { accentTheme: "auto" } };
+  return overridden ? { device: { accentThemeOverride: choice } } : { account: { accentTheme: choice } };
+}
+
 /** The one place `themeMode`/`accentTheme` are resolved from account + device — every consumer of
  *  `useSettings()` sees the already-resolved value, so a wide-rail card, a report axis or the
  *  header's dark-mode toggle need no override-awareness of their own. */
@@ -96,8 +108,8 @@ export function effectiveThemeMode(account: ThemeMode, deviceOverride: ThemeMode
   return deviceOverride ?? account;
 }
 
-export function effectiveAccentTheme(account: AccentTheme, deviceOverride: AccentTheme | null): AccentTheme {
-  return deviceOverride ?? account;
+export function effectiveAccentTheme(account: AccountAccentTheme, deviceOverride: AccentTheme | null, phone: boolean): AccentTheme {
+  return deviceOverride ?? resolveAccentTheme(account, phone);
 }
 
 /** Order mirrors the "Edit widgets" sheet and the board mockup; reportNetWorth ships OFF
@@ -183,6 +195,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
   const { preferences: device, update: updateDevice } = useDevicePreferences();
   const [prefersDark, setPrefersDark] = useState(() => typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   const bootStatus = useSyncExternalStore(store.subscribe, store.getBootStatus);
+  // "auto" follows the layout mode, not a media query of its own: the theme and the shell agree on
+  // what a phone is, so a foldable that opens into the wide layout also opens into Cisza.
+  const phone = useViewMode() === "phone";
 
   useEffect(() => {
     void devicePreferences.hydrate();
@@ -191,7 +206,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   const settings: Settings = useMemo(
     () => ({
       themeMode: effectiveThemeMode(account.themeMode, device.themeModeOverride),
-      accentTheme: effectiveAccentTheme(account.accentTheme, device.accentThemeOverride),
+      accentTheme: effectiveAccentTheme(account.accentTheme, device.accentThemeOverride, phone),
       lang: account.lang,
       discreet: device.discreet,
       aiMode: budget.aiProvider === "enveo" ? "server" : budget.aiProvider === "openai" ? "byok" : "off",
@@ -199,7 +214,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       customProfiles: budget.customProfiles,
       startWidgets: budget.startWidgets,
     }),
-    [account, budget, device],
+    [account, budget, device, phone],
   );
 
   useEffect(() => {
