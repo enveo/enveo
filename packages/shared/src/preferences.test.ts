@@ -4,9 +4,11 @@ import {
   accountPreferencesPatchSchema,
   budgetPreferencesPatchSchema,
   budgetPreferencesSchema,
+  createDefaultAccountPreferences,
   createDefaultBudgetPreferences,
   createDefaultWideWidgets,
   reconcileBudgetPreferences,
+  resolveAccentTheme,
 } from "./preferences";
 
 describe("reconcileBudgetPreferences", () => {
@@ -180,6 +182,8 @@ describe("preference patch schemas", () => {
     expect(accountPreferencesPatchSchema.safeParse({ lang: "pl" }).success).toBe(true);
     expect(accountPreferencesPatchSchema.safeParse({ themeMode: "dark" }).success).toBe(true);
     expect(accountPreferencesPatchSchema.safeParse({ accentTheme: "duet" }).success).toBe(true);
+    expect(accountPreferencesPatchSchema.safeParse({ accentTheme: "auto" }).success).toBe(true);
+    expect(accountPreferencesPatchSchema.safeParse({ accentTheme: "koral" }).success).toBe(false);
     expect(accountPreferencesPatchSchema.safeParse({ lang: "pl", unknown: true }).success).toBe(false);
   });
 
@@ -204,5 +208,15 @@ describe("preference patch schemas", () => {
     expect(opSchemas["budget.preferences.update"].safeParse({ id, patch: { aiProvider: "openai" } }).success).toBe(true);
     expect(opSchemas["budget.preferences.update"].safeParse({ id, patch: {} }).success).toBe(false);
     expect(opSchemas["budget.preferences.update"].safeParse({ id, patch: { schemaVersion: 1 } }).success).toBe(false);
+  });
+});
+
+describe("account accent theme", () => {
+  test("a fresh account stores 'auto', which resolves to Duet on a phone and Cisza on anything wider", () => {
+    expect(createDefaultAccountPreferences().accentTheme).toBe("auto");
+    expect(resolveAccentTheme("auto", true)).toBe("duet");
+    expect(resolveAccentTheme("auto", false)).toBe("teal");
+    expect(resolveAccentTheme("duet", false)).toBe("duet");
+    expect(resolveAccentTheme("teal", true)).toBe("teal");
   });
 });
