@@ -11,7 +11,7 @@ describe("account preference route contracts", () => {
   });
 
   test("a missing row has a stable complete default response", () => {
-    expect(canonicalAccountPreferences(undefined)).toEqual({ schemaVersion: 1, lang: "en", themeMode: "light", accentTheme: "teal", revision: 0 });
+    expect(canonicalAccountPreferences(undefined)).toEqual({ schemaVersion: 1, lang: "en", themeMode: "light", accentTheme: "auto", revision: 0 });
   });
 
   test("a stored row becomes the same stable response shape", () => {
