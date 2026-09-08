@@ -47,7 +47,8 @@ not a downgrade path.
 # Back up: before every update, and on a schedule
 docker compose exec -T db pg_dump -U enveo enveo | gzip > enveo-$(date +%F).sql.gz
 # Check the DUMP, not just the archive: a failed pg_dump still leaves a valid, empty gzip.
-zcat enveo-$(date +%F).sql.gz | tail -n 1 | grep -q 'PostgreSQL database dump complete' && echo OK
+# (pg_dump 16.10+ prints a \\unrestrict line and a blank line after the marker, hence tail -n 5.)
+zcat enveo-$(date +%F).sql.gz | tail -n 5 | grep -q 'PostgreSQL database dump complete' && echo OK
 
 # Restore into an empty database
 zcat enveo-2026-07-13.sql.gz | docker compose exec -T db psql -U enveo -d enveo
