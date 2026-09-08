@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 
 const evaluator = resolve(import.meta.dir, "evaluate-import-recognition.ts");
 setDefaultTimeout(120_000);
-const BASE_REVISION = "864c47f98c27bb7bf238e636b34f89dfa3dcc63c";
+const BASE_REVISION = "a3676d8d8ff2273f40e10aadd79e5bad4594974f";
 let root = "";
 let manifestPath = "";
 let baselineRoot = "";
