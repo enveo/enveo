@@ -74,7 +74,7 @@ is [releasing.md](releasing.md). Publication then needs steps that cannot be com
    docker manifest inspect ghcr.io/enveo/enveo:latest | grep architecture   # amd64 + arm64
    ```
 
-5. Drop the "Image not public yet" note from the README (it is marked `TODO(maintainer)`).
+Done for `enveo/enveo` on 2026-09-09 (v4.7.5); the steps stay here for a recreated package.
 
 ---
 
