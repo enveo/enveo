@@ -20,6 +20,11 @@
 Synthetic data. Phones open in the Duet theme, wider screens in Cisza — both are a tap away in Settings.
 
 <p align="center">
+  <a href="assets/tour-mobile.gif"><img src="assets/tour-mobile.gif" width="240" alt="Phone tour: home, budget, envelope summary, transactions, reports"></a>
+  <a href="assets/tour-desktop.gif"><img src="assets/tour-desktop.gif" width="560" alt="Desktop tour: home board, budget, transaction detail, reports"></a>
+</p>
+
+<p align="center">
   <a href="assets/home-mobile.png"><img src="assets/home-mobile.png" width="156" alt="Home screen: to be budgeted, quick actions, accounts and envelope progress"></a>
   <a href="assets/budget-mobile.png"><img src="assets/budget-mobile.png" width="156" alt="Budget screen: envelope groups with allocated and available columns"></a>
   <a href="assets/transactions-mobile.png"><img src="assets/transactions-mobile.png" width="156" alt="Transactions screen: grouped by day with accounts and transfers"></a>

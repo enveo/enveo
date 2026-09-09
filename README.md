@@ -8,7 +8,8 @@ background (optionally end-to-end encrypted), and your data stays yours.
 **Website: [enveo.app](https://enveo.app)** · **[Documentation](docs/readme.md)** · AGPL-3.0
 
 <p align="center">
-  <a href="https://enveo.app"><img src="docs/assets/hero.gif" width="260" alt="Enveo: home, budget and reports on mobile"></a>
+  <a href="https://enveo.app"><img src="docs/assets/tour-mobile.gif" width="240" alt="Enveo on a phone: home, budget, an envelope summary, transactions and reports in the Duet theme"></a>
+  <a href="https://enveo.app"><img src="docs/assets/tour-desktop.gif" width="560" alt="Enveo on a desktop: widget board, budget table, transaction detail and reports in the Cisza theme"></a>
 </p>
 
 ## Features
