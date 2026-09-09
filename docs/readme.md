@@ -20,8 +20,7 @@
 Synthetic data. Phones open in the Duet theme, wider screens in Cisza — both are a tap away in Settings.
 
 <p align="center">
-  <a href="assets/tour-mobile.gif"><img src="assets/tour-mobile.gif" width="240" alt="Phone tour: home, budget, envelope summary, transactions, reports"></a>
-  <a href="assets/tour-desktop.gif"><img src="assets/tour-desktop.gif" width="560" alt="Desktop tour: home board, budget, transaction detail, reports"></a>
+  <a href="assets/hero.png"><img src="assets/hero.png" alt="Enveo home on a desktop (Cisza) with the phone app (Duet) in front"></a>
 </p>
 
 <p align="center">
