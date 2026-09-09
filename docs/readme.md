@@ -24,5 +24,8 @@ Synthetic data. Phones open in the Duet theme, wider screens in Cisza — both a
 
 <p align="center">
 </p>
+
+<p align="center">
+</p>
 <p align="center">
 </p>
