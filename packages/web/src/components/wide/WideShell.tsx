@@ -523,7 +523,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     onDuplicateTxnPanel,
   } = bag;
   const C = useTheme();
-  const { t, tp } = useT();
+  const { t } = useT();
   // Design parity wave A close, item 9 (design v3:4351's `headerRight`, the "shown" branch): the
   // SAME query+filter pipeline `TransactionsScreen` uses for its own list, gated to the one screen
   // that needs it (mirrors App.tsx's `globalNetTotal` gate for Accounts/Reports). Design parity
@@ -535,8 +535,10 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     const index = createTransactionSearchIndex({ accounts: state.accounts, envelopes: state.envelopes, categories: state.categories, places: state.places });
     return state.transactions.filter((tx) => matchesTransactionQuery(tx, txQuery, index) && matchesTransactionFilters(tx, txFilters));
   }, [primaryScreen, state.accounts, state.envelopes, state.categories, state.places, state.transactions, txQuery, txFilters]);
-  const rightSlotEffective: RightSlot =
-    primaryScreen === "transactions" ? { kind: "caption", text: tp("{n} transaction shown | {n} transactions shown", filteredTransactions.length) } : rightSlot;
+  // The Transactions band carries NO caption (4.7.3): "{n} transactions shown" repeated the
+  // "{shown} of {total} transactions" line right under the search box, and at the desktop
+  // minimum (1280) it was the 19px that pushed the action cluster onto a second row — the
+  // wrap backstop doing its job, and the one screen whose header looked unlike the others.
   const [rootRef, rootW] = useElementWidth<HTMLDivElement>(mode === "desktop" ? 1440 : 1104);
   const paneW = paneWidthFor(mode, rootW);
   // The wide board's gear target (Task 6) — WideShell's OWN local selection, not lifted to App:
@@ -859,7 +861,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           onNext={next}
           onAdd={onAddWide}
           onOpenSync={() => nav("settings")}
-          rightSlot={rightSlotEffective}
+          rightSlot={rightSlot}
           panelClosed={panelClosed}
           // PR6 Task 5: while the Add pane is showing, the toggle discards it (`closePanel`'s own
           // `add` branch — same semantics as phone's back gesture from Add today) instead of

@@ -1021,12 +1021,6 @@ export const pl: Dict = {
     many: "{n} transakcji · {month}",
     other: "{n} transakcji · {month}",
   },
-  "{n} transaction shown | {n} transactions shown": {
-    one: "Pokazano {n} transakcję",
-    few: "Pokazano {n} transakcje",
-    many: "Pokazano {n} transakcji",
-    other: "Pokazano {n} transakcji",
-  },
   "{n} transaction this month | {n} transactions this month": {
     one: "{n} transakcja w tym miesiącu",
     few: "{n} transakcje w tym miesiącu",

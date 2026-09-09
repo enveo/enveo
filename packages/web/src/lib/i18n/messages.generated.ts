@@ -1093,7 +1093,6 @@ export const MESSAGES = [
   "{n} selected | {n} selected",
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone",
   "{n} transaction matches | {n} transactions match",
-  "{n} transaction shown | {n} transactions shown",
   "{n} transaction this month | {n} transactions this month",
   "{n} transaction | {n} transactions",
   "{n} transaction · avg {avg} · largest {largest} | {n} transactions · avg {avg} · largest {largest}",
