@@ -43,12 +43,6 @@ No dates. In no particular order:
 
 ## Run it
 
-<!-- TODO(maintainer): remove this note once the GHCR package is public
-     (docs/hosting.md → "Publishing the image", steps 4-6). -->
-> **Image not public yet.** `ghcr.io/enveo/enveo` becomes pullable when the
-> package visibility flips with the repo — until then, build from source
-> ([docs/development.md](docs/development.md)).
-
 An empty directory, two generated secrets — nothing is compiled. You bring
 **Docker Engine with the Compose v2 plugin** ([Docker's own install
 docs](https://docs.docker.com/engine/install/); `docker compose version` must
