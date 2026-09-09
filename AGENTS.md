@@ -1,7 +1,7 @@
 # AGENTS.md — Enveo
 
 ## What this is
-**Enveo** is a private, local-first envelope budgeting app (YNAB-style, zero-based), built as a mobile-first PWA with optional end-to-end encrypted sync and AI-assisted workflows. Amounts live in minor units, balances are derived from the ledger, and the client is the source of truth — the server is a sync and convenience layer.
+**Enveo** is a private, local-first envelope budgeting app (YNAB-style, zero-based), built as a local-first PWA with phone, foldable and desktop layouts, with optional end-to-end encrypted sync and AI-assisted workflows. Amounts live in minor units, balances are derived from the ledger, and the client is the source of truth — the server is a sync and convenience layer.
 
 ## Stack & layout
 Monorepo with bun workspaces (`packages/*`):
