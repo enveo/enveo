@@ -6,12 +6,11 @@ foldable and your desktop, self-hosted with a single `docker compose up`.
 It installs from the browser, works offline, syncs in the background
 (optionally end-to-end encrypted), and your data stays yours.
 
-**Website: [enveo.app](https://enveo.app)** · **[Documentation](docs/readme.md)** · AGPL-3.0
-
 <p align="center">
-  <a href="https://enveo.app"><img src="docs/assets/tour-mobile.gif" width="240" alt="Enveo on a phone: home, budget, an envelope summary, transactions and reports in the Duet theme"></a>
-  <a href="https://enveo.app"><img src="docs/assets/tour-desktop.gif" width="560" alt="Enveo on a desktop: widget board, budget table, transaction detail and reports in the Cisza theme"></a>
+  <a href="https://enveo.app"><img src="docs/assets/hero.png" alt="Enveo home on a desktop (Cisza theme) with the phone app (Duet theme) in front"></a>
 </p>
+
+<p align="center"><strong>Website: <a href="https://enveo.app">enveo.app</a></strong> · <strong><a href="docs/readme.md">Documentation</a></strong> · AGPL-3.0</p>
 
 ## Features
 
