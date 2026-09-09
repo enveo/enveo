@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit is the independent second reader on every pull request. The code here is mostly
+# written with coding agents (Claude, Codex), so the point of this reviewer is a DIFFERENT
+# model family looking for what the author's model tends to miss. It is a layer of comments,
+# never a gate: `verify:ci` (root package.json) is the gate.
+language: "en-US"
+early_access: false
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches: ["main"]
+  path_filters:
+    - "!packages/web/src/lib/i18n/messages.generated.ts"
+    - "!packages/api/drizzle/meta/**"
+    - "!bun.lock"
+    - "!docs/assets/**"
+  path_instructions:
+    - path: "**"
+      instructions: |
+        AGENTS.md at the repository root is the authoritative description of the architecture,
+        invariants and known pitfalls — read it before reviewing and hold changes to it.
+        This is a public repository: flag any real-looking bank account number, IBAN, BIC,
+        person's name, address or bank balance in fixtures, prompts, docs or screenshots — test
+        data must be invented. Code, comments, tests and commit messages are English.
+    - path: "packages/shared/**"
+      instructions: |
+        Pure domain, zero I/O, shared byte-for-byte by client and server. Amounts are integer
+        minor units — never floats, never a materialised balance column. Flag any new op that
+        lacks full parity: zod schema in ops.ts, applyOp reducer, the server push handler in
+        packages/api/src/routes/sync.ts, and replay/idempotency tests. FK cascades in applyOp
+        must mirror the real Postgres schema. AI prompts live only in aiPrompts.ts.
+    - path: "packages/api/**"
+      instructions: |
+        Every write endpoint must carry a per-request tenant assertion (budgetAssertionFails or
+        ownerAssertionFails) and, for data routes, requireTier. Schema changes need a NEW
+        migration file in packages/api/drizzle plus a journal entry — never edit an existing
+        migration. Test-only modules inside src/ must carry `.test` in the basename
+        (`*.test.ts`, `*.test-support.ts`, `*.test-child.ts`) or they ship in the image.
+    - path: "packages/web/**"
+      instructions: |
+        i18n is message-as-key: the English sentence is the key, strings outside t()/tp() are
+        wrapped in msg(), plurals use "one | other" joined by " | ", and editing an English
+        string orphans every translation (check messages.generated.ts and locales/*.ts moved
+        together). Money is formatted via M()/formatMoney, never a hardcoded currency symbol.
+        Fixed overlays inside transformed sheets must be portalled to document.body. Preference
+        controls that pick a STORED value must name their target (account vs device override)
+        rather than diff resolved values. A user-visible change bumps APP_VERSION in
+        packages/web/src/lib/version.ts.
+    - path: ".github/workflows/**"
+      instructions: |
+        Third-party actions are pinned to a full commit SHA with the upstream tag in a comment.
+        The verification command list lives only in root package.json (`verify:ci`); a
+        workflow must not grow a second list of commands. Architectures are named only via
+        PLATFORMS in release.yml.
+    - path: "**/*.test.ts"
+      instructions: |
+        Tests read the working tree, not HEAD; prefer given/when/then names. A property test
+        guarding the core invariant Σ(available) + toBeBudgeted = Σ(on-budget balances) must
+        not be weakened to make a change pass.
+
+chat:
+  auto_reply: true
