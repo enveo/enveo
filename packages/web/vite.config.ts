@@ -62,7 +62,7 @@ export default defineConfig({
       manifest: {
         name: "Enveo — Envelope Budgeting",
         short_name: "Enveo",
-        description: "Envelope budgeting, mobile-first.",
+        description: "Private envelope budgeting that works offline.",
         lang: "en",
         theme_color: "#1d2a47",
         background_color: "#1d2a47",
