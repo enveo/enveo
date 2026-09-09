@@ -16,12 +16,11 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
-    base_branches: ["main"]
+    base_branches: [".*"]  # epic branches take PRs too
   path_filters:
     - "!packages/web/src/lib/i18n/messages.generated.ts"
     - "!packages/api/drizzle/meta/**"
     - "!bun.lock"
-    - "!docs/assets/**"
   path_instructions:
     - path: "**"
       instructions: |
