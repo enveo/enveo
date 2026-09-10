@@ -18,6 +18,7 @@ import { fmtSignedTrim } from "../lib/amount";
 import { apiErrorMessage, type EditedImportItem, type ImportApplyItem, type StateResponse, useLedgerVersion } from "../lib/api";
 import { automaticEnvelopePreview, currentReconciliationAccount, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
 import { useCurrency, useTheme } from "../lib/contexts";
+import { downloadJson } from "../lib/data";
 import { currentMonth } from "../lib/dates";
 import * as e2ee from "../lib/e2ee";
 import { formatMoney, isLight, parseAmount } from "../lib/format";
@@ -38,6 +39,7 @@ import {
   importBalanceDiagnosis,
   importBalanceEffect,
   importPeriodStart,
+  isCompleteImportReviewItem,
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
@@ -405,6 +407,7 @@ export function ImportSheet({
           invalidatedEdit = true;
           currentRows[index] = {
             ...row,
+            include: false,
             requiresReview: true,
             blockingIssues: [...new Set([...row.blockingIssues, "assignment_unavailable" as const])],
             item: row.item
@@ -421,7 +424,7 @@ export function ImportSheet({
       if (invalidatedEdit) setEdited(currentEdited);
       setItems(currentRows);
       setSourceAccountUnavailable(accountInvalid);
-      if (accountInvalid) return;
+      if (accountInvalid || invalidatedEdit) return;
       const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: currentRows, edited: currentEdited, editedAutomaticDefaults });
       const chosenRowIds = new Set(chosen.flatMap((item) => (item.importRowId ? [item.importRowId] : [])));
       await importJobManager.recordSkipped(
@@ -496,10 +499,17 @@ export function ImportSheet({
     }
   };
 
-  const toggle = (idx: number) =>
-    setItems((prev) => prev.map((row, i) => (i === idx && row.duplicateStatus !== "exists" ? { ...row, include: !row.include } : row)));
+  const toggle = (idx: number) => {
+    const row = items[idx];
+    if (!row || row.duplicateStatus === "exists") return;
+    if (!row.item && !edited[idx]) {
+      if (row.editable) setEditorIdx(idx);
+      return;
+    }
+    setItems((prev) => prev.map((row, i) => (i === idx ? { ...row, include: !row.include } : row)));
+  };
 
-  const selectedCount = items.filter((row, i) => row.item && row.include && (row.item.status !== "exists" || !!edited[i])).length;
+  const selectedCount = items.filter((row, i) => (row.item || edited[i]) && row.include && row.duplicateStatus !== "exists").length;
   // Account balances are global: recompute at currentMonth() from the replica, never from the
   // month `state` was built for (same pattern as Add / the Drawer).
   const ledgerVersion = useLedgerVersion();
@@ -511,7 +521,11 @@ export function ImportSheet({
   const balanceEffect =
     phase === "review"
       ? importBalanceEffect({
-          items: reviewedImportRowsForApply({ rows: items, edited, editedAutomaticDefaults }),
+          items: reviewedImportRowsForApply({
+            rows: items.map((row, index) => (!isCompleteImportReviewItem(edited[index] ?? row.item) ? { ...row, include: false } : row)),
+            edited,
+            editedAutomaticDefaults,
+          }),
           defaultAccountId: accountId,
           accounts: accountsNow,
         })
@@ -871,13 +885,37 @@ export function ImportSheet({
               </div>
             )}
 
+            <details style={{ margin: "10px 0", fontSize: 12, color: C.soft }}>
+              <summary>{t("Import diagnostics")}</summary>
+              <p>{t("Download the recognized rows and your review edits to this device. The file contains transaction details. Nothing is uploaded.")}</p>
+              <button
+                type="button"
+                onClick={() =>
+                  downloadJson(
+                    {
+                      result: job?.result,
+                      review: items.map((row, index) => ({
+                        rowId: row.rowId,
+                        include: row.include,
+                        edit: edited[index] ?? null,
+                        automaticEnvelopeDefault: editedAutomaticDefaults[index] ?? null,
+                      })),
+                    },
+                    `enveo-import-review-${new Date().toISOString().slice(0, 10)}.json`,
+                  )
+                }
+              >
+                {t("Download diagnostic JSON")}
+              </button>
+            </details>
+
             {visibleImportReviewRows(items).map(({ row, index: idx, position }) => {
               const it = row.item;
               // Candidate rows show post-edit values; evidence-only rows stay faithful to extraction.
-              const e = it ? (edited[idx] as EditedImportItem | undefined) : undefined;
+              const e = edited[idx] as EditedImportItem | undefined;
               const type = e?.type ?? it?.type ?? null;
               const amount = e?.amount ?? it?.amount ?? row.amount;
-              const name = it ? (e ? e.name : it.name) || it.tag || row.rawTextLines[0] : row.rawTextLines[0] || t("Unrecognized row");
+              const name = e?.name || it?.name || it?.tag || row.rawTextLines[0] || t("Unrecognized row");
               const envId = e ? e.envelopeId : it?.envelopeId;
               const env = envId ? envById.get(envId) : null;
               const catName = e ? (e.categoryId ? (state.categories.find((c) => c.id === e.categoryId)?.name ?? null) : null) : (it?.categoryName ?? null);
@@ -886,7 +924,7 @@ export function ImportSheet({
               const itemAccountId = e?.accountId ?? accountId;
               const itemToAccountId = e?.toAccountId ?? it?.toAccountId ?? null;
               const automaticPreview =
-                it && type && amount !== null
+                (it || e) && type && amount !== null
                   ? automaticEnvelopePreview(state, { type, accountId: itemAccountId, toAccountId: itemToAccountId }, amount)
                   : null;
               const automaticEffect =
@@ -903,10 +941,10 @@ export function ImportSheet({
                     })
                   : null;
               const fxMismatch = !!row.currency && row.currency !== currency;
-              const badges = reviewBadges(row);
+              const badges = reviewBadges(row, e);
               const controlLabels = reviewRowControlLabels(row, position);
-              const ContentTag: "button" | "div" = it ? "button" : "div";
-              const contentControlProps = it
+              const ContentTag: "button" | "div" = controlLabels.edit ? "button" : "div";
+              const contentControlProps = controlLabels.edit
                 ? { type: "button" as const, onClick: () => setEditorIdx(idx), "aria-label": t(controlLabels.edit!.message, controlLabels.edit!.values) }
                 : {};
               return (
@@ -948,7 +986,7 @@ export function ImportSheet({
                       display: "flex",
                       alignItems: "flex-start",
                       gap: 10,
-                      cursor: it ? "pointer" : "default",
+                      cursor: controlLabels.edit ? "pointer" : "default",
                     }}
                   >
                     <span
@@ -1201,7 +1239,7 @@ export function ImportSheet({
         (IconColorPicker pattern) — the Sheet has a transform, position:fixed inside it breaks. */}
       {show &&
         editorIdx !== null &&
-        items[editorIdx]?.item &&
+        items[editorIdx]?.editable &&
         createPortal(
           <div
             data-import-editor-mode={wideHost?.mode ?? "phone"}
@@ -1226,12 +1264,15 @@ export function ImportSheet({
               editTxn={null}
               onDone={() => setEditorIdx(null)}
               draft={{
-                item: items[editorIdx].item,
+                item: items[editorIdx].item ?? items[editorIdx].draftItem!,
                 accountId,
                 initial: edited[editorIdx],
-                automaticEnvelopeDefault: edited[editorIdx] ? (editedAutomaticDefaults[editorIdx] ?? false) : items[editorIdx].item.automaticEnvelopeDefault,
+                automaticEnvelopeDefault: edited[editorIdx]
+                  ? (editedAutomaticDefaults[editorIdx] ?? false)
+                  : (items[editorIdx].item?.automaticEnvelopeDefault ?? false),
                 onSave: (e, meta) => {
                   setEdited((prev) => ({ ...prev, [editorIdx]: e }));
+                  setItems((prev) => prev.map((row, index) => (index === editorIdx ? { ...row, include: true } : row)));
                   setEditedAutomaticDefaults((prev) => ({ ...prev, [editorIdx]: meta.automaticEnvelopeDefault }));
                   setEditorIdx(null);
                 },

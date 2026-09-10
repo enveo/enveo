@@ -8,17 +8,32 @@ import {
   type ImportReviewReason,
   type ImportSemanticKind,
   importProposalBlockingReasons,
+  isCalendarDate,
   parseDisplayAmount,
   type ReconciledImportProposal,
   type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
-import type { EditedImportItem, ImportApplyItem, ImportApplyResponse } from "./api";
+import type { EditedImportItem, ImportApplyItem, ImportApplyResponse, ImportItem } from "./api";
 import { type Message, msg } from "./i18n";
 import { importReviewItem, type LocalImportReviewItem, reviewedImportItemsForApply } from "./localImport";
 
 export type ImportReviewDisposition = ImportProposal["disposition"];
 
+export type ImportReviewDraftItem = Omit<ImportItem, "type" | "date" | "amount"> & {
+  type: ImportItem["type"] | null;
+  date: string | null;
+  amount: number | null;
+};
+
+/** The apply boundary requires real calendar dates and integer money. */
+export function isCompleteImportReviewItem(item: Pick<ImportReviewDraftItem, "date" | "amount" | "type"> | null | undefined): boolean {
+  return (
+    !!item && isCalendarDate(item.date) && Number.isSafeInteger(item.amount) && item.amount! > 0 && ["expense", "income", "transfer"].includes(item.type ?? "")
+  );
+}
+
 export interface ImportReviewRow {
+  draftItem?: ImportReviewDraftItem;
   rowId: string;
   disposition: ImportReviewDisposition;
   semanticKind: ImportSemanticKind;
@@ -95,12 +110,12 @@ export function reviewRowControlLabels(
   row: ImportReviewRow,
   index: number,
 ): { select: ImportReviewControlLabel | null; edit: ImportReviewControlLabel | null } {
-  const canSelect = row.item !== null || (row.disposition === "unresolved" && row.blockingIssues.length > 0);
+  const canSelect = row.item !== null || row.editable;
   if (row.duplicateStatus === "exists" || !canSelect) return { select: null, edit: null };
   const values = { n: index + 1 };
   return {
     select: { message: msg("Select recognized row {n}"), values },
-    edit: row.item && row.editable ? { message: msg("Edit item {n}"), values } : null,
+    edit: row.editable ? { message: msg("Edit item {n}"), values } : null,
   };
 }
 
@@ -120,20 +135,21 @@ const dispositionBadge = (disposition: ImportReviewDisposition): ImportReviewBad
 };
 
 /** Concise, exhaustive display facts. Duplicate labels collapse without hiding reasons. */
-export function reviewBadges(row: ImportReviewRow): ImportReviewBadge[] {
+export function reviewBadges(row: ImportReviewRow, edit?: EditedImportItem): ImportReviewBadge[] {
   const badges: ImportReviewBadge[] = [];
-  const disposition = row.duplicateStatus === "exists" ? null : dispositionBadge(row.disposition);
+  const disposition = row.duplicateStatus === "exists" ? null : dispositionBadge(edit ? "candidate" : row.disposition);
   if (disposition) badges.push(disposition);
   if (row.relation?.kind === "fx_for" || row.semanticKind === "fx_conversion") badges.push({ label: msg("FX relation"), tone: "warning" });
-  if (row.item?.isRefund || row.semanticKind === "merchant_refund" || row.semanticKind === "chargeback") {
+  if (edit ? edit.isRefund : row.item?.isRefund || row.semanticKind === "merchant_refund" || row.semanticKind === "chargeback") {
     badges.push({ label: msg("Refund"), tone: "positive" });
   }
-  if (row.semanticKind === "cashback_or_reward") badges.push({ label: msg("Reward / income"), tone: "positive" });
+  if (row.semanticKind === "cashback_or_reward" && (!edit || edit.type === "income")) badges.push({ label: msg("Reward / income"), tone: "positive" });
   if (row.alreadyApplied) badges.push({ label: msg("Already added by this import"), tone: "neutral" });
   else if (row.duplicateStatus === "exists") badges.push({ label: msg("Already exists"), tone: "neutral" });
   if (row.duplicateStatus === "probable") badges.push({ label: msg("Probable duplicate"), tone: "warning" });
-  if (row.blockingIssues.includes("assignment_unavailable")) badges.push({ label: msg("Saved assignment is unavailable"), tone: "warning" });
+  if (!edit && row.blockingIssues.includes("assignment_unavailable")) badges.push({ label: msg("Saved assignment is unavailable"), tone: "warning" });
   for (const reason of row.reviewReasons) {
+    if (edit && ["missing_fact", "unknown_kind", "inconsistent_direction", "unknown_transfer_endpoint", "fact_correction"].includes(reason)) continue;
     const label = importReviewReasonMessage(reason);
     badges.push({ label, tone: reason === "pending_or_declined" ? "neutral" : "warning" });
   }
@@ -265,8 +281,14 @@ export function buildImportReviewRows(args: {
       date: proposal.date,
       amount: proposal.amount,
       currency: proposal.currency,
-      include: duplicateStatus === "new" && !skippedRowIds.has(rawRow.rowId) && (reviewItem !== null || proposal.selected),
-      editable: reviewItem !== null,
+      include: duplicateStatus === "new" && !skippedRowIds.has(rawRow.rowId) && reviewItem?.include === true,
+      editable: duplicateStatus !== "exists" && (reviewItem !== null || (proposal.disposition === "unresolved" && rawRow.rowRole === "financial_event")),
+      draftItem: {
+        ...proposal,
+        date: isCalendarDate(proposal.date) ? proposal.date : null,
+        rawPlace: sourceRef || null,
+        currency: proposal.currency ?? undefined,
+      },
       item: reviewItem ? { ...reviewItem, include: reviewItem.include } : null,
     };
   });
@@ -278,20 +300,31 @@ export function reviewedImportRowsForApply(args: {
   edited: Record<number, EditedImportItem>;
   editedAutomaticDefaults: Record<number, boolean>;
 }): ImportApplyItem[] {
-  const candidates = args.rows.flatMap((row) => {
-    if (row.disposition !== "candidate" || !row.item) return [];
-    return [{ ...row.item, importRowId: row.rowId, include: row.include }];
+  return args.rows.flatMap((row, index) => {
+    if (!row.include || row.duplicateStatus === "exists") return [];
+    const edit = args.edited[index];
+    if (row.disposition !== "candidate" && !(row.disposition === "unresolved" && row.editable)) return [];
+    if (!isCompleteImportReviewItem(edit ?? row.item)) throw new Error("import_review_incomplete");
+    const item =
+      row.item ??
+      (edit
+        ? {
+            ...edit,
+            tag: row.draftItem?.tag ?? "",
+            currency: row.currency ?? undefined,
+            rawPlace: row.sourceRef || null,
+            status: "added" as const,
+            include: true,
+            automaticEnvelopeDefault: false,
+          }
+        : null);
+    if (!item) throw new Error("import_review_incomplete");
+    return reviewedImportItemsForApply({
+      items: [{ ...item, include: true }],
+      edited: edit ? { 0: edit } : {},
+      editedAutomaticDefaults: { 0: args.editedAutomaticDefaults[index] ?? false },
+    }).map((item) => ({ ...item, importRowId: row.rowId }));
   });
-  const edits: Record<number, EditedImportItem> = {};
-  const automatic: Record<number, boolean> = {};
-  let candidateIndex = 0;
-  args.rows.forEach((row, rowIndex) => {
-    if (row.disposition !== "candidate" || !row.item) return;
-    if (args.edited[rowIndex]) edits[candidateIndex] = args.edited[rowIndex]!;
-    if (args.editedAutomaticDefaults[rowIndex] !== undefined) automatic[candidateIndex] = args.editedAutomaticDefaults[rowIndex]!;
-    candidateIndex++;
-  });
-  return reviewedImportItemsForApply({ items: candidates, edited: edits, editedAutomaticDefaults: automatic });
 }
 
 export interface ImportBalanceEffect {
@@ -351,7 +384,7 @@ function sourceAccountEffect(item: ImportApplyItem, defaultAccountId: string): n
 }
 
 const reviewApplyItem = (row: ImportReviewRow, edit: EditedImportItem | undefined): ImportApplyItem | null =>
-  row.item ? { ...row.item, ...(edit ?? {}), type: edit?.type ?? row.item.type } : null;
+  edit ? { ...row.item, ...edit, tag: row.item?.tag ?? row.draftItem?.tag ?? "" } : row.item;
 
 export interface ReviewBalanceMatchCandidate extends BalanceMatchCandidate {
   index: number;
@@ -372,13 +405,14 @@ export function balanceMatchCandidatesForReview(args: {
 }): ReviewBalanceMatchCandidate[] {
   const candidates: ReviewBalanceMatchCandidate[] = [];
   args.rows.forEach((row, index) => {
-    if (!row.item || row.duplicateStatus === "exists" || row.alreadyApplied) return;
+    if (row.duplicateStatus === "exists" || row.alreadyApplied) return;
     const edit = args.edited[index];
+    if (!row.item && !edit) return;
     if (edit && row.include) return;
     const doubtful = row.requiresReview || row.duplicateStatus === "probable";
     if (!doubtful && row.include) return;
     const item = reviewApplyItem(row, edit);
-    if (!item) return;
+    if (!item || !isCompleteImportReviewItem(item)) return;
     const effect = sourceAccountEffect(item, args.defaultAccountId);
     if (effect === 0) return;
     candidates.push({
@@ -405,7 +439,7 @@ export function applyBalanceMatchToReview(args: {
   for (const change of args.changes) {
     const index = rows.findIndex((row) => row.rowId === change.id);
     const row = rows[index];
-    if (!row?.item) continue;
+    if (!row || (!row.item && !edited[index])) continue;
     if (change.action === "exclude") {
       rows[index] = { ...row, include: false };
       continue;

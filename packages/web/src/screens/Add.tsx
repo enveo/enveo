@@ -1,4 +1,4 @@
-import { captureAllocationFlow, computeStateResponse, resolveAllocationFlow, type Transaction, type TxnPayload } from "@enveo/shared";
+import { captureAllocationFlow, computeStateResponse, isCalendarDate, resolveAllocationFlow, type Transaction, type TxnPayload } from "@enveo/shared";
 import { lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useBand } from "../components/kit";
 import { LazyChunk, useOpenedOnce } from "../components/lazy";
@@ -103,6 +103,7 @@ export function AddScreen({
   }, [ledgerVersion]);
   const accounts = [...accountsNow].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
 
+  const [typeChosen, setTypeChosen] = useState(!draft || !!draft.initial || draft.item.type !== null);
   const [tab, setTab] = useState<Tab>(initialTab ?? "expense");
   // Amount = the same state machine as the Budget pad (padKey): reduction on
   // an operator ("15+25" + "+" → "40+"), contextual "="/✓, fresh=prefill
@@ -125,7 +126,7 @@ export function AddScreen({
     if (draft)
       return draft.automaticEnvelopeDefault
         ? expenseEnvelopeSelection(automaticEnvelopeId)
-        : expenseEnvelopeSelectionForImport(draft.item.type, draft.item.envelopeId, automaticEnvelopeId);
+        : expenseEnvelopeSelectionForImport(draft.item.type ?? "expense", draft.item.envelopeId, automaticEnvelopeId);
     return expenseEnvelopeSelection(automaticEnvelopeId);
   });
   const envelopeId = expenseEnvelope.envelopeId;
@@ -232,11 +233,11 @@ export function AddScreen({
       setName(e.name);
       setNote(e.note);
       prefillPlace(e.placeName);
-      setDate(e.date);
+      setDate(isCalendarDate(e.date) ? e.date : "");
     } else {
       const it = draft.item;
-      setTab(it.type);
-      setAmount(padExpr(it.amount));
+      setTab(it.type ?? "expense");
+      setAmount(it.amount === null ? "" : padExpr(it.amount));
       setAccountId(draft.accountId);
       if (it.toAccountId) setToAccountId(it.toAccountId); // reviewed recognition candidate
       setIsRefund(it.type === "expense" && !!it.isRefund);
@@ -244,12 +245,12 @@ export function AddScreen({
       setExpenseEnvelope(
         draft.automaticEnvelopeDefault
           ? expenseEnvelopeSelection(automaticEnvelopeId)
-          : expenseEnvelopeSelectionForImport(it.type, it.envelopeId, automaticEnvelopeId),
+          : expenseEnvelopeSelectionForImport(it.type ?? "expense", it.envelopeId, automaticEnvelopeId),
       );
       setCategoryId(it.categoryId ?? null);
       setName(it.name);
       prefillPlace(it.placeName ?? null);
-      setDate(it.date);
+      setDate(isCalendarDate(it.date) ? it.date : "");
     }
     setNumpad(false);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -445,7 +446,7 @@ export function AddScreen({
   // A split must add up: the rows ARE the transaction, so an unassigned remainder (or an
   // excess) would silently change the amount that was typed. The CTA names the gap instead.
   const splitBalanced = !splitUi || (items.length > 0 && splitSum === minor);
-  const canSubmit = minor > 0 && !noAccount && splitBalanced;
+  const canSubmit = Number.isSafeInteger(minor) && minor > 0 && isCalendarDate(date) && typeChosen && !noAccount && splitBalanced;
 
   // fully synchronous save: local mirror immediately, network in the background (outbox)
   function submit() {
@@ -511,7 +512,7 @@ export function AddScreen({
   const todayIso = todayISO();
   const isToday = date === todayIso;
   const isYesterday = !isToday && date === shiftDay(todayIso, -1);
-  const dayMonthLabel = dayMonth(date, lang);
+  const dayMonthLabel = isCalendarDate(date) ? dayMonth(date, lang) : t("Choose a date");
   const dateLabel = isToday ? t("Today") : isYesterday ? t("Yesterday") : dayMonthLabel;
   const dateHint = isToday || isYesterday ? dayMonthLabel : date.slice(0, 4);
 
@@ -678,36 +679,49 @@ export function AddScreen({
             ? t("{place} — add details", { place: state.places.find((p) => p.id === placeId)?.name ?? "" })
             : t("e.g. weekly groceries");
 
+  const header = (
+    <AddHeader
+      tab={typeChosen ? tab : null}
+      isEdit={!!editTxn}
+      isDraft={!!draft}
+      menuOpen={showTxnMenu}
+      onBack={draft ? draft.onCancel : onDone}
+      onTabSelect={(tb) => {
+        setTypeChosen(true);
+        setTab(tb);
+        reset(tb);
+        setIsRefund(false);
+      }}
+      onDelete={() => {
+        if (!editTxn) return;
+        if (window.confirm(t("Delete this transaction? This cannot be undone."))) {
+          local.deleteTxn(editTxn.id);
+          onDone();
+        }
+      }}
+      onToggleMenu={() => setShowTxnMenu((v) => !v)}
+      onDuplicate={() => {
+        if (!editTxn) return;
+        setShowTxnMenu(false);
+        local.duplicateTxn(editTxn);
+        onDone();
+      }}
+      onOpenImport={() => setShowImport(true)}
+    />
+  );
+  if (!typeChosen)
+    return (
+      <div style={{ flex: 1 }}>
+        {header}
+        <div role="status" style={{ textAlign: "center", padding: 8, color: C.warn }}>
+          {t("Choose a transaction type")}
+        </div>
+      </div>
+    );
+
   return (
     <div ref={rootRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <AddHeader
-        tab={tab}
-        isEdit={!!editTxn}
-        isDraft={!!draft}
-        menuOpen={showTxnMenu}
-        onBack={draft ? draft.onCancel : onDone}
-        onTabSelect={(tb) => {
-          setTab(tb);
-          reset(tb);
-          setIsRefund(false);
-        }}
-        onDelete={() => {
-          if (!editTxn) return;
-          if (window.confirm(t("Delete this transaction? This cannot be undone."))) {
-            local.deleteTxn(editTxn.id);
-            onDone();
-          }
-        }}
-        onToggleMenu={() => setShowTxnMenu((v) => !v)}
-        onDuplicate={() => {
-          if (!editTxn) return;
-          setShowTxnMenu(false);
-          local.duplicateTxn(editTxn);
-          onDone();
-        }}
-        onOpenImport={() => setShowImport(true)}
-      />
-
+      {header}
       <AmountSection
         tab={tab}
         isRefund={isRefund}

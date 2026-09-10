@@ -1,4 +1,4 @@
-import type { ImportProposal } from "./importRecognition";
+import type { ImportDirection, ImportProposal } from "./importRecognition";
 
 export type ImportHistoryType = "expense" | "income" | "transfer";
 
@@ -24,6 +24,8 @@ export interface ImportHistoryQuery {
   accountId: string;
   ownedAccountIds: readonly string[];
   proposal: HistoryProposal;
+  /** Direction read from the screenshot, independent of the proposed classification. */
+  direction?: ImportDirection;
 }
 
 export type ImportHistoryMatch = "exact_source_ref" | "merchant_identity" | "source_similarity" | "fuzzy_similarity";
@@ -84,7 +86,7 @@ const sameCurrency = (left: string | null, right: string): boolean => left?.trim
 
 const compatibleWithVisibleFacts = (query: ImportHistoryQuery, record: ImportHistoryRecord): boolean => {
   const { proposal } = query;
-  if (record.accountId !== query.accountId || !sameCurrency(proposal.currency, record.currency) || proposal.type === null) return false;
+  if (record.accountId !== query.accountId || !sameCurrency(proposal.currency, record.currency)) return false;
 
   if (proposal.semanticKind === "internal_transfer") {
     return (
@@ -92,7 +94,14 @@ const compatibleWithVisibleFacts = (query: ImportHistoryQuery, record: ImportHis
     );
   }
 
-  if (record.type !== proposal.type || record.type === "transfer") return false;
+  if (record.type === "transfer") return false;
+  if (query.direction !== undefined) {
+    const direction = record.type === "income" || record.isRefund ? "credit" : "debit";
+    if (query.direction !== "unknown" && direction !== query.direction) return false;
+    // An unknown sign cannot veto historical counterevidence. The caller flags it for review.
+    return true;
+  }
+  if (record.type !== proposal.type) return false;
   return record.type !== "expense" || record.isRefund === proposal.isRefund;
 };
 
@@ -211,8 +220,15 @@ export function selectImportHistoryCandidates(query: ImportHistoryQuery, records
       compareText(assignmentKey(left.candidate), assignmentKey(right.candidate)),
   );
   const displayLimit = Number.isFinite(limit) ? Math.max(0, Math.min(Math.trunc(limit), MAX_CANDIDATES)) : MAX_CANDIDATES;
+  // Exact source evidence takes precedence over incidental shared words in other entries.
+  const strongest = ranked[0]?.rank === matchRank("exact_source_ref") ? ranked.filter((entry) => entry.rank === ranked[0]!.rank) : ranked;
   return {
-    candidates: ranked.slice(0, displayLimit).map(({ candidate }) => candidate),
-    conflict: ranked.length > 1,
+    candidates: strongest.slice(0, displayLimit).map(({ candidate }) => candidate),
+    conflict:
+      strongest.length > 1 ||
+      (query.proposal.type !== null &&
+        strongest.some(
+          ({ candidate }) => candidate.type !== query.proposal.type || (candidate.type === "expense" && candidate.isRefund !== query.proposal.isRefund),
+        )),
   };
 }

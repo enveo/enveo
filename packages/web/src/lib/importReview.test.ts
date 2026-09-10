@@ -129,6 +129,78 @@ const editedItem = (over: Partial<EditedImportItem> = {}): EditedImportItem => (
 });
 
 describe("screenshot import review view model", () => {
+  it("keeps incomplete rows editable and unchecked, and applies a completed edit after rebuilding review", () => {
+    // given: a synthetic cropped entry with no date or transaction type
+    const result = recognition(
+      [row("cropped", { date: null })],
+      [proposal("cropped", { date: null, type: null, disposition: "unresolved", selected: true, reviewReasons: ["missing_fact", "unknown_kind"] })],
+    );
+    const build = () => buildImportReviewRows({ recognition: result, ledger: ledger(), dryRunResults: [], automaticEnvelopeId: null, budgetCurrency: "EUR" });
+    const review = build();
+    expect(review[0]).toMatchObject({ include: false, editable: true, item: null });
+    expect(reviewRowControlLabels(review[0]!, 0).edit).not.toBeNull();
+    expect(reviewBadges(review[0]!, editedItem())).toEqual([]);
+    // when: the human completes the row and apply re-reads the original result
+    review[0]!.include = true;
+    const refreshed = build();
+    refreshed[0]!.include = reviewSelectionAfterRefresh(refreshed[0]!, review[0]);
+    const chosen = reviewedImportRowsForApply({ rows: refreshed, edited: { 0: editedItem() }, editedAutomaticDefaults: {} });
+    // then: the edit is included once, with original evidence and a matching balance preview
+    expect(chosen).toHaveLength(1);
+    refreshed[0]!.include = false;
+    expect(balanceMatchCandidatesForReview({ rows: refreshed, edited: { 0: editedItem() }, defaultAccountId: U(2) })).toMatchObject([
+      { id: "cropped", effect: -2500 },
+    ]);
+    expect(chosen[0]).toMatchObject({ importRowId: "cropped", date: "2026-08-02", amount: 2500, rawPlace: "raw cropped\n25.00 EUR" });
+    expect(importBalanceEffect({ items: chosen, defaultAccountId: U(2), accounts: [{ id: U(2), name: "Main", balance: 5000 }] })[0]?.after).toBe(2500);
+  });
+
+  it("requires correcting an impossible calendar date before an incomplete row can be added", () => {
+    const rows = buildImportReviewRows({
+      recognition: recognition(
+        [row("invalid-date", { date: "2026-02-31" })],
+        [proposal("invalid-date", { date: "2026-02-31", disposition: "unresolved", selected: false, reviewReasons: ["missing_fact"] })],
+      ),
+      ledger: ledger(),
+      dryRunResults: [],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+    expect(rows[0]?.draftItem?.date).toBeNull();
+    rows[0]!.include = true;
+    expect(() => reviewedImportRowsForApply({ rows, edited: { 0: editedItem({ date: "2026-02-31" }) }, editedAutomaticDefaults: {} })).toThrow(
+      "import_review_incomplete",
+    );
+    expect(reviewedImportRowsForApply({ rows, edited: { 0: editedItem({ date: "2026-02-28" }) }, editedAutomaticDefaults: {} })[0]?.date).toBe("2026-02-28");
+  });
+
+  it("rejects malformed edited money and transaction types at the apply boundary", () => {
+    const rows = buildImportReviewRows({
+      recognition: recognition([row("entry")], [proposal("entry")]),
+      ledger: ledger(),
+      dryRunResults: [dryResult()],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+    for (const patch of [{ amount: 0 }, { amount: -1 }, { amount: 1.5 }, { amount: Number.MAX_SAFE_INTEGER + 1 }, { type: "unknown" }]) {
+      expect(() => reviewedImportRowsForApply({ rows, edited: { 0: editedItem(patch as Partial<EditedImportItem>) }, editedAutomaticDefaults: {} })).toThrow(
+        "import_review_incomplete",
+      );
+    }
+  });
+
+  it("refuses a selected incomplete row instead of silently omitting it", () => {
+    const rows = buildImportReviewRows({
+      recognition: recognition([row("missing")], [proposal("missing", { disposition: "unresolved", type: null })]),
+      ledger: ledger(),
+      dryRunResults: [],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+    rows[0]!.include = true;
+    expect(() => reviewedImportRowsForApply({ rows, edited: {}, editedAutomaticDefaults: {} })).toThrow("import_review_incomplete");
+  });
+
   it("lets the user apply a complete warned transaction without opening the editor", () => {
     // The warning is guidance. The user's checked selection remains authoritative.
     const review = buildImportReviewRows({
@@ -146,7 +218,7 @@ describe("screenshot import review view model", () => {
     expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
   });
 
-  it("separates inclusion from guidance and ignores an incomplete selected financial row when adding", () => {
+  it("separates inclusion from guidance and leaves incomplete financial rows unchecked", () => {
     const result = recognition(
       [row("review", { reviewReasons: ["possible_ocr_error"] }), row("missing", { amount: null })],
       [
@@ -162,7 +234,7 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "EUR",
     });
     expect(review[0]).toMatchObject({ include: true, requiresReview: true, blockingIssues: [] });
-    expect(review[1]).toMatchObject({ include: true, requiresReview: true, blockingIssues: ["missing_fact"] });
+    expect(review[1]).toMatchObject({ include: false, requiresReview: true, blockingIssues: ["missing_fact"] });
     expect(reviewRowControlLabels(review[1]!, 1).select).toEqual({ message: "Select recognized row {n}", values: { n: 2 } });
     expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
   });
@@ -232,7 +304,7 @@ describe("screenshot import review view model", () => {
     expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
   });
 
-  it("keeps every extracted row visible while all new financial events start selected", () => {
+  it("keeps every extracted row visible while complete new financial events start selected", () => {
     // Break caught: filtering recognition down to transaction-shaped proposals would hide
     // pending, declined, supporting, or unresolved screenshot evidence from review.
     const rows = [
@@ -275,7 +347,7 @@ describe("screenshot import review view model", () => {
       { rowId: "pending", disposition: "pending", include: false, editable: false },
       { rowId: "declined", disposition: "declined", include: false, editable: false },
       { rowId: "support", disposition: "supporting", include: false, editable: false },
-      { rowId: "unresolved", disposition: "unresolved", include: true, editable: false },
+      { rowId: "unresolved", disposition: "unresolved", include: false, editable: true },
       { rowId: "relation", disposition: "candidate", include: true, editable: true },
     ]);
     expect(review[6]!.sourceRef).toBe("raw relation\n25.00 EUR");
@@ -304,7 +376,7 @@ describe("screenshot import review view model", () => {
     ]);
   });
 
-  it("defaults a new candidate to included even when an old proposal selection was false", () => {
+  it("leaves an explicitly unselected complete proposal unchecked", () => {
     // given: a durable Stage-A candidate carries a creation-time selection that is no longer authoritative
     const result = recognition([row("new")], [proposal("new", { selected: false, duplicateStatus: "new" })]);
 
@@ -317,8 +389,8 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "EUR",
     });
 
-    // then: inclusion is a fresh user decision and the complete row starts checked
-    expect(review[0]).toMatchObject({ duplicateStatus: "new", include: true, editable: true });
+    // then: recognition requires an explicit choice even though all facts are complete
+    expect(review[0]).toMatchObject({ duplicateStatus: "new", include: false, editable: true });
   });
 
   it("warns about an unavailable saved assignment without requiring edit confirmation", () => {
@@ -389,7 +461,7 @@ describe("screenshot import review view model", () => {
 
     expect(proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
     expect(review[0]).toMatchObject({ duplicateStatus: "exists", include: false, editable: false, item: null });
-    expect(reviewBadges(review[0]!).map((badge) => badge.label)).toEqual(["Already exists", "Conflicts with transaction history"]);
+    expect(reviewBadges(review[0]!).map((badge) => badge.label)).toEqual(["Already exists"]);
     expect(reviewRowControlLabels(review[0]!, 0)).toEqual({ select: null, edit: null });
     expect(importReviewDoneStats(review, { added: 0, skipped: 0 })).toEqual({ added: 0, dup: 1 });
     expect(importReviewDoneStats(review, { added: 0, skipped: 1 })).toEqual({ added: 0, dup: 2 });

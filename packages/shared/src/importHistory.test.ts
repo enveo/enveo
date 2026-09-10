@@ -140,3 +140,38 @@ describe("normalizeImportHistoryText", () => {
     expect(normalizeImportHistoryText("  ŁÓDŹ — café / CAFE\u0301  ")).toBe("lodz cafe cafe");
   });
 });
+
+describe("history for uncertain bank entries", () => {
+  test("offers prior income when the screenshot did not establish a type or direction", () => {
+    // given: an unsigned invoice entry, with no established ledger type
+    const uncertain = query({ proposal: { ...query().proposal, type: null, semanticKind: "unknown" }, direction: "unknown" });
+    // when: the account has previously received money from that source
+    const result = selectImportHistoryCandidates(uncertain, [record({ type: "income" })]);
+    // then: history remains available as evidence for review
+    expect(result.candidates).toMatchObject([{ type: "income" }]);
+  });
+
+  test("shows previous reimbursements when an unsigned entry was guessed to be a purchase", () => {
+    const result = selectImportHistoryCandidates(query({ direction: "unknown" }), [record({ isRefund: true })]);
+    expect(result.candidates).toMatchObject([{ isRefund: true }]);
+    expect(result.conflict).toBe(true);
+  });
+
+  test("does not offer a refund against a visible debit", () => {
+    expect(selectImportHistoryCandidates(query({ direction: "debit" }), [record({ isRefund: true })]).candidates).toEqual([]);
+  });
+
+  test("offers refunds for a visible incoming payment without also offering expenses", () => {
+    const incoming = query({ direction: "credit", proposal: { ...query().proposal, type: "income", semanticKind: "incoming_transfer" } });
+    const result = selectImportHistoryCandidates(incoming, [record(), record({ isRefund: true })]);
+    expect(result.candidates).toMatchObject([{ type: "expense", isRefund: true }]);
+    expect(result.conflict).toBe(true);
+  });
+
+  test("keeps exact evidence without manufacturing a conflict from weaker similar descriptions", () => {
+    const result = selectImportHistoryCandidates(query(), [record(), record({ sourceRef: "BANK FUEL SERVICE", tag: null, name: "Other", envelope: "Other" })]);
+    expect(result.candidates).toMatchObject([{ match: "exact_source_ref", envelope: "Car" }]);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.conflict).toBe(false);
+  });
+});

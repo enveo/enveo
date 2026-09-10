@@ -621,7 +621,7 @@ describe("screenshot import proposal reconciliation", () => {
       duplicateStatus: "exists",
       disposition: "declined",
       selected: false,
-      reviewReasons: ["history_conflict"],
+      reviewReasons: [],
     });
     expect(probable).toMatchObject({
       duplicateStatus: "probable",
@@ -707,5 +707,12 @@ describe("suspicious text and inferred dates", () => {
     })[0]!;
 
     expect(reconciled).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
+  });
+});
+
+describe("contradictory signed entries", () => {
+  it("does not preselect an expense whose visible sign says money came in", () => {
+    const result = validateImportExtraction({ batch: { rows: [extractRow({ direction: "credit", semanticKind: "card_purchase" })] }, budgetCurrency: "PLN" });
+    expect(result.proposals[0]).toMatchObject({ selected: false, type: "expense", reviewReasons: ["inconsistent_direction"] });
   });
 });

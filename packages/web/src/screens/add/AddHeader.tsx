@@ -21,7 +21,7 @@ export function AddHeader({
   onDuplicate,
   onOpenImport,
 }: {
-  tab: Tab;
+  tab: Tab | null;
   isEdit: boolean;
   isDraft: boolean;
   menuOpen: boolean;
@@ -46,6 +46,7 @@ export function AddHeader({
             <button
               key={tb}
               onClick={() => onTabSelect(tb)}
+              aria-pressed={tab === tb}
               style={{
                 flex: 1,
                 padding: "8px 0",

@@ -266,6 +266,8 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
     expect(sys).toContain("An explicit + or incoming label means credit; an explicit − or outgoing label means debit");
     expect(sys).toContain("Do not infer direction from semanticKind");
+    expect(sys).toContain("unsigned amounts in the contrasting incoming style mean credit");
+    expect(sys).toContain("absence of a minus or a color alone is not proof of credit");
     expect(sys).toContain("A visible date divider applies to the transaction entries below it");
   });
 
@@ -614,7 +616,7 @@ describe("runImportRecognitionPipeline", () => {
     expect(result.proposals[0]).toMatchObject({ rowId: "r1", semanticKind: "card_purchase", name: "", selected: true });
   });
 
-  it("preserves default reconcile-before-enrichment ordering for an otherwise straightforward exact duplicate", async () => {
+  it("skips unnecessary enrichment for a straightforward exact duplicate", async () => {
     const requests: ChatRequest[] = [];
     const duplicate: Transaction = {
       id: "default-duplicate",
@@ -659,23 +661,8 @@ describe("runImportRecognitionPipeline", () => {
       },
     });
 
-    expect(requests).toHaveLength(2);
-    const enrichmentInput = JSON.parse(requests[1]!.messages[1]!.content as string) as {
-      rows: Array<{ proposal: Record<string, unknown> }>;
-    };
-    expect(enrichmentInput.rows[0]?.proposal).toMatchObject({
-      duplicateStatus: "exists",
-      disposition: "declined",
-      selected: false,
-      reviewReasons: ["history_conflict"],
-    });
-    expect(result.proposals[0]).toMatchObject({
-      name: "Duplicate enrichment",
-      duplicateStatus: "exists",
-      disposition: "declined",
-      selected: false,
-      reviewReasons: ["history_conflict"],
-    });
+    expect(requests).toHaveLength(1);
+    expect(result.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false, reviewReasons: [] });
   });
 
   it("checkpoints cycle one and resumes without screenshots or another extraction request", async () => {
@@ -782,7 +769,7 @@ describe("runImportRecognitionPipeline", () => {
       name: "Fresh enrichment",
       envelopeId: "envelope-1",
       disposition: "candidate",
-      selected: true,
+      selected: false,
     });
     expect(Object.hasOwn(saved.result?.proposals[0] ?? {}, "duplicateStatus")).toBe(false);
     expect(returned.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
@@ -968,6 +955,102 @@ describe("runImportRecognitionPipeline", () => {
     expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
   });
 
+  it.each(["unknown", "credit"])("uses prior reimbursements as reviewable counterevidence for a purchase with %s direction", async (direction) => {
+    // given: the image has no sign, and a matching earlier entry was a reimbursement
+    let calls = 0;
+    const refundHistory = { ...history("account-1", "Food"), isRefund: true };
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      pipelineMode: "durable",
+      historyRecords: [refundHistory],
+      chat: async (request) => {
+        if (++calls === 1) {
+          const batch = JSON.parse(extracted());
+          batch.rows[0].direction = direction;
+          return JSON.stringify(batch);
+        }
+        const input = JSON.parse(request.messages[1]!.content as string);
+        expect(input.rows[0].historyCandidates).toMatchObject([{ isRefund: true }]);
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Reimbursement",
+              place: null,
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "merchant_refund",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+    // then: the proposed refund needs a human selection and never rewrites the read sign
+    expect(result.rows[0]?.direction).toBe(direction);
+    expect(result.proposals[0]).toMatchObject({ type: "expense", isRefund: true, selected: false });
+    expect(result.proposals[0]?.reviewReasons).toContain("history_conflict");
+    expect(result.proposals[0]?.reviewReasons).not.toContain("inconsistent_direction");
+  });
+
+  it("offers a completed but unselected income proposal after resolving an unsigned unknown entry", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      pipelineMode: "durable",
+      historyRecords: [{ ...history("account-1", "Food"), type: "income" }],
+      chat: async (request) => {
+        if (++calls === 1) return extracted("unknown");
+        const input = JSON.parse(request.messages[1]!.content as string);
+        expect(input.rows[0].historyCandidates).toMatchObject([{ type: "income" }]);
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Invoice payment",
+              place: null,
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "incoming_transfer",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+    expect(result.proposals[0]).toMatchObject({ type: "income", disposition: "candidate", selected: false });
+    expect(result.proposals[0]?.reviewReasons).not.toContain("unknown_kind");
+  });
+
+  it("does not let an enrichment annotation turn a visible debit into a refund", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () =>
+        ++calls === 1
+          ? extracted("card_purchase", "unknown")
+          : JSON.stringify({
+              rows: [
+                {
+                  rowId: "r1",
+                  name: "Refund guess",
+                  place: null,
+                  envelopeId: null,
+                  categoryId: null,
+                  semanticKind: "merchant_refund",
+                  relation: null,
+                  reviewReasons: [],
+                },
+              ],
+            }),
+    });
+    expect(result.rows[0]?.direction).toBe("debit");
+    expect(result.proposals[0]).toMatchObject({ type: "expense", isRefund: false });
+    expect(result.proposals[0]?.reviewReasons).toContain("fact_correction");
+  });
+
   it("keeps cycle-two fact corrections selected and visible after final validation and reconciliation", async () => {
     let calls = 0;
     const result = await runImportRecognitionPipeline({
@@ -999,7 +1082,7 @@ describe("runImportRecognitionPipeline", () => {
 
     expect(calls).toBe(2);
     expect(result.proposals[0]).toMatchObject({ type: "expense", selected: true });
-    expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["unknown_kind", "fact_correction"]));
+    expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["fact_correction"]));
   });
 
   it("keeps action warnings on the selected financial row instead of its unselected supporting evidence", async () => {
