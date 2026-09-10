@@ -184,7 +184,7 @@ export const cs: Dict = {
   "Download a backup (JSON)": "Stáhnout zálohu (JSON)",
   "Drag {name}": "Přetáhnout {name}",
   Duplicate: "Duplikovat",
-  "Duplicates skipped: {n}": "Přeskočené duplicity: {n}",
+  "Skipped: {n}": "Přeskočeno: {n}",
   E2EE: "E2EE",
   Edit: "Upravit",
   Economical: "Úsporný",

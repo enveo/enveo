@@ -73,6 +73,7 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
       manualRetryResetsAttempts: true,
       permanentFailureRetainsInput: true,
       completedCountsSaved: true,
+      completionReceiptRetained: true,
       crossBudgetMutationsRejected: true,
     });
   });

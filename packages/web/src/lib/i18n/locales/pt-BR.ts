@@ -178,7 +178,7 @@ export const ptBR: Dict = {
   "Download a backup (JSON)": "Baixar um backup (JSON)",
   "Drag {name}": "Arrastar {name}",
   Duplicate: "Duplicar",
-  "Duplicates skipped: {n}": "Duplicadas ignoradas: {n}",
+  "Skipped: {n}": "Ignorados: {n}",
   E2EE: "E2EE",
   Edit: "Editar",
   Economical: "Econômico",

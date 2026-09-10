@@ -176,7 +176,7 @@ export const es: Dict = {
   "Download a backup (JSON)": "Descargar una copia de seguridad (JSON)",
   "Drag {name}": "Arrastrar {name}",
   Duplicate: "Duplicar",
-  "Duplicates skipped: {n}": "Duplicados omitidos: {n}",
+  "Skipped: {n}": "Omitidos: {n}",
   E2EE: "E2EE",
   Edit: "Editar",
   Economical: "Económico",

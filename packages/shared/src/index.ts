@@ -13,6 +13,7 @@ export * from "./importChunks";
 export * from "./importDedupe";
 export * from "./importHistory";
 export * from "./importJobs";
+export * from "./importReceipt";
 export * from "./importRecognition";
 export * from "./importStatement";
 export * from "./ops";
