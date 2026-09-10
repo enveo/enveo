@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 # CodeRabbit is the independent second reader on every pull request. The code here is mostly
 # written with coding agents (Claude, Codex), so the point of this reviewer is a DIFFERENT
-# model family looking for what the author's model tends to miss. It is a layer of comments,
-# never a gate: `verify:ci` (root package.json) is the gate.
+# model family looking for what the author's model tends to miss. Before merging, agents must
+# complete the review gate in AGENTS.md as well as the automated `verify:ci` gate.
 language: "en-US"
 early_access: false
 
