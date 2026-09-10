@@ -204,7 +204,7 @@ describe("E2EE Own OpenAI provider", () => {
     expect(saved).toHaveLength(1);
   });
 
-  it("keeps exact-duplicate cycle-two requests byte-identical to the default server pipeline", async () => {
+  it("skips enrichment for an exact duplicate identically to the default server pipeline", async () => {
     const duplicate = {
       id: "44444444-4444-4444-8444-444444444444",
       type: "expense" as const,
@@ -267,11 +267,11 @@ describe("E2EE Own OpenAI provider", () => {
 
     const actual = await f.provider.extractImport({ images: ["data:image/png;base64,AA=="], locale: "pl", ledger: duplicateLedger, accountId: ACCOUNT });
 
-    expect(serverRequests).toHaveLength(2);
-    expect(f.calls.direct).toHaveLength(2);
+    expect(serverRequests).toHaveLength(1);
+    expect(f.calls.direct).toHaveLength(1);
     expect(f.calls.direct.map(({ request, timeoutMs }) => ({ request, timeoutMs }))).toEqual(serverRequests);
     expect(actual).toEqual(expected);
-    expect(actual.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false, name: "Duplicate shop" });
+    expect(actual.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false, reviewReasons: [] });
   });
 
   it("matches the production server adapter for permuted versions of the same logical ledger", async () => {

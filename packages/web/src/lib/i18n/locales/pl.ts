@@ -2,6 +2,13 @@
 import type { Dict } from "../index";
 
 export const pl: Dict = {
+  "Complete or uncheck the unfinished rows before adding transactions.": "Uzupełnij lub odznacz niekompletne wiersze przed dodaniem transakcji.",
+  "Choose a date": "Wybierz datę",
+  "Choose a transaction type": "Wybierz typ transakcji",
+  "Import diagnostics": "Diagnostyka importu",
+  "Download the recognized rows and your review edits to this device. The file contains transaction details. Nothing is uploaded.":
+    "Pobierz rozpoznane wiersze i swoje poprawki na to urządzenie. Plik zawiera szczegóły transakcji. Nic nie jest wysyłane.",
+  "Download diagnostic JSON": "Pobierz plik diagnostyczny JSON",
   "+ Add envelope": "+ Dodaj kopertę",
   "+ Add item": "+ Dodaj pozycję",
   "+ Add profile": "+ Dodaj profil",
