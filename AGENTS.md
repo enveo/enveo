@@ -9,6 +9,12 @@ Monorepo with bun workspaces (`packages/*`):
 - **packages/api** — bun + Hono + Drizzle + Postgres 16. `src/index.ts` mounts routes under `/api`; in production it also serves the built web app (SPA fallback). Migrations in `drizzle/` run on container start; the migrator orders by timestamp from `meta/_journal.json` — semantic changes always require a NEW migration file.
 - **packages/web** — React 18 + Vite + TanStack Query, PWA (`vite-plugin-pwa`, registerType `prompt`). Local-first lives in `src/lib`: `store.ts`/`idb.ts` (ledger replica in IndexedDB), `outbox.ts`/`persist.ts`, `sync.ts` (push/pull/snapshot/replace), `mutate.ts` (`local.*` → applyOp + outbox), `version.ts`. i18n lives in `src/lib/i18n/` (runtime + `registry.ts` + one file per locale; see § Conventions).
 
+## Pull request review gate
+- After pushing the intended changes and opening a PR, explicitly request CodeRabbit with `gh pr comment <number> --body "@coderabbitai review"`. Do not rely on automatic review being enabled or on a local agent review as a substitute.
+- Wait for a completed CodeRabbit review covering the current PR head. A skipped review, rate limit, pending request, or silence is NOT approval; keep the PR open until review completes.
+- Read the review summary and every inline comment. Fix valid findings and verify the fixes; explain rejected findings with concrete evidence in the corresponding thread. Resolve threads only after their findings have been addressed, never merely to clear the merge gate.
+- After review fixes or other changes, push the updated branch, obtain CodeRabbit review of the new head, and wait for green CI again. Merge only when the current head has completed review, every finding has a documented resolution, and all required checks pass. Recheck these conditions immediately before merging; never bypass them to deploy sooner.
+
 ## Running locally
 `bun` must be on PATH. Full stack via Docker:
 1. `cp .env.example .env` and set `POSTGRES_PASSWORD` + `BETTER_AUTH_SECRET` (required — `openssl rand -hex 32`; `scripts/deploy.sh` generates both). Optionally `OPENAI_API_KEY` + `OPENAI_MODEL` for AI features.
