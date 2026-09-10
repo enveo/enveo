@@ -49,11 +49,15 @@ export function exportBackup(): void {
     budgetId: store.getBudgetId(),
     ledger,
   };
-  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  downloadJson(backup, `enveo-backup-${new Date().toISOString().slice(0, 10)}.json`);
+}
+
+export function downloadJson(value: unknown, filename: string): void {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `enveo-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
