@@ -5,6 +5,7 @@ export * from "./applyOp";
 export * from "./automaticEnvelope";
 export * from "./budget";
 export * from "./currency";
+export * from "./dates";
 export * from "./goals";
 export * from "./importAmounts";
 export * from "./importBalanceMatch";

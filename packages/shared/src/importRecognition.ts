@@ -1,4 +1,5 @@
 import { isSupportedCurrency } from "./currency";
+import { isCalendarDate } from "./dates";
 import { printedAmountIn } from "./importAmounts";
 import { buildImportDupIndex, classifyImportDup, existingImportRowsForAccount, type ImportDupStatus, importCandidateDirection } from "./importDedupe";
 import type { Account, Category, Envelope, Transaction } from "./types";
@@ -252,13 +253,6 @@ export function applyImportEnrichment(result: ImportRecognitionResult, answer: I
   };
 }
 
-const isCalendarDate = (value: string | null): value is string => {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split("-").map(Number);
-  const parsed = new Date(Date.UTC(year!, month! - 1, day!));
-  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month! - 1 && parsed.getUTCDate() === day;
-};
-
 const hasPositiveMinorAmount = (amount: number | null): amount is number => amount !== null && Number.isInteger(amount) && amount > 0;
 
 const samePostingFacts = (left: ImportExtractRow, right: ImportExtractRow): boolean =>
@@ -495,7 +489,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
       isRefund: mapping.isRefund,
       relation,
       reviewReasons: reasons,
-      selected: !row.suspiciousText,
+      selected: !row.suspiciousText && !reasons.includes("inconsistent_direction"),
       ...(converted !== undefined ? { amount: converted, currency: budgetCurrency } : {}),
     });
   });
@@ -550,7 +544,7 @@ export function reconcileImportProposals(input: {
     const categoryId = proposal.categoryId && categoryIds.has(proposal.categoryId) ? proposal.categoryId : null;
     let disposition = proposal.disposition;
     let selected = proposal.selected;
-    let reviewReasons = proposal.reviewReasons;
+    const reviewReasons = proposal.reviewReasons;
     let duplicateStatus: ImportDupStatus = "new";
 
     if (proposal.relation?.kind === "duplicate_of" && proposal.disposition === "candidate") {
@@ -578,7 +572,6 @@ export function reconcileImportProposals(input: {
           disposition = "declined";
           selected = false;
         }
-        reviewReasons = addReasons(reviewReasons, "history_conflict");
       } else if (duplicateStatus === "probable") {
         selected = false;
       } else if (proposal.disposition === "candidate") {

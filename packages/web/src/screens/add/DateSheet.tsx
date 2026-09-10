@@ -1,3 +1,4 @@
+import { isCalendarDate } from "@enveo/shared";
 import { Sheet } from "../../components/chrome";
 import { ScrollPicker } from "../../components/pickers";
 import { monthNames } from "../../lib/dates";
@@ -7,7 +8,8 @@ import { TEAL } from "../../lib/theme";
 export function DateSheet({ show, date, onClose, onChange }: { show: boolean; date: string; onClose: () => void; onChange: (iso: string) => void }) {
   const { t, lang } = useT();
   const months = monthNames(lang);
-  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [y, m, d] = (isCalendarDate(date) ? date : todayIso).split("-").map(Number) as [number, number, number];
   const set = (day: number, monIdx: number, year: number) => {
     const maxDay = new Date(Date.UTC(year, monIdx + 1, 0)).getUTCDate();
     const dd = Math.min(day, maxDay);
@@ -15,7 +17,6 @@ export function DateSheet({ show, date, onClose, onChange }: { show: boolean; da
   };
   const days = Array.from({ length: 31 }, (_, i) => i + 1);
   const years = [y - 2, y - 1, y, y + 1, y + 2].filter((v, i, a) => a.indexOf(v) === i);
-  const todayIso = new Date().toISOString().slice(0, 10);
   return (
     <Sheet show={show} onClose={onClose} lockSwipe>
       {(C) => (
@@ -41,7 +42,13 @@ export function DateSheet({ show, date, onClose, onChange }: { show: boolean; da
             >
               {t("Today")}
             </button>
-            <button onClick={onClose} style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+            <button
+              onClick={() => {
+                onChange(isCalendarDate(date) ? date : todayIso);
+                onClose();
+              }}
+              style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}
+            >
               OK
             </button>
           </div>

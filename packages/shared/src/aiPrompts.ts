@@ -531,8 +531,9 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
     "Return exactly one financial_event for each coherent entry with a primary ledger amount, regardless of whether its meaning is uncertain. Count the visible primary ledger amounts before answering, then verify that each has its own financial_event row. A reward, refund, top-up, deposit, or transfer entry is still a financial_event. Repeated entries remain separate even when their text and amount are identical; never deduplicate entries within one screenshot. Numbers in secondary text never create another financial_event. " +
     "A visible date divider applies to the transaction entries below it until the next divider; the divider itself remains ui_metadata. " +
     "For a financial_event, amount and currency come from the primary ledger amount printed for that entry; amount is the positive magnitude without its visible sign. Store the visible sign only in direction. Amounts are positive integer minor units; never use a balance, loyalty/reward points, card suffix, or exchange rate as amount. " +
-    "An explicit + or incoming label means credit; an explicit − or outgoing label means debit. Do not infer direction from semanticKind; use unknown when the direction is not visible. " +
-    "Classify semanticKind from the visible event wording even when another fact is missing or unsupported. Use cashback_or_reward only for explicit reward/cashback/moneyback text, merchant_refund only for explicit refund/return/chargeback text, and account_topup only for explicit top-up or account-funding text. Use transfer kinds only when transfer wording is visible. " +
+    "An explicit + or incoming label means credit; an explicit − or outgoing label means debit. Do not infer direction from semanticKind. " +
+    "Read the bank's consistent visual convention across the supplied screen. In a mixed account-history list where outgoing amounts consistently have minus signs and a distinct style, unsigned amounts in the contrasting incoming style mean credit: do not require a printed plus or the word transfer. For example, red negative debits alongside black unsigned credits establish this convention. Without that screen-level contrast, absence of a minus or a color alone is not proof of credit; use unknown. " +
+    "Classify semanticKind from the visible event wording even when another fact is missing or unsupported. Use cashback_or_reward only for explicit reward/cashback/moneyback text, merchant_refund only for explicit refund/return/chargeback text, and account_topup only for explicit top-up or account-funding text. Use incoming_transfer or outgoing_transfer for a bank money movement with an established direction and no more specific kind, even when the row only names the counterparty. A reimbursement from a person is a refund only when its text establishes repayment; a subscription title alone does not. " +
     "Use null for unreadable date, amount, or currency; never invent a fact. When any digit of the primary amount is obscured, clipped, or unreadable, use amount null rather than completing or guessing it. Use pending or declined only when a visible status marker belongs to that exact entry. A clock, hourglass, spinner, or explicit pending word attached to an entry is a pending marker. A crossed-out circle (⊘), a struck-through amount, or an explicit declined, cancelled, rejected or reversed word attached to the entry is a declined marker. A word in a merchant name or your own uncertainty is not a pending or declined marker. Use posted for an ordinary completed history entry with no pending or declined marker. Use unknown only when the status itself is unreadable or ambiguous. postingStatus, rowRole, semanticKind, confidence, and reviewReasons describe only what is shown. Keep reviewReasons empty when the row is clear; add only reasons supported by a specific visible ambiguity. " +
     `currency is ISO-4217 uppercase when readable; the account currency is ${currency}. NEVER convert or guess an exchange rate. ` +
     "Express relationships by rowId: retain linked FX evidence as supporting_detail with relation kind fx_for; do not merge or discard it. An adjacent FX conversion or rate block stays a separate supporting_detail row even when it is visually attached to the purchase. Compare all supplied screenshots for overlap before answering. Keep each visibly repeated entry as its own row and link the later occurrence with duplicate_of; never silently drop it. Use duplicate_of only when the same entry is visibly repeated across overlapping screenshots. A relation may point only at a row you have ALREADY emitted (an earlier rowId), never at a row still to come. Set relation to null unless the screenshot visibly establishes the link between those exact rows. " +
@@ -654,7 +655,8 @@ export function buildImportEnrichPrompt(input: ImportEnrichPromptInput, locale: 
   }));
   const system =
     "You conservatively enrich validated screenshot-import rows using compatible ledger history as evidence, never as fact. " +
-    "Return one annotation per supplied row. Preserve all visible facts: never correct or replace dates, amounts, currencies, directions, posting status, raw text, row identity, transaction type, refund state, or transfer endpoint. " +
+    "Return one annotation per supplied row. Preserve all visible facts: never correct or replace dates, amounts, currencies, directions, posting status, raw text, row identity, or transfer endpoint. " +
+    "semanticKind is a classification, not a read fact. For an unknown kind or unsigned entry, matching prior income or reimbursements may support an incoming_transfer or merchant_refund suggestion for human review. A reimbursement need not come from a merchant. Never infer a refund from the counterparty alone when the screen clearly shows a debit, or change an explicit refund into a purchase. The historyConflict flag may mean disagreement with the first-pass guess, not disagreement between historical records. Prefer a matching prior reimbursement over a purchase guess when the read direction is credit and there is no contrary evidence. Keep the original kind if the evidence is weak or conflicting. " +
     "For envelopeId and categoryId select a supplied existing id or null; never invent an id. Relations may reference only a supplied rowId. " +
     "Return each supplied reviewReasons list unchanged; deterministic validation adds any reason caused by your semantic or relation annotation. " +
     UNTRUSTED_CONTENT_DIRECTIVE +
@@ -978,7 +980,10 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
   const ownedAccountIds = input.accounts.filter((account) => !account.archived).map((account) => account.id);
   const history = result.proposals.map((proposal) => ({
     rowId: proposal.rowId,
-    selection: selectImportHistoryCandidates({ accountId: input.accountId, ownedAccountIds, proposal }, input.historyRecords),
+    selection: selectImportHistoryCandidates(
+      { accountId: input.accountId, ownedAccountIds, proposal, direction: result.rows.find((row) => row.rowId === proposal.rowId)?.direction },
+      input.historyRecords,
+    ),
   }));
   result = {
     ...result,
@@ -1070,19 +1075,36 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     });
     const final = validateImportExtraction({ batch: { rows: finalRows }, budgetCurrency: input.budgetCurrency });
     const finalRowById = new Map(finalRows.map((row) => [row.rowId, row]));
-    const enriched = final.proposals.map((proposal) => {
+    const originalById = new Map(result.proposals.map((proposal) => [proposal.rowId, proposal]));
+    const enriched = final.proposals.map((proposed) => {
+      const original = originalById.get(proposed.rowId)!;
+      const visible = result.rows.find((row) => row.rowId === proposed.rowId)!;
+      const changedKind = proposed.semanticKind !== original.semanticKind;
+      const proposedDirection = proposed.type === null ? null : proposed.type === "income" || proposed.isRefund ? "credit" : "debit";
+      const contradictsReadFact =
+        changedKind &&
+        ((visible.direction !== "unknown" && proposedDirection !== null && proposedDirection !== visible.direction) ||
+          ((visible.semanticKind === "merchant_refund" || visible.semanticKind === "chargeback") && !proposed.isRefund));
+      const proposal = contradictsReadFact ? original : proposed;
+      const changesMoney = proposal.type !== original.type || proposal.isRefund !== original.isRefund;
+      const needsConfirmation = changesMoney && (visible.direction === "unknown" || proposal.isRefund !== original.isRefund);
       const annotation = annotations.get(proposal.rowId)!;
       const row = finalRowById.get(proposal.rowId)!;
       const actionableAnnotationReasons =
-        row.rowRole === "financial_event" && row.postingStatus !== "pending" && row.postingStatus !== "declined" ? annotation.reviewReasons : [];
+        row.rowRole === "financial_event" && row.postingStatus !== "pending" && row.postingStatus !== "declined"
+          ? annotation.reviewReasons.filter((reason) => !["unknown_kind", "inconsistent_direction"].includes(reason) || proposal.reviewReasons.includes(reason))
+          : [];
       return {
         ...proposal,
         name: annotation.name,
         placeName: annotation.placeName,
         envelopeId: annotation.envelopeId,
         categoryId: annotation.categoryId,
-        reviewReasons: mergeReviewReasons(proposal.reviewReasons, actionableAnnotationReasons),
-        selected: proposal.selected && annotation.selected,
+        reviewReasons: mergeReviewReasons(
+          mergeReviewReasons(proposal.reviewReasons, actionableAnnotationReasons),
+          contradictsReadFact ? ["fact_correction"] : needsConfirmation ? ["history_conflict"] : [],
+        ),
+        selected: proposal.selected && annotation.selected && !needsConfirmation && !contradictsReadFact,
       };
     });
     finalResult = {
