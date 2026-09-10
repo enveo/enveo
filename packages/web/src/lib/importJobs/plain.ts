@@ -1,4 +1,4 @@
-import type { AiLocale, ImportJobDetail, ImportJobSummary } from "@enveo/shared";
+import type { AiLocale, ImportCompletion, ImportJobDetail, ImportJobSummary } from "@enveo/shared";
 import { api } from "../api";
 import { type ImportJobStorageScope, importJobStorage, type PlainImportUploadDraft, type PlainImportUploadDraftInput } from "../importJobStorage";
 import {
@@ -17,7 +17,7 @@ export interface PlainImportJobRemote {
   cancel(id: string, budgetId: string): Promise<ImportJobDetail>;
   retry(id: string, budgetId: string): Promise<ImportJobDetail>;
   removeMany(ids: string[], budgetId: string): Promise<{ deleted: number }>;
-  complete(id: string, input: { budgetId: string; appliedCount: number; skippedCount: number }): Promise<ImportJobDetail>;
+  complete(id: string, input: ImportCompletion & { budgetId: string }): Promise<ImportJobDetail>;
 }
 
 export interface PlainImportJobAdapterOptions {
@@ -248,6 +248,12 @@ export class PlainImportJobAdapter {
           this.publish(importActivityFromServer(summary));
         }
       }
+      await importJobStorage.pruneReceiptDrafts(
+        this.options.scope,
+        new Set(jobs.filter((job) => (this.options.activity.get(job.id)?.status ?? job.status) === "ready").map((job) => job.id)),
+        () => this.isCurrent(),
+      );
+      if (!this.isCurrent()) return;
       const serverIds = new Set(jobs.map((job) => job.id));
       for (const item of this.options.activity.list()) {
         if (item.budgetId === this.options.scope.budgetId && item.source === "plain" && !serverIds.has(item.id)) this.options.activity.remove(item.id);
@@ -317,7 +323,7 @@ export class PlainImportJobAdapter {
     this.publish(importActivityFromServer(job));
   }
 
-  async complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void> {
+  async complete(id: string, counts: ImportCompletion): Promise<void> {
     if (!this.isCurrent()) return;
     const job = await this.remote.complete(id, { budgetId: this.options.scope.budgetId, ...counts });
     if (this.isCurrent()) this.publish(importActivityFromServer(job));

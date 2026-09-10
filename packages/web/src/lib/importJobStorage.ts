@@ -109,6 +109,10 @@ function applyProgressKey(scope: ImportJobStorageScope, id: string): string {
   return JSON.stringify(["import-apply-progress", 3, scope.ownerId, scope.budgetId, id]);
 }
 
+function receiptKey(scope: ImportJobStorageScope, id: string): string {
+  return JSON.stringify(["import-receipt", 1, scope.ownerId, scope.budgetId, id]);
+}
+
 function legacyApplyProgressKey(scope: ImportJobStorageScope, id: string): string {
   return JSON.stringify(["import-apply-progress", 2, scope.ownerId, scope.budgetId, id]);
 }
@@ -299,6 +303,24 @@ function newestFirst<T extends { id: string; updatedAt: string }>(rows: T[]): T[
 }
 
 export const importJobStorage = {
+  async getReceiptDraft(scope: ImportJobStorageScope, id: string): Promise<string | undefined> {
+    assertValidScope(scope);
+    return (await idbGet<{ payload: string }>("meta", receiptKey(scope, id)))?.payload;
+  },
+  async putReceiptDraft(scope: ImportJobStorageScope, id: string, payload: string): Promise<void> {
+    assertValidScope(scope);
+    await idbPut("meta", { kind: "import-receipt", ...scope, id, payload }, receiptKey(scope, id));
+  },
+  async pruneReceiptDrafts(scope: ImportJobStorageScope, readyIds: ReadonlySet<string>, permitted: () => boolean): Promise<void> {
+    assertValidScope(scope);
+    for (const value of await idbGetAll<unknown>("meta")) {
+      if (!permitted()) return;
+      if (!value || typeof value !== "object") continue;
+      const row = value as { kind?: string; ownerId: string; budgetId: string; id: string };
+      if (row.kind === "import-receipt" && inScope(row, scope) && !readyIds.has(row.id)) await this.deleteApplyProgress(scope, row.id);
+    }
+  },
+
   durableTransactionProof(scope: ImportJobStorageScope, transactionId: string): Promise<"durable" | "rejected" | "absent"> {
     assertValidScope(scope);
     if (!transactionId) return Promise.resolve("absent");
@@ -483,6 +505,7 @@ export const importJobStorage = {
 
   async deleteApplyProgress(scope: ImportJobStorageScope, id: string): Promise<void> {
     assertValidScope(scope);
+    await idbDelete("meta", receiptKey(scope, id));
     await idbDelete("meta", applyProgressKey(scope, id));
     await idbDelete("meta", legacyApplyProgressKey(scope, id));
     await idbDelete("meta", oldestApplyProgressKey(scope, id));
@@ -539,7 +562,7 @@ export const importJobStorage = {
     const deleted = await idbDeleteImportJobWithMetaIfScope(
       id,
       scope,
-      [applyProgressKey(scope, id), legacyApplyProgressKey(scope, id), oldestApplyProgressKey(scope, id)],
+      [receiptKey(scope, id), applyProgressKey(scope, id), legacyApplyProgressKey(scope, id), oldestApplyProgressKey(scope, id)],
       permitted,
     );
     if (deleted) notify(scope);

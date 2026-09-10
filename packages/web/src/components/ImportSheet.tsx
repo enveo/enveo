@@ -1,3 +1,4 @@
+import type { ImportReceipt } from "@enveo/shared";
 import {
   type BalanceMatchChange,
   buildImportBalanceArbiterPrompt,
@@ -28,6 +29,7 @@ import { storageMode } from "../lib/idb";
 import type { ImportApplyProgress } from "../lib/importJobStorage";
 import { importApplyErrorMessage } from "../lib/importJobs/applyError";
 import { importJobManager } from "../lib/importJobs/manager";
+import { finishImportReceipt, prepareImportReceipt } from "../lib/importJobs/receipt";
 import type { ImportActivityItem } from "../lib/importJobs/store";
 import {
   applyBalanceMatchToReview,
@@ -66,6 +68,7 @@ import { AiConsentSheet } from "./AiConsentSheet";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Sheet } from "./chrome";
 import { type ImportBalanceMatchState, ImportBalanceReceipt } from "./ImportBalanceReceipt";
+import { ImportCompletionDetails } from "./ImportCompletionDetails";
 import { LazyChunk, useOpenedOnce } from "./lazy";
 
 // Lazy like AccountsWidget: the reconcile body only loads when the import hands over a bank balance.
@@ -144,6 +147,7 @@ export function ImportSheet({
   const [reconcileFigure, setReconcileFigure] = useState<number | null>(null);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const reconcileMounted = useOpenedOnce(reconcileOpen);
+  const [doneReceipt, setDoneReceipt] = useState<ImportReceipt | null>(null);
   const [doneStats, setDoneStats] = useState({ added: 0, dup: 0 });
   const [partialStats, setPartialStats] = useState<ImportApplyProgress | null>(null);
   const [sourceAccountUnavailable, setSourceAccountUnavailable] = useState(false);
@@ -219,6 +223,13 @@ export function ImportSheet({
       if (generation === viewGeneration.current) setError(t("The local replica is not ready."));
     });
   }, [currency, job, show, t]);
+
+  useEffect(() => {
+    if (!show || job?.status !== "completed") return;
+    setDoneStats({ added: job.appliedCount, dup: job.skippedCount });
+    setDoneReceipt(job.result?.receipt ?? null);
+    setPhase("done");
+  }, [job, show]);
 
   // iOS/WebKit: the full-screen item editor is a position:fixed portal on <body>
   // (sibling of #root). After it UNMOUNTS, the review panel — itself position:fixed
@@ -361,103 +372,125 @@ export function ImportSheet({
     setReconcileFigure(reconcileTarget);
     try {
       if (job?.status !== "ready" || !job.result || !job.accountId) throw new Error("invalid_import_job_state");
-      // The review can sit open for minutes: re-prove ownership, reconcile the raw Stage-A
-      // result again, then attach only current-ledger local operations to the outbox.
-      await assertOwnReplica();
-      const reviewEpoch = reviewE2eeEpoch.current;
-      if (reviewEpoch !== null) {
-        const current = e2ee.getTierMeta();
-        if (current.tier !== "e2ee" || current.epoch !== reviewEpoch) throw new Error("no_encryption_key");
-        e2ee.requireValidatedDek(reviewEpoch).fill(0);
-      }
-      const ledger = store.getLedger();
-      if (!ledger) throw new Error("no_local_replica");
-      const proposalRowIds = [...new Set(job.result.proposals.map((proposal) => proposal.rowId))];
-      const previouslyApplied = await importJobManager.appliedProgress(job.id, proposalRowIds);
-      const recognition = reconcileImportJobResult({ result: job.result, ledger, accountId: job.accountId });
-      const sourceAccount = ledger.accounts.find((account) => account.id === job.accountId);
-      const accountInvalid = !sourceAccount || sourceAccount.archived;
-      const candidates = recognitionCandidatesForDryRun(recognition, ledger);
-      const dry = accountInvalid ? { results: [] } : planLocalImport({ ledger, globalAccountId: job.accountId, items: candidates, dryRun: true });
-      const automaticEnvelopeId = ledger.accounts.find((account) => account.id === job.accountId)?.automaticEnvelopeId;
-      const previousById = new Map(items.map((row) => [row.rowId, row]));
-      const currentRows = buildImportReviewRows({
-        recognition,
-        ledger,
-        dryRunResults: dry.results,
-        automaticEnvelopeId,
-        budgetCurrency: ledger.budgets[0]?.currency ?? currency,
-        appliedRowIds: previouslyApplied.appliedRowIds,
-        skippedRowIds: previouslyApplied.skippedRowIds,
-      }).map((row) => ({ ...row, include: reviewSelectionAfterRefresh(row, previousById.get(row.rowId)) }));
-      const currentEdited = { ...edited };
-      let invalidatedEdit = false;
-      const activeAccountIds = new Set(ledger.accounts.filter((account) => !account.archived).map((account) => account.id));
-      const activeEnvelopeIds = new Set(ledger.envelopes.filter((envelope) => !envelope.archived).map((envelope) => envelope.id));
-      const activeCategoryIds = new Set(ledger.categories.filter((category) => !category.archived).map((category) => category.id));
-      currentRows.forEach((row, index) => {
-        const edit = currentEdited[index];
-        if (!edit) return;
-        const accountUnavailable = !activeAccountIds.has(edit.accountId);
-        const transferAccountUnavailable = edit.toAccountId !== null && !activeAccountIds.has(edit.toAccountId);
-        const envelopeUnavailable = edit.envelopeId !== null && !activeEnvelopeIds.has(edit.envelopeId);
-        const categoryUnavailable = edit.categoryId !== null && !activeCategoryIds.has(edit.categoryId);
-        if (accountUnavailable || transferAccountUnavailable || envelopeUnavailable || categoryUnavailable) {
-          delete currentEdited[index];
-          invalidatedEdit = true;
-          currentRows[index] = {
-            ...row,
-            include: false,
-            requiresReview: true,
-            blockingIssues: [...new Set([...row.blockingIssues, "assignment_unavailable" as const])],
-            item: row.item
-              ? {
-                  ...row.item,
-                  toAccountId: transferAccountUnavailable ? null : row.item.toAccountId,
-                  envelopeId: envelopeUnavailable ? null : row.item.envelopeId,
-                  categoryId: categoryUnavailable ? null : row.item.categoryId,
-                }
-              : null,
-          };
+      await importJobManager.withApplySession(job.id, async () => {
+        if (!job.result || !job.accountId) throw new Error("invalid_import_job_state");
+        // The review can sit open for minutes: re-prove ownership, reconcile the raw Stage-A
+        // result again, then attach only current-ledger local operations to the outbox.
+        await assertOwnReplica();
+        const reviewEpoch = reviewE2eeEpoch.current;
+        if (reviewEpoch !== null) {
+          const current = e2ee.getTierMeta();
+          if (current.tier !== "e2ee" || current.epoch !== reviewEpoch) throw new Error("no_encryption_key");
+          e2ee.requireValidatedDek(reviewEpoch).fill(0);
         }
-      });
-      if (invalidatedEdit) setEdited(currentEdited);
-      setItems(currentRows);
-      setSourceAccountUnavailable(accountInvalid);
-      if (accountInvalid || invalidatedEdit) return;
-      const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: currentRows, edited: currentEdited, editedAutomaticDefaults });
-      const chosenRowIds = new Set(chosen.flatMap((item) => (item.importRowId ? [item.importRowId] : [])));
-      await importJobManager.recordSkipped(
-        job.id,
-        proposalRowIds.filter((rowId) => !chosenRowIds.has(rowId) && !previouslyApplied.appliedRowIds.includes(rowId)),
-      );
-      const plan = planLocalImport({ ledger, globalAccountId: job.accountId, items: chosen, dryRun: false });
-      await applyLocalImportRecoverably(plan, undefined, {
-        apply: (rowId, mutation) =>
-          importJobManager.applyRow(job.id, rowId, async (transactionId, assertCurrent) => {
-            await assertCurrent();
-            mutation(transactionId);
-            await outbox.flushed();
-            if (!outbox.isDurable()) throw new Error("local_persistence_failed");
-          }),
-      });
-      const completedProgress = await importJobManager.appliedProgress(job.id, proposalRowIds);
-      const accountedRowIds = new Set([...completedProgress.appliedRowIds, ...completedProgress.skippedRowIds]);
-      if (proposalRowIds.some((rowId) => !accountedRowIds.has(rowId))) throw new Error("import_apply_incomplete");
-      const appliedCount = Math.max(job.appliedCount, proposalRowIds.filter((rowId) => completedProgress.appliedRowIds.includes(rowId)).length);
-      const skippedCount = Math.max(job.skippedCount, job.proposalCount - appliedCount);
-      try {
-        await importJobManager.complete(job.id, { appliedCount, skippedCount });
-      } catch (completionError) {
-        throw new PartialImportApplyError(completionError, {
-          appliedRowIds: completedProgress.appliedRowIds,
-          appliedCount: completedProgress.appliedCount,
-          skippedCount: completedProgress.skippedCount,
+        const ledger = store.getLedger();
+        if (!ledger) throw new Error("no_local_replica");
+        const proposalRowIds = [...new Set(job.result.proposals.map((proposal) => proposal.rowId))];
+        const previouslyApplied = await importJobManager.appliedProgress(job.id, proposalRowIds);
+        const recognition = reconcileImportJobResult({ result: job.result, ledger, accountId: job.accountId });
+        const sourceAccount = ledger.accounts.find((account) => account.id === job.accountId);
+        const accountInvalid = !sourceAccount || sourceAccount.archived;
+        const candidates = recognitionCandidatesForDryRun(recognition, ledger);
+        const dry = accountInvalid ? { results: [] } : planLocalImport({ ledger, globalAccountId: job.accountId, items: candidates, dryRun: true });
+        const automaticEnvelopeId = ledger.accounts.find((account) => account.id === job.accountId)?.automaticEnvelopeId;
+        const previousById = new Map(items.map((row) => [row.rowId, row]));
+        const currentRows = buildImportReviewRows({
+          recognition,
+          ledger,
+          dryRunResults: dry.results,
+          automaticEnvelopeId,
+          budgetCurrency: ledger.budgets[0]?.currency ?? currency,
+          appliedRowIds: previouslyApplied.appliedRowIds,
+          skippedRowIds: previouslyApplied.skippedRowIds,
+        }).map((row) => ({ ...row, include: reviewSelectionAfterRefresh(row, previousById.get(row.rowId)) }));
+        const currentEdited = { ...edited };
+        let invalidatedEdit = false;
+        const activeAccountIds = new Set(ledger.accounts.filter((account) => !account.archived).map((account) => account.id));
+        const activeEnvelopeIds = new Set(ledger.envelopes.filter((envelope) => !envelope.archived).map((envelope) => envelope.id));
+        const activeCategoryIds = new Set(ledger.categories.filter((category) => !category.archived).map((category) => category.id));
+        currentRows.forEach((row, index) => {
+          const edit = currentEdited[index];
+          if (!edit) return;
+          const accountUnavailable = !activeAccountIds.has(edit.accountId);
+          const transferAccountUnavailable = edit.toAccountId !== null && !activeAccountIds.has(edit.toAccountId);
+          const envelopeUnavailable = edit.envelopeId !== null && !activeEnvelopeIds.has(edit.envelopeId);
+          const categoryUnavailable = edit.categoryId !== null && !activeCategoryIds.has(edit.categoryId);
+          if (accountUnavailable || transferAccountUnavailable || envelopeUnavailable || categoryUnavailable) {
+            delete currentEdited[index];
+            invalidatedEdit = true;
+            currentRows[index] = {
+              ...row,
+              include: false,
+              requiresReview: true,
+              blockingIssues: [...new Set([...row.blockingIssues, "assignment_unavailable" as const])],
+              item: row.item
+                ? {
+                    ...row.item,
+                    toAccountId: transferAccountUnavailable ? null : row.item.toAccountId,
+                    envelopeId: envelopeUnavailable ? null : row.item.envelopeId,
+                    categoryId: categoryUnavailable ? null : row.item.categoryId,
+                  }
+                : null,
+            };
+          }
         });
-      }
-      setLastAccountId(job.accountId); // per-device preference (same as on the Add screen)
-      setDoneStats({ added: appliedCount, dup: skippedCount });
-      setPhase("done");
+        if (invalidatedEdit) setEdited(currentEdited);
+        setItems(currentRows);
+        setSourceAccountUnavailable(accountInvalid);
+        if (accountInvalid || invalidatedEdit) return;
+        const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: currentRows, edited: currentEdited, editedAutomaticDefaults });
+        const chosenRowIds = new Set(chosen.flatMap((item) => (item.importRowId ? [item.importRowId] : [])));
+        await importJobManager.recordSkipped(
+          job.id,
+          proposalRowIds.filter((rowId) => !chosenRowIds.has(rowId) && !previouslyApplied.appliedRowIds.includes(rowId)),
+        );
+        const plan = planLocalImport({ ledger, globalAccountId: job.accountId, items: chosen, dryRun: false });
+        const receiptDraft = prepareImportReceipt(
+          await importJobManager.receiptDraft(job.id),
+          ledger,
+          job.accountId,
+          currentRows,
+          plan,
+          previouslyApplied.appliedRowIds,
+          currentEdited,
+        );
+        await importJobManager.receiptDraft(job.id, receiptDraft);
+        await importJobManager.recordSkipped(
+          job.id,
+          chosen.filter((_, index) => plan.results[index]?.status === "exists").flatMap((row) => (row.importRowId ? [row.importRowId] : [])),
+        );
+        await applyLocalImportRecoverably(plan, undefined, {
+          apply: (rowId, mutation) =>
+            importJobManager.applyRow(job.id, rowId, async (transactionId, assertCurrent) => {
+              await assertCurrent();
+              mutation(transactionId);
+              await outbox.flushed();
+              if (!outbox.isDurable()) throw new Error("local_persistence_failed");
+            }),
+        });
+        const completedProgress = await importJobManager.appliedProgress(job.id, proposalRowIds);
+        const accountedRowIds = new Set([...completedProgress.appliedRowIds, ...completedProgress.skippedRowIds]);
+        if (proposalRowIds.some((rowId) => !accountedRowIds.has(rowId))) throw new Error("import_apply_incomplete");
+        const appliedCount = Math.max(job.appliedCount, proposalRowIds.filter((rowId) => completedProgress.appliedRowIds.includes(rowId)).length);
+        const skippedCount = Math.max(job.skippedCount, job.proposalCount - appliedCount);
+        const finalLedger = store.getLedger();
+        if (!finalLedger) throw new Error("no_local_replica");
+        const receipt = finishImportReceipt(receiptDraft, completedProgress.appliedRowIds, finalLedger, new Date().toISOString());
+        await importJobManager.receiptDraft(job.id, receipt);
+        try {
+          await importJobManager.complete(job.id, { appliedCount, skippedCount, receipt });
+        } catch (completionError) {
+          throw new PartialImportApplyError(completionError, {
+            appliedRowIds: completedProgress.appliedRowIds,
+            appliedCount: completedProgress.appliedCount,
+            skippedCount: completedProgress.skippedCount,
+          });
+        }
+        setLastAccountId(job.accountId); // per-device preference (same as on the Add screen)
+        setDoneReceipt(receipt);
+        setDoneStats({ added: appliedCount, dup: skippedCount });
+        setPhase("done");
+      });
     } catch (e) {
       if (e instanceof PartialImportApplyError) {
         const recoveredProgress = job
@@ -1180,7 +1213,8 @@ export function ImportSheet({
             <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 4 }}>
               {tp("Added {n} transaction | Added {n} transactions", doneStats.added)}
             </div>
-            {doneStats.dup > 0 && <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 4 }}>{t("Duplicates skipped: {n}", { n: doneStats.dup })}</div>}
+            {doneStats.dup > 0 && <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 4 }}>{t("Skipped: {n}", { n: doneStats.dup })}</div>}
+            <ImportCompletionDetails receipt={doneReceipt} />
             {reconcileAfter && reconcileFigure !== null && (
               <button
                 type="button"

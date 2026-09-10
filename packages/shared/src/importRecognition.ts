@@ -2,6 +2,7 @@ import { isSupportedCurrency } from "./currency";
 import { isCalendarDate } from "./dates";
 import { printedAmountIn } from "./importAmounts";
 import { buildImportDupIndex, classifyImportDup, existingImportRowsForAccount, type ImportDupStatus, importCandidateDirection } from "./importDedupe";
+import type { ImportReceipt } from "./importReceipt";
 import type { Account, Category, Envelope, Transaction } from "./types";
 
 export const IMPORT_SEMANTIC_KINDS = [
@@ -111,6 +112,7 @@ export interface ImportSeamOutcome {
 }
 
 export interface ImportRecognitionResult {
+  receipt?: ImportReceipt;
   rows: ImportExtractRow[];
   proposals: ImportProposal[];
   seam?: ImportSeamOutcome;

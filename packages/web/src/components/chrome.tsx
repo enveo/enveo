@@ -14,6 +14,7 @@ import { store } from "../lib/store";
 import { CORAL, CTA, font, P, type Theme } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
 import { PHONE_COL } from "../lib/viewMode";
+import { HeaderImportBadge } from "./HeaderImportBadge";
 
 // Lazy — the pane-surface presentation lives in the wide chunk; phone (and any un-hosted mount)
 // never requests it, since `Surface` below only reaches this branch when `useWideHost()?.surfaces`
@@ -115,9 +116,13 @@ export function Header({
   const inkSoft = onBand ? C.headerInk : C.soft;
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: `12px ${P}px 6px` }}>
-      <button onClick={onMenu} aria-label={t("Menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
-        <Ico d="M4 6h16M4 12h16M4 18h16" size={21} color={ink} sw={2} />
-      </button>
+      <div style={{ position: "relative", display: "flex" }}>
+        {" "}
+        <button onClick={onMenu} aria-label={t("Menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+          <Ico d="M4 6h16M4 12h16M4 18h16" size={21} color={ink} sw={2} />
+        </button>
+        <HeaderImportBadge />
+      </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <button
           onClick={onPrev}

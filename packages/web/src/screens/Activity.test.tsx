@@ -150,7 +150,7 @@ describe("durable import foreground and Activity view models", () => {
 
     expect(app).toContain('lazy(() => import("./components/OptionalStatusChrome")');
     expect(app).not.toContain("<Activity onOpen=");
-    expect(optionalChrome).toContain('from "./ImportActivityBadge"');
+    expect(readFileSync(join(import.meta.dir, "..", "components", "HeaderImportBadge.tsx"), "utf8")).toContain('import("./ImportActivityBadge")');
     expect(optionalChrome).not.toContain('from "../screens/Activity"');
     expect(optionalChrome).not.toContain('from "./ImportSheet"');
     expect(badge).not.toContain("importJobManager.list()");

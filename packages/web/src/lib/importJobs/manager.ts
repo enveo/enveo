@@ -1,5 +1,6 @@
-import type { AiLocale, ClientLedger, OpenAiModel } from "@enveo/shared";
-import { importApplyRowToken, plainImportApplyRowToken } from "../crypto";
+import type { AiLocale, ClientLedger, ImportCompletion, OpenAiModel } from "@enveo/shared";
+import { type ImportReceipt, importReceiptSchema } from "@enveo/shared";
+import { decryptPayload, encryptPayload, importApplyRowToken, importJobAadContext, plainImportApplyRowToken } from "../crypto";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
 import { type ImportApplyProgress, type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
@@ -30,7 +31,7 @@ export interface ImportJobManagerPlainPort {
   cancel(id: string): Promise<void>;
   retry(id: string): Promise<void>;
   removeMany(ids: string[]): Promise<void>;
-  complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void>;
+  complete(id: string, counts: ImportCompletion): Promise<void>;
   dismiss(id: string): void;
 }
 
@@ -42,7 +43,7 @@ export interface ImportJobManagerE2eePort {
   cancel(id: string): Promise<void>;
   retry(id: string): Promise<void>;
   removeMany(ids: string[]): Promise<void>;
-  complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void>;
+  complete(id: string, counts: ImportCompletion): Promise<void>;
   dismiss(id: string): Promise<void>;
 }
 
@@ -375,6 +376,40 @@ export class ImportJobManager {
     return new Map(pairs);
   }
 
+  async withApplySession(id: string, task: () => Promise<void>): Promise<void> {
+    const target = await this.mutationItem(id);
+    if (!target) throw new Error("import_manager_not_ready");
+    await this.withApplyLock(JSON.stringify(["enveo-import-review", 1, target.scope.ownerId, target.scope.budgetId, id]), async () => {
+      await this.list();
+      if (target.generation !== this.generation || this.activity.get(id)?.status !== "ready") throw new Error("invalid_import_job_state");
+      await task();
+    });
+  }
+
+  async receiptDraft(id: string, value?: ImportReceipt): Promise<ImportReceipt | null> {
+    const target = await this.mutationItem(id);
+    if (!target) throw new Error("import_manager_not_ready");
+    const { item, scope, generation } = target;
+    const key = item.source === "e2ee" ? e2ee.requireValidatedDek(item.epoch) : null;
+    try {
+      const aad = key ? importJobAadContext(item.budgetId, item.epoch, id, "receipt") : null;
+      if (value) {
+        const json = JSON.stringify(importReceiptSchema.parse(value));
+        const payload = key && aad ? await encryptPayload(json, key, aad) : json;
+        if (generation !== this.generation) throw new Error("stale_import_job_manager");
+        await importJobStorage.putReceiptDraft(scope, id, payload);
+        return value;
+      }
+      const payload = await importJobStorage.getReceiptDraft(scope, id);
+      if (!payload) return null;
+      const json = key && aad ? await decryptPayload(payload, key, aad) : payload;
+      if (generation !== this.generation) throw new Error("stale_import_job_manager");
+      return importReceiptSchema.parse(JSON.parse(json));
+    } finally {
+      key?.fill(0);
+    }
+  }
+
   async recordSkipped(id: string, rowIds: readonly string[]): Promise<void> {
     const scope = this.scope;
     if (!scope || !this.activity.get(id)) return;
@@ -574,7 +609,7 @@ export class ImportJobManager {
     for (const id of [...plainIds, ...e2eeIds]) await this.clearApplied(id, scope);
   }
 
-  async complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void> {
+  async complete(id: string, counts: ImportCompletion): Promise<void> {
     const target = await this.mutationItem(id);
     if (!target) return;
     if (target.item.source === "e2ee") await this.local?.complete(id, counts);

@@ -72,7 +72,7 @@ export type E2eeAadContext =
   | readonly ["enveo-e2ee", 2, "import-job", string /* budgetId */, number /* epoch */, string /* jobId */, ImportJobAadPart];
 
 /** `chunks` (4.3) is the per-window cycle-one state of a multi-screenshot job. */
-export type ImportJobAadPart = "input" | "checkpoint" | "result" | "chunks";
+export type ImportJobAadPart = "input" | "checkpoint" | "result" | "chunks" | "receipt";
 
 type ImportApplyRowContext = readonly [
   "enveo-e2ee",
@@ -125,7 +125,7 @@ export function budgetSecretAadContext(budgetId: string, epoch: number, kind: "o
 /** Import-job AAD: every durable local artifact is domain-separated and bound to the
  *  budget key generation and client-generated job identity. */
 export function importJobAadContext(budgetId: string, epoch: number, jobId: string, part: ImportJobAadPart): E2eeAadContext {
-  if (part !== "input" && part !== "checkpoint" && part !== "result" && part !== "chunks") throw new Error("bad_aad_context");
+  if (part !== "input" && part !== "checkpoint" && part !== "result" && part !== "chunks" && part !== "receipt") throw new Error("bad_aad_context");
   return ["enveo-e2ee", 2, "import-job", requireUuid(budgetId), requireCounter(epoch), requireUuid(jobId), part] as const;
 }
 

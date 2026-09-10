@@ -4,6 +4,7 @@ import {
   IMPORT_JOB_MAX_IMAGES,
   importJobDetailSchema,
   importJobSummarySchema,
+  importReceiptSchema,
   reconcileBudgetPreferences,
 } from "@enveo/shared";
 import { and, eq } from "drizzle-orm";
@@ -48,6 +49,7 @@ export const createImportJobInput = z
 export const importJobMutationInput = z.object({ budgetId: z.string().uuid() }).strict();
 export const deleteImportJobsInput = importJobMutationInput.extend({ ids: z.array(z.string().uuid()).min(1).max(100) }).strict();
 export const completeImportJobInput = importJobMutationInput.extend({
+  receipt: importReceiptSchema.optional(),
   appliedCount: z.number().int().nonnegative(),
   skippedCount: z.number().int().nonnegative(),
 });
@@ -200,8 +202,16 @@ export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
     const id = idParam(c);
     const current = await repository.getForBudget(authorization.owner, body.budgetId, id);
     if (!current) return c.json({ error: "not_found" }, 404);
+    if (current.status === "completed") return c.json(publicDetail(current));
+    if (
+      body.receipt &&
+      (body.receipt.completedAt === null ||
+        body.receipt.rows.filter((row) => row.added).length !== body.appliedCount ||
+        body.receipt.rows.filter((row) => !row.added).length !== body.skippedCount)
+    )
+      return c.json({ error: "invalid_import_receipt" }, 400);
     if (current.status !== "ready") return c.json({ error: "invalid_import_job_state" }, 409);
-    const result = await repository.markCompleted(authorization.owner, body.budgetId, id, body.appliedCount, body.skippedCount);
+    const result = await repository.markCompleted(authorization.owner, body.budgetId, id, body.appliedCount, body.skippedCount, new Date(), body.receipt);
     return result ? c.json(publicDetail(result)) : c.json({ error: "invalid_import_job_state" }, 409);
   });
 
