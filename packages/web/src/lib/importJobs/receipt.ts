@@ -39,7 +39,7 @@ export function prepareImportReceipt(
         previous?.balances.find((a) => a.accountId === id) ?? {
           accountId: id,
           name: name(ledger.accounts, id) ?? "",
-          before: applied.length && !previous ? null : (current.get(id) ?? null),
+          before: applied.length ? null : (current.get(id) ?? null),
           after: null,
         },
     ),

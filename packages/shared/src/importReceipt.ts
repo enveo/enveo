@@ -36,6 +36,8 @@ export const importReceiptSchema = z
   })
   .strict()
   .superRefine((receipt, ctx) => {
+    if (new Set(receipt.balances.map((balance) => balance.accountId)).size !== receipt.balances.length)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "duplicate receipt balance" });
     if (new Set(receipt.rows.map((row) => row.rowId)).size !== receipt.rows.length)
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "duplicate receipt row" });
     if (

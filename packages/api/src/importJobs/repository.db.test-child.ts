@@ -8,6 +8,7 @@ import { createImportJobRepository, ImportJobConflict } from "./repository";
 export const SENTINEL = "__IMPORT_JOB_REPOSITORY_CHILD__";
 
 export interface ImportJobRepositoryOutput {
+  completionRetention: boolean;
   creation: {
     firstCreated: boolean;
     replayCreated: boolean;
@@ -526,6 +527,12 @@ async function main() {
         expiredJobsDeleted: afterCleanup?.expiredJobs === 0,
         reportedCounts: cleanup.imagesDeleted >= 2 && cleanup.detailsCleared >= 1 && cleanup.jobsDeleted >= 1,
       },
+      completionRetention: await (async () => {
+        await repository.cleanupExpired(at("2026-08-31T17:03:30.000Z"));
+        const retained = await repository.getForUser(userId, receiptId);
+        await repository.cleanupExpired(at("2026-08-31T17:04:00.000Z"));
+        return retained?.result?.receipt?.completedAt === receipt.completedAt && (await repository.getForUser(userId, receiptId)) === null;
+      })(),
     } satisfies ImportJobRepositoryOutput);
   } finally {
     if (isolated) await isolated.end({ timeout: 5 });

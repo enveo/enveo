@@ -97,3 +97,23 @@ test("skipped rows retain manual corrections and foreign rows retain their curre
   expect(completed.rows[0]?.detailsUnavailable).toBe(true);
   expect(importReceiptSchema.safeParse(completed).success).toBe(true);
 });
+
+test("a resumed import preserves known before balances and leaves newly encountered accounts unknown", () => {
+  const ledger = {
+    budgets: [],
+    accounts: [
+      { id: "a", initialBalance: 10000 },
+      { id: "b", initialBalance: 5000 },
+    ],
+    transactions: [],
+    envelopes: [],
+    groups: [],
+    allocations: [],
+    categories: [],
+    places: [],
+  } as unknown as ClientLedger;
+  const previous: ImportReceipt = { completedAt: null, currency: "EUR", balances: [{ accountId: "a", name: "Bank", before: 12000, after: null }], rows: [] };
+  const result = prepareImportReceipt(previous, ledger, "b", [], { dryRun: false, added: 0, skipped: 0, transactions: [], results: [] }, ["already-applied"]);
+  expect(result.balances.find((a) => a.accountId === "a")?.before).toBe(12000);
+  expect(result.balances.find((a) => a.accountId === "b")?.before).toBeNull();
+});
