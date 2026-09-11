@@ -28,6 +28,7 @@ test("receipts reject fractional money and duplicate rows at the storage boundar
     ],
   };
   expect(importReceiptSchema.safeParse(receipt).success).toBe(true);
+  expect(importReceiptSchema.safeParse({ ...receipt, balances: [...receipt.balances, ...receipt.balances] }).success).toBe(false);
   expect(importReceiptSchema.safeParse({ ...receipt, rows: [{ ...receipt.rows[0], selected: false, detailsUnavailable: true }] }).success).toBe(false);
   expect(importReceiptSchema.safeParse({ ...receipt, balances: [{ ...receipt.balances[0], after: 57.5 }] }).success).toBe(false);
   expect(importReceiptSchema.safeParse({ ...receipt, rows: [...receipt.rows, ...receipt.rows] }).success).toBe(false);

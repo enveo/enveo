@@ -13,6 +13,7 @@ import {
   importExtractBatchSchema,
   importImageChunks,
   importJobResultSchema,
+  importReceiptSchema,
   OPENAI_MODELS,
   type OpenAiModel,
 } from "@enveo/shared";
@@ -808,9 +809,10 @@ export class E2eeImportJobRunner {
     let job = await importJobStorage.getJob(this.options.scope, id);
     if (!this.isCurrent() || job?.status !== "ready") return;
     try {
+      const receipt = counts.receipt === undefined ? undefined : importReceiptSchema.parse(counts.receipt);
       if (job.phase === "ready") job = await this.transition(job, { type: "begin_apply", at: this.timestamp() });
       if (job.phase !== "applying") return;
-      const result = counts.receipt ? { rows: [], proposals: [], receipt: counts.receipt } : null;
+      const result = receipt ? { rows: [], proposals: [], receipt } : null;
       let resultCiphertext: string | null = null;
       if (result) {
         const key = this.requireDek(job.epoch);
@@ -828,6 +830,7 @@ export class E2eeImportJobRunner {
           chunkCiphertext: null,
           checkpointCiphertext: null,
           resultCiphertext,
+          expiresAt: new Date(this.now().getTime() + IMPORT_JOB_RETENTION_MS).toISOString(),
           appliedCount: counts.appliedCount,
           skippedCount: counts.skippedCount,
         },

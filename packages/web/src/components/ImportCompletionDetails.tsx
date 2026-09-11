@@ -1,13 +1,13 @@
 import type { ImportReceipt } from "@enveo/shared";
-import { useTheme } from "../lib/contexts";
-import { formatMoney } from "../lib/format";
+import { useMask, useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
 
 export function ImportCompletionDetails({ receipt }: { receipt: ImportReceipt | null }) {
   const C = useTheme();
+  const M = useMask();
   const { t, lang } = useT();
   if (!receipt) return <p style={{ color: C.soft }}>{t("Details were not saved for this import.")}</p>;
-  const money = (value: number | null, currency = receipt.currency) => (value === null ? "—" : formatMoney(value, currency, lang));
+  const money = (value: number | null, currency = receipt.currency) => (value === null ? "—" : M(value, currency));
   const rows = (added: boolean) =>
     receipt.rows
       .filter((row) => row.added === added)

@@ -848,6 +848,7 @@ export function createImportJobRepository(database: DB) {
           appliedCount,
           skippedCount,
           updatedAt: now,
+          expiresAt: new Date(now.getTime() + IMPORT_JOB_RETENTION_MS),
         })
         .where(
           and(

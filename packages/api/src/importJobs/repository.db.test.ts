@@ -67,6 +67,7 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
   });
 
   test("persists cancellation, retry, failure, and completion transitions", () => {
+    expect(output.completionRetention).toBe(true);
     expect(output.transitions).toEqual({
       retryScheduled: true,
       retryQueued: true,
