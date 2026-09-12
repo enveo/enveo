@@ -27,6 +27,7 @@ import { currentMonth, shiftMonth } from "./lib/dates";
 import { useT } from "./lib/i18n";
 import { importManagerBootstrap } from "./lib/importJobs/bootstrap";
 import { historyAction, parseUrl, routeToUrl } from "./lib/routing";
+import { OpenImportActivity } from "./lib/shellContext";
 import { startupPresentation } from "./lib/startupSplash";
 import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
@@ -1056,113 +1057,115 @@ function AppContent() {
   }
 
   return (
-    <div style={backdrop}>
-      <div
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
-        style={{
-          maxWidth: PHONE_COL,
-          margin: "0 auto",
-          height: "100dvh",
-          background: C.bg,
-          display: "flex",
-          flexDirection: "column",
-          fontFamily: font,
-          overflow: "hidden",
-          borderRadius: framed ? 24 : 0,
-          boxShadow: framed ? "0 0 80px rgba(0,0,0,0.4)" : "none",
-          WebkitFontSmoothing: "antialiased",
-          position: "relative",
-        }}
-      >
-        <StyleInjector />
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
-          {isLoading && <BootSkeleton />}
-          {isError && <FirstBootError />}
-          {state && onboarding && (
-            <LazyChunk>
-              <OnboardingScreen onDone={() => setWizard(false)} />
-            </LazyChunk>
-          )}
-          {state && !onboarding && envView && (
-            <LazyChunk onDismiss={() => setEnvView(null)}>
-              <EnvelopeScreen envelopeId={envView.envelopeId} initialMonth={envView.month} onBack={back} onOpenTxns={openTxns} />
-            </LazyChunk>
-          )}
-          {state && !onboarding && !envView && screenEl}
-        </div>
-        {!["addExpense", "settings"].includes(screen) && !onboarding && !envView && <BottomNav active={screen} onNav={nav} />}
-        {/* badge anchors top-right; on Add the header is the type tabs → collision, hide it */}
-        {screen !== "addExpense" && <SyncBadge onOpenSync={() => nav("settings")} />}
-        {importManagerStatus === "error" && (
-          <div role="status" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 13px)", right: 104, zIndex: 62 }}>
-            <button
-              type="button"
-              onClick={() => void importManagerBootstrap.start()}
-              aria-label={t("Imports could not be refreshed. Try again.")}
-              style={{
-                width: 20,
-                height: 20,
-                borderRadius: 999,
-                border: 0,
-                background: "var(--danger)",
-                color: "#fff",
-                cursor: "pointer",
-              }}
-            >
-              !
-            </button>
+    <OpenImportActivity.Provider value={() => nav("activity")}>
+      <div style={backdrop}>
+        <div
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+          style={{
+            maxWidth: PHONE_COL,
+            margin: "0 auto",
+            height: "100dvh",
+            background: C.bg,
+            display: "flex",
+            flexDirection: "column",
+            fontFamily: font,
+            overflow: "hidden",
+            borderRadius: framed ? 24 : 0,
+            boxShadow: framed ? "0 0 80px rgba(0,0,0,0.4)" : "none",
+            WebkitFontSmoothing: "antialiased",
+            position: "relative",
+          }}
+        >
+          <StyleInjector />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
+            {isLoading && <BootSkeleton />}
+            {isError && <FirstBootError />}
+            {state && onboarding && (
+              <LazyChunk>
+                <OnboardingScreen onDone={() => setWizard(false)} />
+              </LazyChunk>
+            )}
+            {state && !onboarding && envView && (
+              <LazyChunk onDismiss={() => setEnvView(null)}>
+                <EnvelopeScreen envelopeId={envView.envelopeId} initialMonth={envView.month} onBack={back} onOpenTxns={openTxns} />
+              </LazyChunk>
+            )}
+            {state && !onboarding && !envView && screenEl}
           </div>
-        )}
-        {envActionsMounted && (
-          <LazyChunk variant="overlay" onDismiss={() => setEnvActions(null)}>
-            <EnvActionsSheet
-              env={actionsEnv}
-              onClose={() => setEnvActions(null)}
-              onTxns={() => {
-                if (envActions) {
-                  openTxns({ envId: envActions.envelopeId });
-                  setEnvActions(null);
-                }
-              }}
-              onSummary={() => {
-                if (envActions) {
-                  setEnvView(envActions);
-                  setEnvActions(null);
-                }
-              }}
-              onEdit={() => {
-                if (envActions) {
-                  setEnvEdit(envActions.envelopeId);
-                  setEnvActions(null);
-                }
-              }}
-            />
-          </LazyChunk>
-        )}
-        {envEdit && (
-          <LazyChunk variant="overlay" onDismiss={() => setEnvEdit(null)}>
-            <EnvEdit env={editEnv} groups={state?.groups ?? []} accounts={state?.accounts ?? []} onClose={() => setEnvEdit(null)} />
-          </LazyChunk>
-        )}
-        <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} onInstall={() => setInstallSheet(true)} />
-        {/* not during onboarding: the wizard ends with its own install card (a second ask), the
+          {!["addExpense", "settings"].includes(screen) && !onboarding && !envView && <BottomNav active={screen} onNav={nav} />}
+          {/* badge anchors top-right; on Add the header is the type tabs → collision, hide it */}
+          {screen !== "addExpense" && <SyncBadge onOpenSync={() => nav("settings")} />}
+          {importManagerStatus === "error" && (
+            <div role="status" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 13px)", right: 104, zIndex: 62 }}>
+              <button
+                type="button"
+                onClick={() => void importManagerBootstrap.start()}
+                aria-label={t("Imports could not be refreshed. Try again.")}
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 999,
+                  border: 0,
+                  background: "var(--danger)",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                !
+              </button>
+            </div>
+          )}
+          {envActionsMounted && (
+            <LazyChunk variant="overlay" onDismiss={() => setEnvActions(null)}>
+              <EnvActionsSheet
+                env={actionsEnv}
+                onClose={() => setEnvActions(null)}
+                onTxns={() => {
+                  if (envActions) {
+                    openTxns({ envId: envActions.envelopeId });
+                    setEnvActions(null);
+                  }
+                }}
+                onSummary={() => {
+                  if (envActions) {
+                    setEnvView(envActions);
+                    setEnvActions(null);
+                  }
+                }}
+                onEdit={() => {
+                  if (envActions) {
+                    setEnvEdit(envActions.envelopeId);
+                    setEnvActions(null);
+                  }
+                }}
+              />
+            </LazyChunk>
+          )}
+          {envEdit && (
+            <LazyChunk variant="overlay" onDismiss={() => setEnvEdit(null)}>
+              <EnvEdit env={editEnv} groups={state?.groups ?? []} accounts={state?.accounts ?? []} onClose={() => setEnvEdit(null)} />
+            </LazyChunk>
+          )}
+          <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} onInstall={() => setInstallSheet(true)} />
+          {/* not during onboarding: the wizard ends with its own install card (a second ask), the
             BottomNav the banner's offset clears is hidden there, and it must not cover the skeleton */}
-        {state && !onboarding && (
+          {state && !onboarding && (
+            <LazyChunk variant="silent">
+              <InstallBanner offsetForNav />
+            </LazyChunk>
+          )}
+          {installSheetMounted && (
+            <LazyChunk variant="overlay" onDismiss={() => setInstallSheet(false)}>
+              <InstallSheet show={installSheet} onClose={() => setInstallSheet(false)} />
+            </LazyChunk>
+          )}
           <LazyChunk variant="silent">
-            <InstallBanner offsetForNav />
+            <OptionalStatusChrome showBadges={screen !== "addExpense"} />
           </LazyChunk>
-        )}
-        {installSheetMounted && (
-          <LazyChunk variant="overlay" onDismiss={() => setInstallSheet(false)}>
-            <InstallSheet show={installSheet} onClose={() => setInstallSheet(false)} />
-          </LazyChunk>
-        )}
-        <LazyChunk variant="silent">
-          <OptionalStatusChrome showBadges={screen !== "addExpense"} onOpenActivity={() => nav("activity")} />
-        </LazyChunk>
+        </div>
       </div>
-    </div>
+    </OpenImportActivity.Provider>
   );
 }
 

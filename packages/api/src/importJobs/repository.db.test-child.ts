@@ -8,6 +8,7 @@ import { createImportJobRepository, ImportJobConflict } from "./repository";
 export const SENTINEL = "__IMPORT_JOB_REPOSITORY_CHILD__";
 
 export interface ImportJobRepositoryOutput {
+  completionRetention: boolean;
   creation: {
     firstCreated: boolean;
     replayCreated: boolean;
@@ -50,6 +51,7 @@ export interface ImportJobRepositoryOutput {
     manualRetryResetsAttempts: boolean;
     permanentFailureRetainsInput: boolean;
     completedCountsSaved: boolean;
+    completionReceiptRetained: boolean;
     crossBudgetMutationsRejected: boolean;
   };
   chunks: {
@@ -317,6 +319,16 @@ async function main() {
     const completed = await repository.markCompleted(userId, budgetId, completedId, 3, 1, at("2026-08-24T17:04:00.000Z"));
     await isolated.unsafe("update import_jobs set extraction = $1::jsonb, result = $1::jsonb where id = $2", [JSON.stringify(emptyResult), completedId]);
 
+    const receiptId = crypto.randomUUID();
+    const receipt = { completedAt: "2026-08-24T17:04:00.000Z", currency: "EUR", balances: [], rows: [] };
+    await repository.create(createInput(receiptId), at("2026-08-24T17:00:00.000Z"));
+    const receiptLease = await repository.claimNext("worker-receipt", at("2026-08-24T17:01:00.000Z"));
+    if (receiptLease?.id !== receiptId) throw new Error("expected receipt job claim");
+    await repository.saveExtractionAndDeleteImages(receiptId, receiptLease.leaseToken, emptyResult, at("2026-08-24T17:02:00.000Z"));
+    await repository.advancePhase(receiptId, receiptLease.leaseToken, "reconciling", at("2026-08-24T17:02:30.000Z"));
+    await repository.saveReadyResult(receiptId, receiptLease.leaseToken, emptyResult, at("2026-08-24T17:03:00.000Z"));
+    await repository.markCompleted(userId, budgetId, receiptId, 0, 0, at("2026-08-24T17:04:00.000Z"), receipt);
+
     const cleanupRetryId = crypto.randomUUID();
     await repository.create(createInput(cleanupRetryId), at("2026-08-20T10:00:00.000Z"));
     const cleanupRetryLease = await repository.claimNext("worker-cleanup", at("2026-08-20T10:01:00.000Z"));
@@ -477,6 +489,7 @@ async function main() {
         retryQueued: retried?.status === "queued",
         manualRetryResetsAttempts: manualRetry?.status === "queued" && manualRetry.attempt === 0,
         permanentFailureRetainsInput: permanentInput?.imageCount === 2 && permanentInput.hasExtraction,
+        completionReceiptRetained: JSON.stringify((await repository.getForUser(userId, receiptId))?.result?.receipt) === JSON.stringify(receipt),
         completedCountsSaved: completed?.status === "completed" && completed.appliedCount === 3 && completed.skippedCount === 1,
         crossBudgetMutationsRejected: wrongCancel === null && wrongRetry === null && wrongComplete === null,
       },
@@ -514,6 +527,12 @@ async function main() {
         expiredJobsDeleted: afterCleanup?.expiredJobs === 0,
         reportedCounts: cleanup.imagesDeleted >= 2 && cleanup.detailsCleared >= 1 && cleanup.jobsDeleted >= 1,
       },
+      completionRetention: await (async () => {
+        await repository.cleanupExpired(at("2026-08-31T17:03:30.000Z"));
+        const retained = await repository.getForUser(userId, receiptId);
+        await repository.cleanupExpired(at("2026-08-31T17:04:00.000Z"));
+        return retained?.result?.receipt?.completedAt === receipt.completedAt && (await repository.getForUser(userId, receiptId)) === null;
+      })(),
     } satisfies ImportJobRepositoryOutput);
   } finally {
     if (isolated) await isolated.end({ timeout: 5 });

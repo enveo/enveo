@@ -32,6 +32,19 @@ const query = (over: Partial<ImportHistoryQuery> = {}): ImportHistoryQuery => ({
 });
 
 describe("selectImportHistoryCandidates", () => {
+  test("does not turn weak bank-text similarities into a history conflict", () => {
+    const result = selectImportHistoryCandidates(
+      query({ direction: "unknown", proposal: { ...query().proposal, rawPlace: "12.00 PLN\nPARKING CENTRAL\n9988", tag: "" } }),
+      [
+        record({ sourceRef: "18.00 PLN\nBAKERY CENTRAL\n9988", tag: "", place: "Bakery", envelope: "Food" }),
+        record({ sourceRef: "12.00 PLN\nFLOWERS CENTRAL\n9988", tag: "", place: "Florist", envelope: "Gifts", isRefund: true }),
+      ],
+    );
+    expect(result.candidates.length).toBeGreaterThan(1);
+    expect(result.conflict).toBe(false);
+    expect(result.metadata).toBeUndefined();
+  });
+
   test("returns an exact source reference as ranked evidence without a certainty flag", () => {
     const result = selectImportHistoryCandidates(query(), [record()]);
 
@@ -92,6 +105,41 @@ describe("selectImportHistoryCandidates", () => {
     const result = selectImportHistoryCandidates(query(), [record({ sourceRef: "BANK FUEL" }), record()]);
 
     expect(result.candidates).toMatchObject([{ sourceRef: "BANK*FUEL 123", count: 2 }]);
+  });
+
+  test("does not treat a shared numeric card tag as merchant identity", () => {
+    const result = selectImportHistoryCandidates(query({ proposal: { ...query().proposal, rawPlace: "OTHER SHOP 9876", tag: "9876" } }), [
+      record({ sourceRef: null, tag: "9876", place: null }),
+    ]);
+    expect(result.metadata).toBeUndefined();
+  });
+
+  test("does not auto-assign a merchant whose name is only a prefix of another merchant", () => {
+    const result = selectImportHistoryCandidates(query({ proposal: { ...query().proposal, rawPlace: "FUEL EXPRESS", tag: "" } }), [
+      record({ sourceRef: "FUEL", tag: "FUEL", place: "Fuel" }),
+    ]);
+    expect(result.metadata).toBeUndefined();
+  });
+
+  test("uses a complete merchant line from manual history without a source reference", () => {
+    const result = selectImportHistoryCandidates(query({ proposal: { ...query().proposal, rawPlace: "12.34 PLN\nFUEL STATION\nCARD 9876", tag: "" } }), [
+      record({ sourceRef: null, tag: null }),
+    ]);
+    expect(result.metadata).toMatchObject({ name: "Fuel", place: "Fuel station", envelope: "Car" });
+  });
+
+  test("keeps a conflicting merchant descriptor even beside an exact full bank row", () => {
+    // given: two strong records disagree; one includes the full bank wrapper
+    const rawPlace = "12.34 PLN\nBANK FUEL 123\nCARD 9876";
+    const result = selectImportHistoryCandidates(
+      query({ proposal: { ...query().proposal, rawPlace, tag: "" } }),
+      [record({ sourceRef: rawPlace }), record({ envelope: "Travel" })],
+      1,
+    );
+    // then: neither ranking nor the prompt limit can hide the other assignment
+    expect(result.candidates).toHaveLength(1);
+    expect(result.conflict).toBe(true);
+    expect(result.metadata).toMatchObject({ place: "Fuel station", envelope: null, category: "Fuel" });
   });
 
   test("caps an oversized requested limit at five candidates", () => {

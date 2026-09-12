@@ -35,6 +35,7 @@ const expectedRow = (overrides: Partial<ExpectedImportRecognitionRow> = {}): Exp
 
 const actualRow = (overrides: Partial<ActualImportRecognitionRow> = {}): ActualImportRecognitionRow => ({
   id: "purchase",
+  postingStatus: "posted",
   date: "2026-08-15",
   amount: 1299,
   currency: "EUR",
@@ -56,6 +57,29 @@ const actualRow = (overrides: Partial<ActualImportRecognitionRow> = {}): ActualI
 });
 
 describe("scoreImportRecognition", () => {
+  test("scores optional name and place expectations without changing older manifests", () => {
+    const truth = expectedRow({ expectedProposal: { ...expectedRow().expectedProposal!, name: "Groceries", placeName: null } });
+    const correct = actualRow({ proposal: { ...actualRow().proposal!, name: "Groceries", placeName: null } });
+
+    expect(scoreImportRecognition([truth], [correct]).interpretationErrors).toBe(0);
+    expect(scoreImportRecognition([truth], [actualRow({ proposal: { ...correct.proposal!, name: "Fuel" } })]).interpretationErrors).toBe(1);
+    expect(scoreImportRecognition([truth], [actualRow({ proposal: { ...correct.proposal!, placeName: "Invented place" } })]).interpretationErrors).toBe(1);
+    expect(scoreImportRecognition([expectedRow()], [correct]).interpretationErrors).toBe(0);
+  });
+
+  test("pending purchases are included and reviewed by the same rules as posted purchases", () => {
+    const truth = expectedRow({ postingStatus: "pending" });
+    const selected = actualRow({ postingStatus: "pending" });
+    const metrics = scoreImportRecognition([truth], [selected]);
+
+    expect(metrics.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0, exactDuplicateSelected: 0 });
+    expect(metrics.reviewCoverage.total).toBe(0);
+    expect(gateImportRecognition([truth], [selected], [selected]).passed).toBe(true);
+    const omitted = scoreImportRecognition([truth], [actualRow({ proposal: { ...selected.proposal!, selected: false } })]);
+    expect(omitted.inclusion.missingFinancial).toBe(1);
+    expect(omitted.reviewRequired).toBe(1);
+  });
+
   test("scores inclusion independently from interpretation and review coverage", () => {
     const expected = [
       expectedRow({ id: "review", safetyClass: "unsafe_auto", requiredSafetyReasons: ["possible_ocr_error"] }),
@@ -224,6 +248,61 @@ describe("scoreImportRecognition", () => {
 });
 
 describe("gateImportRecognition", () => {
+  test("rejects an incorrect posting status even when the baseline makes the same mistake", () => {
+    const truth = expectedRow({ postingStatus: "pending" });
+    const wrong = actualRow({ postingStatus: "posted" });
+
+    const decision = gateImportRecognition([truth], [wrong], [wrong]);
+
+    expect(decision.passed).toBe(false);
+    expect(decision.reasons).toContain("posting_status_incorrect");
+    expect(decision.candidate.postingStatusAccuracy).toEqual({ correct: 0, total: 1, rate: 0 });
+  });
+
+  test("requires candidate posting status while allowing a legacy baseline to omit it", () => {
+    const truth = expectedRow();
+    const legacy = actualRow({ postingStatus: undefined });
+    const correct = actualRow({ postingStatus: "posted" });
+
+    expect(gateImportRecognition([truth], [legacy], [correct]).passed).toBe(true);
+    expect(gateImportRecognition([truth], [legacy], [legacy]).reasons).toContain("posting_status_incorrect");
+  });
+
+  test("cannot offset a newly broken protected field with improvements in other cases", () => {
+    const truth = expectedRow({ expectedProposal: { ...expectedRow().expectedProposal!, name: "Groceries", placeName: "Market" } });
+    const correct = actualRow({ proposal: { ...actualRow().proposal!, name: "Groceries", placeName: "Market" } });
+    const expected = [truth, { ...truth, id: "second" }, { ...truth, id: "third" }];
+    const financialChanges = [{ amount: 1300 }, { date: "2026-08-14" }, { currency: "USD" }, { direction: "credit" }, { semanticKind: "salary" }] as const;
+    const metadataChanges = [
+      { name: "Fuel" },
+      { placeName: null },
+      { envelopeId: null },
+      { categoryId: null },
+      { type: "income" },
+      { isRefund: true },
+      { toAccountId: "other" },
+    ] as const;
+    const wrongRows = [
+      ...financialChanges.map((change) => ({ ...correct, ...change })),
+      ...metadataChanges.map((change) => ({ ...correct, proposal: { ...correct.proposal!, ...change } })),
+    ];
+    for (const wrong of wrongRows) {
+      const baseline = [correct, { ...wrong, id: "second" }, { ...wrong, id: "third" }];
+      const candidate = [wrong, { ...correct, id: "second" }, { ...correct, id: "third" }];
+      const decision = gateImportRecognition(expected, baseline, candidate);
+      expect(decision.passed).toBe(false);
+      expect(decision.reasons).toContain("protected_field_regression");
+    }
+  });
+
+  test("protects correct fields even when another field of the same proposal was already wrong", () => {
+    const truth = expectedRow();
+    const baseline = actualRow({ proposal: { ...actualRow().proposal!, categoryId: null } });
+    const candidate = actualRow({ proposal: { ...actualRow().proposal!, envelopeId: null } });
+
+    expect(gateImportRecognition([truth], [baseline], [candidate]).reasons).toContain("protected_field_regression");
+  });
+
   test("rejects a selected row that has no labelled screenshot event", () => {
     const decision = gateImportRecognition(
       [expectedRow()],
@@ -675,6 +754,49 @@ const dynamicCandidateResult = () => ({
 });
 
 describe("recognition evaluator adapters", () => {
+  test("adapters preserve optional proposal names and places for scoring", () => {
+    const metadata = { name: "Groceries", placeName: "Market" };
+    const baseline = normalizeBaselineRecognition(
+      "fixture",
+      [manifestRow()],
+      [{ date: "2026-08-15", amount: 1299, currency: "EUR", type: "expense", isRefund: false, ...metadata }],
+    );
+    const result = dynamicCandidateResult();
+    Object.assign(result.proposals[0]!, metadata);
+    const candidate = normalizeCandidateRecognition("fixture", [manifestRow()], result as Parameters<typeof normalizeCandidateRecognition>[2]);
+
+    expect(baseline[0]!.proposal).toMatchObject(metadata);
+    expect(candidate[0]!.proposal).toMatchObject(metadata);
+  });
+
+  test("manifest accepts optional metadata expectations and ordinary pending purchases", () => {
+    const fixture = {
+      id: "fixture",
+      images: ["images/fixture.png"],
+      locale: "en",
+      today: "2026-08-16",
+      budgetCurrency: "EUR",
+      formFactor: "mobile",
+      overlap: false,
+      rows: [manifestRow({ postingStatus: "pending", expectedProposal: { ...expectedRow().expectedProposal!, name: "Groceries", placeName: null } })],
+    };
+    const parsed = parseRecognitionManifest({ version: 1, fixtures: [fixture] }, false);
+    expect(parsed.fixtures[0]!.rows[0]!.expectedProposal).toMatchObject({ name: "Groceries", placeName: null });
+    fixture.rows[0]!.expectedProposal!.name = "";
+    const emptyName = parseRecognitionManifest({ version: 1, fixtures: [fixture] }, false).fixtures[0]!.rows[0]!;
+    expect(emptyName.expectedProposal!.name).toBe("");
+    expect(scoreImportRecognition([emptyName], [actualRow({ proposal: { ...actualRow().proposal!, name: "", placeName: null } })]).interpretationErrors).toBe(
+      0,
+    );
+    expect(
+      scoreImportRecognition([emptyName], [actualRow({ proposal: { ...actualRow().proposal!, name: "Invented", placeName: null } })]).interpretationErrors,
+    ).toBe(1);
+    for (const invalidName of [1, null]) {
+      fixture.rows[0]!.expectedProposal!.name = invalidName as never;
+      expect(() => parseRecognitionManifest({ version: 1, fixtures: [fixture] }, false)).toThrow("name");
+    }
+  });
+
   test("candidate result validation fails closed before scoring malformed dynamic output", async () => {
     // Break caught: validating only metric-consumed fields lets a dynamically loaded
     // reconciled wire drift while the evaluator still publishes plausible scores.
@@ -870,7 +992,7 @@ describe("recognition evaluator adapters", () => {
   });
 
   test("candidate adapter aligns rows by image and visual position and preserves conservative proposals", () => {
-    const rows = [manifestRow({ id: "pending", candidatePosition: { imageIndex: 1, visualOrder: 3 }, baselineIndex: null })];
+    const rows = [manifestRow({ id: "declined", candidatePosition: { imageIndex: 1, visualOrder: 3 }, baselineIndex: null })];
 
     const actual = normalizeCandidateRecognition("fixture", rows, {
       rows: [
@@ -882,7 +1004,7 @@ describe("recognition evaluator adapters", () => {
           amount: 1299,
           currency: "EUR",
           direction: "debit",
-          postingStatus: "pending",
+          postingStatus: "declined",
           rowRole: "financial_event",
           semanticKind: "card_purchase",
           relation: null,
@@ -894,7 +1016,7 @@ describe("recognition evaluator adapters", () => {
           rowId: "model-chosen-id",
           ...({ semanticKind: "fee", relation: { kind: "fee_for", rowId: "model-chosen-id" } } as Record<string, unknown>),
           selected: false,
-          disposition: "pending",
+          disposition: "declined",
           reviewReasons: ["pending_or_declined"],
           duplicateStatus: "new",
           type: "expense",
@@ -907,18 +1029,18 @@ describe("recognition evaluator adapters", () => {
     });
 
     expect(actual[0]).toEqual({
-      id: "fixture:pending",
+      id: "fixture:declined",
       rowRole: "financial_event",
-      postingStatus: "pending",
+      postingStatus: "declined",
       date: "2026-08-15",
       amount: 1299,
       currency: "EUR",
       direction: "debit",
       semanticKind: "fee",
-      relation: { kind: "fee_for", rowId: "fixture:pending" },
+      relation: { kind: "fee_for", rowId: "fixture:declined" },
       proposal: {
         selected: false,
-        disposition: "pending",
+        disposition: "declined",
         reviewReasons: ["pending_or_declined"],
         duplicateStatus: "new",
         type: "expense",
@@ -1343,8 +1465,6 @@ describe("recognition evaluator adapters", () => {
       manifestRow({
         id: "pending",
         postingStatus: "pending",
-        safetyClass: "review_only",
-        requiredSafetyReasons: ["pending_or_declined"],
         candidatePosition: { imageIndex: 0, visualOrder: nonLedgerRows.length },
         baselineIndex: null,
       }),
@@ -1409,8 +1529,6 @@ describe("recognition evaluator adapters", () => {
       manifestRow({
         id: "pending",
         postingStatus: "pending",
-        safetyClass: "review_only",
-        requiredSafetyReasons: ["pending_or_declined"],
         candidatePosition: { imageIndex: 0, visualOrder: rows.length },
         baselineIndex: null,
       }),

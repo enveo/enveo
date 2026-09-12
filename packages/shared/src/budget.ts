@@ -89,6 +89,11 @@ function unassignedMoney(
     if (transaction.type === "income" && isOnBudget(transaction.accountId) && !transaction.envelopeId) {
       total += transaction.amount;
     }
+    // Unassigned expenses still spend budget money. Split rows already charge
+    // their own envelopes; a refund reverses the same unassigned flow.
+    if (transaction.type === "expense" && isOnBudget(transaction.accountId) && !transaction.envelopeId && transaction.items.length === 0) {
+      total += transaction.isRefund ? transaction.amount : -transaction.amount;
+    }
     if (transaction.type === "transfer" && transaction.toAccountId) {
       const fromOn = isOnBudget(transaction.accountId);
       const toOn = isOnBudget(transaction.toAccountId);

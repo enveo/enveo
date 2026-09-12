@@ -74,7 +74,9 @@ beforeAll(async () => {
     ...overrides,
   });
   const mobileRows = [
-    row("purchase", "card_purchase", 0, { expectedProposal: { ...proposal("expense"), envelopeId: "envelope-food", categoryId: "category-daily" } }),
+    row("purchase", "card_purchase", 0, {
+      expectedProposal: { ...proposal("expense"), envelopeId: "envelope-food", categoryId: "category-daily", name: "name purchase", placeName: null },
+    }),
     row("salary", "salary", 1, { direction: "credit", expectedProposal: proposal("income") }),
     row("refund", "merchant_refund", 2, { direction: "credit", expectedProposal: proposal("expense", true) }),
     row("reward", "cashback_or_reward", 3, {
@@ -109,8 +111,6 @@ beforeAll(async () => {
     }),
     row("pending", "card_purchase", 8, {
       postingStatus: "pending",
-      safetyClass: "review_only",
-      requiredSafetyReasons: ["pending_or_declined"],
       baselineIndex: null,
     }),
     row("declined", "card_purchase", 9, {
@@ -335,7 +335,13 @@ export async function runImportRecognitionPipeline(input) {
   const reviewReasons = [...new Set([...(row.postingStatus === "unknown" ? ["unknown_posting_status"] : []), ...(conflict ? ["history_conflict", "multiple_history_candidates"] : []), "fact_correction"] )];
   const outputRow = immutableUnsafe ? { ...row, date: "2026-08-14", amount: 9999, currency: "EUR", direction: "credit" } : row;
   const outputProposal = immutableUnsafe ? { ...proposal, date: "2026-08-14", amount: 9999, currency: "EUR" } : proposal;
-  return { rows: [outputRow], proposals: [{ ...outputProposal, name: answer.name, placeName: answer.place, envelopeId: answer.envelopeId, categoryId: answer.categoryId, reviewReasons, selected: false }] };
+  const strong = candidates.filter((candidate) => candidate.match === "exact_source_ref");
+  const metadata = strong.length ? {
+    name: strong[0].name, placeName: strong[0].place,
+    envelopeId: conflict ? null : "envelope-history",
+    categoryId: conflict ? null : "category-history",
+  } : { name: answer.name, placeName: answer.place, envelopeId: answer.envelopeId, categoryId: answer.categoryId };
+  return { rows: [outputRow], proposals: [{ ...outputProposal, ...metadata, reviewReasons, selected: false }] };
 }
 `,
   );
@@ -389,25 +395,14 @@ export async function runImportRecognitionPipeline(input) {
     }));
   const candidateProposals = (fixtureRows: typeof mobileRows) =>
     fixtureRows.map((item) => {
-      const selected =
-        item.rowRole === "financial_event" &&
-        item.postingStatus !== "pending" &&
-        item.postingStatus !== "declined" &&
-        item.expectedDuplicateStatus !== "exists";
+      const selected = item.rowRole === "financial_event" && item.postingStatus !== "declined" && item.expectedDuplicateStatus !== "exists";
       const duplicateReviewReasons =
         item.expectedDuplicateStatus === "exists" ? ["history_conflict"] : item.expectedDuplicateStatus === "probable" ? ["multiple_history_candidates"] : [];
       return {
         rowId: item.id,
         sourceRows: [item.id],
         selected,
-        disposition:
-          item.rowRole === "supporting_detail"
-            ? "supporting"
-            : item.postingStatus === "pending"
-              ? "pending"
-              : item.postingStatus === "declined"
-                ? "declined"
-                : "candidate",
+        disposition: item.rowRole === "supporting_detail" ? "supporting" : item.postingStatus === "declined" ? "declined" : "candidate",
         reviewReasons: [...item.requiredSafetyReasons, ...duplicateReviewReasons],
         date: item.date,
         amount: item.amount,
@@ -742,7 +737,7 @@ describe("paired import recognition CLI", () => {
         passed: false,
         criteriaPassed: true,
         reasons: ["non_live_transport"],
-        transitions: { attributableSafety: 5, unexplainedNewReviews: 0 },
+        transitions: { attributableSafety: 4, unexplainedNewReviews: 0 },
       },
     });
     expect(output.identity.sources.baseline.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
@@ -933,7 +928,7 @@ describe("paired import recognition CLI", () => {
     expect(result.exitCode).toBe(1);
     const output = JSON.parse(result.stdout);
     expect(output.metrics.candidate.rowRecall).toEqual({ correct: 0, total: 11, rate: 0 });
-    expect(output.metrics.candidate.inclusion.missingFinancial).toBe(7);
+    expect(output.metrics.candidate.inclusion.missingFinancial).toBe(8);
     expect(output.identity.contractFailures).toEqual({ baseline: [], candidate: ["synthetic-mobile", "synthetic-desktop"] });
     expect(output.decision.reasons).toContain("financial_event_not_selected");
     expect(output.identity.sources.baseline.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);

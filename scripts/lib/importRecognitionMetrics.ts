@@ -18,6 +18,9 @@ export interface ImportRecognitionProposalTruth {
   toAccountId: string | null;
   envelopeId: string | null;
   categoryId: string | null;
+  /** Omitted expectations preserve compatibility with existing private corpora. */
+  name?: string;
+  placeName?: string | null;
 }
 
 export interface ExpectedImportRecognitionRow {
@@ -66,6 +69,7 @@ export interface ImportRecognitionRatio {
 export interface ImportRecognitionReviewBreakdown {
   unsafe: number;
   otherFinancial: number;
+  /** Legacy output key; pending rows now count as ordinary financial reviews. */
   pendingOrDeclined: number;
   supportingOrUi: number;
   unexpected: number;
@@ -90,6 +94,7 @@ export interface ImportRecognitionMetrics {
     overall: ImportRecognitionRatio;
   };
   semanticKindAccuracy: ImportRecognitionRatio;
+  postingStatusAccuracy: ImportRecognitionRatio;
   duplicateStatusAccuracy: ImportRecognitionRatio;
   relationPrecision: ImportRecognitionRatio;
   /** Expected relations are the denominator, so omitting every relation scores zero. */
@@ -106,7 +111,7 @@ export interface ImportRecognitionMetrics {
   unexpectedReviewReasons: number;
   /** Aggregate-only diagnostic; reason names contain no screenshot or model content. */
   unexpectedReviewReasonCounts: Record<string, number>;
-  /** Release-relevant reviews only; pending/declined/supporting/UI/unexpected rows are separate. */
+  /** Release-relevant reviews only; declined/supporting/UI/unexpected rows are separate. */
   reviewRequired: number;
   reviewBreakdown: ImportRecognitionReviewBreakdown;
   missingRows: number;
@@ -136,21 +141,23 @@ const sameProposal = (left: ImportRecognitionProposalTruth, right: ImportRecogni
   left.isRefund === right.isRefund &&
   left.toAccountId === right.toAccountId &&
   left.envelopeId === right.envelopeId &&
-  left.categoryId === right.categoryId;
+  left.categoryId === right.categoryId &&
+  (left.name === undefined || left.name === right.name) &&
+  (left.placeName === undefined || left.placeName === right.placeName);
 
 type ReviewBucket = Exclude<keyof ImportRecognitionReviewBreakdown, "total"> | null;
 
 const reviewBucket = (truth: ExpectedImportRecognitionRow | undefined, actual: ActualImportRecognitionRow): ReviewBucket => {
   if (!actual.proposal || actual.proposal.selected || actual.proposal.duplicateStatus === "exists") return null;
   if (!truth) return "unexpected";
-  if (truth.postingStatus === "pending" || truth.postingStatus === "declined") return "pendingOrDeclined";
+  if (truth.postingStatus === "declined") return "pendingOrDeclined";
   if (truth.rowRole !== "financial_event") return "supportingOrUi";
   return truth.safetyClass === "unsafe_auto" ? "unsafe" : "otherFinancial";
 };
 
 const requiredReviewReasons = (truth: ExpectedImportRecognitionRow): string[] => {
   if (truth.rowRole !== "financial_event") return [];
-  if (truth.postingStatus === "pending" || truth.postingStatus === "declined") return ["pending_or_declined"];
+  if (truth.postingStatus === "declined") return ["pending_or_declined"];
   const required = new Set(truth.requiredSafetyReasons);
   if (truth.date === null || truth.amount === null) required.add("missing_fact");
   if (truth.currency === null) required.add("unsupported_currency");
@@ -168,7 +175,7 @@ const hasRequiredSafetyReview = (truth: ExpectedImportRecognitionRow, actual: Ac
   requiredReviewReasons(truth).every((reason) => actual.proposal!.reviewReasons.includes(reason));
 
 const truthShouldBeIncluded = (truth: ExpectedImportRecognitionRow): boolean =>
-  truth.rowRole === "financial_event" && truth.postingStatus !== "pending" && truth.postingStatus !== "declined" && truth.expectedDuplicateStatus !== "exists";
+  truth.rowRole === "financial_event" && truth.postingStatus !== "declined" && truth.expectedDuplicateStatus !== "exists";
 
 const duplicateStatusMatches = (truth: ImportRecognitionDuplicateStatus, actual: ImportRecognitionDuplicateStatus | undefined): boolean => actual === truth;
 
@@ -185,7 +192,7 @@ const allowedReviewReasons = (truth: ExpectedImportRecognitionRow, actual: Actua
   const role = actual.rowRole ?? truth.rowRole;
   const postingStatus = actual.postingStatus ?? truth.postingStatus;
   if (role === "financial_event") {
-    if (postingStatus === "pending" || postingStatus === "declined") {
+    if (postingStatus === "declined") {
       allowed.add("pending_or_declined");
     } else {
       if (actual.date === null || actual.amount === null) allowed.add("missing_fact");
@@ -308,6 +315,7 @@ export function scoreImportRecognition(
       overall: ratio(overallCorrect, factTotal * 4),
     },
     semanticKindAccuracy: ratio(expected.filter((row) => actualById.get(row.id)?.semanticKind === row.semanticKind).length, expected.length),
+    postingStatusAccuracy: ratio(expected.filter((row) => actualById.get(row.id)?.postingStatus === row.postingStatus).length, expected.length),
     duplicateStatusAccuracy: ratio(
       financial.filter((row) => duplicateStatusMatches(row.expectedDuplicateStatus, actualById.get(row.id)?.proposal?.duplicateStatus)).length,
       financial.length,
@@ -350,11 +358,28 @@ export function gateImportRecognition(
   let attributableSafety = 0;
   let unexplainedNewReviews = 0;
   let unsafeConstraintFailures = 0;
+  let protectedFieldRegression = false;
 
   for (const truth of expected) {
     const requiredReasons = requiredReviewReasons(truth);
     const baselineRow = baselineById.get(truth.id);
     const candidateRow = candidateById.get(truth.id);
+    // Aggregate gains cannot pay for a newly broken field, even on an already imperfect row.
+    for (const field of ["date", "amount", "currency", "direction", "rowRole", "postingStatus", "semanticKind"] as const) {
+      if (baselineRow?.[field] === truth[field] && candidateRow?.[field] !== truth[field]) protectedFieldRegression = true;
+    }
+    if (baselineRow && sameRelation(baselineRow.relation, truth.relation) && (!candidateRow || !sameRelation(candidateRow.relation, truth.relation))) {
+      protectedFieldRegression = true;
+    }
+    if (truth.expectedProposal) {
+      for (const field of ["type", "isRefund", "toAccountId", "envelopeId", "categoryId", "name", "placeName"] as const) {
+        const expectedValue = truth.expectedProposal[field];
+        if (expectedValue !== undefined && baselineRow?.proposal?.[field] === expectedValue && candidateRow?.proposal?.[field] !== expectedValue) {
+          protectedFieldRegression = true;
+        }
+      }
+    }
+
     const candidateRows = candidateActual.filter((row) => row.id === truth.id);
     const candidateHasRequiredSafetyReview = candidateRows.length === 1 && hasRequiredSafetyReview(truth, candidateRow);
     const baselineReleaseReview = baselineRow ? ["unsafe", "otherFinancial"].includes(reviewBucket(truth, baselineRow) ?? "") : false;
@@ -367,6 +392,7 @@ export function gateImportRecognition(
   }
 
   const reasons: string[] = [];
+  if (protectedFieldRegression) reasons.push("protected_field_regression");
   if (candidate.rowRecall.correct < baseline.rowRecall.correct) reasons.push("row_recall_regression");
   if (candidate.financialRowRecall.correct < baseline.financialRowRecall.correct) reasons.push("financial_row_recall_regression");
   for (const fact of ["amount", "date", "currency", "direction"] as const) {
@@ -408,6 +434,7 @@ export function gateImportRecognition(
   if (candidate.inclusion.nonLedgerIncluded > 0) reasons.push("non_ledger_selected");
   if (candidate.inclusion.exactDuplicateSelected > 0) reasons.push("exact_duplicate_selected");
   if (candidate.unexpectedRows.selected > 0) reasons.push("unexpected_row_selected");
+  if (candidate.postingStatusAccuracy.correct !== candidate.postingStatusAccuracy.total) reasons.push("posting_status_incorrect");
   if (candidate.duplicateStatusAccuracy.total > 0 && candidate.duplicateStatusAccuracy.rate !== 1) reasons.push("duplicate_status_incorrect");
   if (baseline.interpretationErrors === 0) {
     if (candidate.interpretationErrors !== 0) reasons.push("interpretation_error_regression_from_zero");

@@ -8,6 +8,7 @@ import {
   type ImportProposal,
   type ImportRecognitionResult,
   type ReconciledImportRecognitionResult,
+  runImportRecognitionPipeline,
 } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem } from "./api";
 import {
@@ -440,6 +441,117 @@ describe("local E2EE import planning", () => {
       planLocalImport({ ledger: ledger(), globalAccountId: U(2), dryRun: false, items: [item(), item({ type: "transfer", toAccountId: U(2) })] }),
     ).toThrow("transfer_invalid:1");
     expect(spy.created).toEqual({ categories: [], places: [], transactions: [] });
+  });
+
+  it.each(["unchanged", "edited", "cleared"] as const)("carries historical metadata through review and ledger application with %s fields", async (mode) => {
+    // given: a known merchant on an account without an automatic envelope
+    const current = ledger();
+    current.accounts[0]!.automaticEnvelopeId = null;
+    const recognized = await runImportRecognitionPipeline({
+      images: ["data:image/png;base64,AA=="],
+      locale: "en",
+      today: "2026-08-02",
+      budgetCurrency: "EUR",
+      accountId: U(2),
+      accounts: current.accounts,
+      envelopes: current.envelopes,
+      categories: current.categories,
+      transactions: current.transactions,
+      historyRecords: [
+        {
+          accountId: U(2),
+          currency: "EUR",
+          sourceRef: "LIDL RAW",
+          tag: "LIDL",
+          place: "Lidl",
+          name: "Groceries",
+          envelope: "Food",
+          category: "Groceries",
+          type: "expense",
+          isRefund: false,
+          toAccountId: null,
+        },
+      ],
+      chat: async () => JSON.stringify({ rows: [recognitionRow("new", { rawTextLines: ["25.00 EUR", "LIDL RAW", "CARD 9876"], postingStatus: "pending" })] }),
+    });
+    const dry = planLocalImport({ ledger: current, globalAccountId: U(2), items: recognitionCandidatesForDryRun(recognized, current), dryRun: true });
+    const items = dry.results.map((row) => importReviewItem(row, null));
+    const correction: EditedImportItem = {
+      type: "expense",
+      accountId: U(2),
+      toAccountId: null,
+      isRefund: false,
+      amount: 2500,
+      date: "2026-08-02",
+      name: mode === "cleared" ? "" : "My correction",
+      envelopeId: mode === "cleared" ? null : U(9),
+      categoryId: null,
+      placeName: "Lidl",
+      note: "",
+    };
+    // when: the user accepts, changes, or explicitly clears the learned fields
+    const accepted = reviewedImportItemsForApply({ items, edited: mode === "unchanged" ? {} : { 0: correction }, editedAutomaticDefaults: {} });
+    const plan = planLocalImport({ ledger: current, globalAccountId: U(2), items: accepted, dryRun: false });
+    expect(plan.transactions).toHaveLength(1);
+    expect(plan.transactions[0]!.placeName).toBeNull();
+    expect(plan.transactions[0]!.categoryName).toBeNull();
+    const payload = prepareTxnCreate(current, plan.transactions[0]!.payload);
+    const after = applyOp(current, { opId: U(21), kind: "txn.create", payload: { ...payload, id: U(20) } });
+    // then: the existing place is reused and the exact account/envelope effects follow the reviewed assignment
+    expect(after.places).toEqual(current.places);
+    expect(after.transactions.find((t) => t.id === U(20))).toMatchObject({
+      name: mode === "unchanged" ? "Groceries" : mode === "cleared" ? null : "My correction",
+      placeId: U(7),
+      envelopeId: mode === "unchanged" ? U(5) : mode === "cleared" ? null : U(9),
+      categoryId: mode === "unchanged" ? U(6) : null,
+      sourceRef: "25.00 EUR\nLIDL RAW\nCARD 9876",
+    });
+    const budget = computeBudgetState(after, "2026-08");
+    expect(budget.accounts[0]!.balance).toBe(-3500);
+    expect(budget.envelopes.find((row) => row.envelope.id === U(5))!.available).toBe(mode === "unchanged" ? -3500 : -1000);
+    expect(budget.envelopes.find((row) => row.envelope.id === U(9))!.available).toBe(mode === "edited" ? -2500 : 0);
+    expect(budget.toBeBudgeted).toBe(mode === "cleared" ? -2500 : 0);
+    expect(planLocalImport({ ledger: after, globalAccountId: U(2), items: accepted, dryRun: false }).added).toBe(0);
+  });
+
+  it("reuses one existing place for different truncated branch descriptions without history", async () => {
+    const current = ledger();
+    current.transactions = [];
+    const descriptors = ["LIDL Gdansk...", "LIDL Wroclaw...", "LIDL..."];
+    const rows = descriptors.map((text, i) => recognitionRow(`new-${i}`, { amount: 2500 + i, rawTextLines: [text] }));
+    const result = await runImportRecognitionPipeline({
+      images: [],
+      checkpoint: { rows, proposals: [] },
+      locale: "en",
+      today: "2026-08-02",
+      budgetCurrency: "EUR",
+      accountId: U(2),
+      accounts: current.accounts,
+      envelopes: current.envelopes,
+      categories: current.categories,
+      places: current.places,
+      transactions: [],
+      historyRecords: [],
+      chat: async () =>
+        JSON.stringify({
+          rows: rows.map((row, i) => ({
+            rowId: row.rowId,
+            name: "Groceries",
+            place: descriptors[i],
+            envelopeId: U(5),
+            categoryId: U(6),
+            semanticKind: "card_purchase",
+            relation: null,
+            reviewReasons: [],
+          })),
+        }),
+    });
+    expect(result.proposals.map((row) => row.placeName)).toEqual(["Lidl", "Lidl", "Lidl"]);
+    const plan = planLocalImport({ ledger: current, globalAccountId: U(2), items: recognitionCandidatesForDryRun(result, current), dryRun: false });
+    const spy = mutationSpy();
+    applyLocalImport(plan, spy.mutations);
+    expect(spy.created.places).toEqual([]);
+    expect(spy.created.transactions).toEqual(descriptors.map((sourceRef) => expect.objectContaining({ placeId: U(7), sourceRef })));
   });
 
   it("preserves per-item account, refund, ids, sourceRef and reuses place names case-insensitively", () => {

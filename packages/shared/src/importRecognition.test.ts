@@ -206,7 +206,7 @@ describe("screenshot import proposal validation", () => {
 
     expect(result.rows[0]!.reviewReasons).toEqual([]);
     expect(result.proposals[0]).toMatchObject({ selected: true, reviewReasons: [] });
-    expect(needsImportEnrichment(result)).toBe(false);
+    expect(needsImportEnrichment(result)).toBe(true);
   });
 
   it("keeps only relations supported by both rows' validated facts", () => {
@@ -458,9 +458,17 @@ describe("screenshot import proposal validation", () => {
 describe("screenshot import enrichment gate", () => {
   const resultFor = (over: Partial<ImportExtractRow> = {}) => validateImportExtraction({ batch: { rows: [extractRow(over)] }, budgetCurrency: "PLN" });
 
-  it("skips cycle two for straightforward posted purchases and salaries", () => {
-    expect(needsImportEnrichment(resultFor())).toBe(false);
-    expect(needsImportEnrichment(resultFor({ semanticKind: "salary", direction: "credit" }))).toBe(false);
+  it("enriches straightforward purchases and salaries whose metadata is missing", () => {
+    expect(needsImportEnrichment(resultFor())).toBe(true);
+    expect(needsImportEnrichment(resultFor({ semanticKind: "salary", direction: "credit" }))).toBe(true);
+  });
+
+  it("skips enrichment once history supplied a name and expense envelope", () => {
+    const result = resultFor();
+    Object.assign(result.proposals[0]!, { name: "Bread", envelopeId: "food" });
+    expect(needsImportEnrichment(result)).toBe(false);
+    result.proposals[0]!.envelopeId = null;
+    expect(needsImportEnrichment(result)).toBe(true);
   });
 
   it("runs cycle two for deterministic uncertainty, history ambiguity, transfer gaps, valid relations, and invalid facts", () => {

@@ -177,7 +177,7 @@ export const fr: Dict = {
   "Download a backup (JSON)": "Télécharger une sauvegarde (JSON)",
   "Drag {name}": "Déplacer {name}",
   Duplicate: "Dupliquer",
-  "Duplicates skipped: {n}": "Doublons ignorés : {n}",
+  "Skipped: {n}": "Ignorés : {n}",
   E2EE: "E2EE",
   Edit: "Modifier",
   Economical: "Économique",

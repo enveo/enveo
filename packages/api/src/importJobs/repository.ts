@@ -1,3 +1,4 @@
+import type { ImportReceipt } from "@enveo/shared";
 import {
   IMPORT_JOB_CHUNK_SIZE,
   type ImportExtractBatch,
@@ -834,6 +835,7 @@ export function createImportJobRepository(database: DB) {
       appliedCount: number,
       skippedCount: number,
       now = new Date(),
+      receipt?: ImportReceipt,
     ): Promise<ImportJobDetail | null> {
       const [updated] = await database
         .update(importJobs)
@@ -842,10 +844,11 @@ export function createImportJobRepository(database: DB) {
           phase: "completed",
           resumePhase: null,
           extraction: null,
-          result: null,
+          result: receipt ? { rows: [], proposals: [], receipt } : null,
           appliedCount,
           skippedCount,
           updatedAt: now,
+          expiresAt: new Date(now.getTime() + IMPORT_JOB_RETENTION_MS),
         })
         .where(
           and(
@@ -913,7 +916,12 @@ export function createImportJobRepository(database: DB) {
         const clearedDetails = await tx
           .update(importJobs)
           .set({ extraction: null, result: null })
-          .where(and(inArray(importJobs.status, ["completed", "cancelled"]), or(isNotNull(importJobs.extraction), isNotNull(importJobs.result))))
+          .where(
+            and(
+              or(eq(importJobs.status, "cancelled"), and(eq(importJobs.status, "completed"), sql`${importJobs.result}->'receipt' IS NULL`)),
+              or(isNotNull(importJobs.extraction), isNotNull(importJobs.result)),
+            ),
+          )
           .returning({ id: importJobs.id });
         await tx
           .delete(importJobChunks)

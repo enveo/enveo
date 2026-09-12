@@ -48,6 +48,7 @@ export type Sync2DbOutput = {
   enableSnapshotUptoSeq: number | null;
   enablePlaintextWiped: boolean;
   enablePreferencesCleared: boolean;
+  completedImportReceiptCleared: boolean;
   enableImportRevocation: { cancelled: number; detailsCleared: number; leasesCleared: number; errorsCleared: number; imagesDeleted: number };
   rekeyCredentialPreserved: boolean;
   rekeyEpochUnchanged: boolean;
@@ -269,6 +270,25 @@ async function main(): Promise<void> {
     .set({ status: "ready", phase: "ready", extraction: { rows: [], proposals: [] }, result: { rows: [], proposals: [] }, proposalCount: 2 })
     .where(eq(s.importJobs.id, importIds[3]!));
 
+  const completedImportId = uuid();
+  await db.insert(s.importJobs).values({
+    id: completedImportId,
+    userId: userA,
+    budgetId: budgetA,
+    accountId: plainAccount!.id,
+    provider: "enveo",
+    model: "gpt-test",
+    locale: "en",
+    tier: "plain",
+    epoch: 0,
+    status: "completed",
+    phase: "completed",
+    requestHash: "b".repeat(64),
+    clientId: completedImportId,
+    expiresAt: new Date(Date.now() + 86400000),
+    result: { rows: [], proposals: [], receipt: { completedAt: "2026-08-24T10:00:00.000Z", currency: "EUR", balances: [], rows: [] } },
+  });
+
   // a STALE epoch expectation must not install ciphertext bound to the wrong generation
   const enableStale = await call("POST", "/budget/e2ee/enable", {
     userId: userA,
@@ -289,6 +309,7 @@ async function main(): Promise<void> {
     credentialAction: { kind: "none" },
   });
   const enabledRow = await budgetRow(budgetA);
+  const [completedImport] = await db.select().from(s.importJobs).where(eq(s.importJobs.id, completedImportId));
   const [revokedImports] = await raw<
     {
       cancelled: number;
@@ -690,6 +711,7 @@ async function main(): Promise<void> {
     enableSnapshotUptoSeq: enSnap?.uptoSeq ?? null,
     enablePlaintextWiped: plainAfter.length === 0,
     enablePreferencesCleared: enabledRow?.preferences === null,
+    completedImportReceiptCleared: completedImport?.status === "completed" && completedImport.result === null,
     enableImportRevocation: revokedImports ?? {
       cancelled: -1,
       detailsCleared: -1,

@@ -8,6 +8,7 @@ import {
   buildImportExtractPrompt,
   buildSuggestPrompt,
   type ChatMessage,
+  cleanImportPlaceName,
   IMPORT_EXTRACT_JSON_SCHEMA,
   languageDirectives,
   languageName,
@@ -39,6 +40,37 @@ function fixture(): ClientLedger {
 }
 
 const sysOf = (m: ChatMessage[]): string => m[0]!.content as string;
+
+describe("canonical import places", () => {
+  it.each([
+    ["Parking Centr...", "Parking"],
+    ["TK Maxx Gdansk…", "TK Maxx"],
+    ["Kawiarnia Rondo Po...", "Kawiarnia Rondo"],
+    ["Unknown…", null],
+  ])("drops an incomplete suffix from %s", (input, expected) => {
+    expect(cleanImportPlaceName(input)).toBe(expected);
+  });
+
+  it("reuses the exact existing spelling without merging similar businesses", () => {
+    const places = [{ name: "TK Maxx" }, { name: "Cafe Rondo" }, { name: "old shop", archived: true }];
+    expect(cleanImportPlaceName(" tk   maxx ", places)).toBe("TK Maxx");
+    expect(cleanImportPlaceName("Cafe Rondo East", places)).toBe("Cafe Rondo East");
+    expect(cleanImportPlaceName("OLD SHOP", places)).toBe("OLD SHOP");
+  });
+
+  it("does not accept a copied unfinished word just because the model removed its dots", () => {
+    expect(cleanImportPlaceName("Kawiarnia Rondo Po", [], ["Kawiarnia Rondo Po..."])).toBe("Kawiarnia Rondo");
+    expect(cleanImportPlaceName("TK Maxx", [], ["TK Max..."])).toBe("TK Maxx");
+    expect(cleanImportPlaceName("ORLEN", [], ["ORLEN..."])).toBe("ORLEN");
+  });
+
+  it("keeps a known complete brand when the bank's ellipsis follows that brand", () => {
+    const places = [{ name: "TK Maxx" }, { name: "Cafe Rondo" }];
+    expect(cleanImportPlaceName("TK Maxx", places, ["TK Maxx..."])).toBe("TK Maxx");
+    expect(cleanImportPlaceName("TK Maxx...", places, ["TK Maxx..."])).toBe("TK Maxx");
+    expect(cleanImportPlaceName("Cafe Rondo", places, ["Cafe Rondo..."])).toBe("Cafe Rondo");
+  });
+});
 
 describe("buildSuggestPrompt", () => {
   const ledger = fixture();
@@ -603,17 +635,273 @@ describe("runImportRecognitionPipeline", () => {
     historyRecords: [] as ImportHistoryRecord[],
   };
 
-  it("skips cycle two for a straightforward posted purchase", async () => {
+  describe("historical metadata regression", () => {
+    it.each(["posted", "unknown"] as const)("keeps income destinations independent of history for a %s entry in both pipeline modes", async (postingStatus) => {
+      // given: legacy income history assigned a salary to an envelope
+      for (const pipelineMode of ["default", "durable"] as const) {
+        let calls = 0;
+        const result = await runImportRecognitionPipeline({
+          ...base,
+          pipelineMode,
+          historyRecords: [{ ...history("account-1", "Food"), type: "income" }],
+          chat: async () => {
+            if (++calls > 1) throw new Error("enrichment unavailable");
+            const batch = JSON.parse(extracted("incoming_transfer", postingStatus));
+            batch.rows[0].semanticKind = "salary";
+            return JSON.stringify(batch);
+          },
+        });
+        // then: neither the fast path nor enrichment fallback restores a historical income destination
+        expect(result.proposals[0]).toMatchObject({ type: "income", amount: 1234, envelopeId: null });
+      }
+    });
+
+    const bakeryHistory = (overrides: Partial<ImportHistoryRecord> = {}): ImportHistoryRecord => ({
+      ...history("account-1", "Food"),
+      sourceRef: "BAKERA SP Z OO",
+      tag: "BAKERA",
+      place: "Bakera",
+      name: "Bread",
+      category: "Groceries",
+      ...overrides,
+    });
+    const recognizeBakery = async (
+      options: {
+        records?: ImportHistoryRecord[];
+        postingStatus?: "posted" | "pending" | "unknown";
+        envelopeArchived?: boolean;
+        modelEnvelope?: string | null;
+        modelPlace?: string;
+        modelFails?: boolean;
+      } = {},
+    ) => {
+      let calls = 0;
+      return runImportRecognitionPipeline({
+        ...base,
+        envelopes: base.envelopes.map((e) => ({ ...e, archived: options.envelopeArchived ?? false })),
+        categories: [{ id: "category-1", name: "Groceries", archived: false }],
+        historyRecords: options.records ?? [
+          bakeryHistory(),
+          bakeryHistory(),
+          bakeryHistory({ sourceRef: "OTHER SP Z OO", tag: "OTHER", place: "Other", name: "Other", envelope: "Other" }),
+        ],
+        chat: async () => {
+          if (++calls === 1) {
+            const batch = JSON.parse(extracted());
+            batch.rows[0].rawTextLines = ["12.34 PLN", "BAKERA SP Z OO", "CARD 9876"];
+            batch.rows[0].postingStatus = options.postingStatus ?? "pending";
+            return JSON.stringify(batch);
+          }
+          if (options.modelFails) throw new Error("offline");
+          return JSON.stringify({
+            rows: [
+              {
+                rowId: "r1",
+                name: "",
+                place: options.modelPlace ?? "BAKERA SP Z OO",
+                envelopeId: options.modelEnvelope ?? null,
+                categoryId: null,
+                semanticKind: "card_purchase",
+                relation: null,
+                reviewReasons: [],
+              },
+            ],
+          });
+        },
+      });
+    };
+
+    it.each(["posted", "pending", "unknown"] as const)(
+      "restores a known merchant's metadata for a %s bank entry despite incidental history",
+      async (postingStatus) => {
+        // given: the bank wraps a known descriptor in amount/card details; AI supplies no useful assignment
+        const result = await recognizeBakery({ postingStatus });
+        // then: the existing merchant and assignments survive, with the read financial facts intact
+        expect(result.proposals[0]).toMatchObject({
+          name: "Bread",
+          placeName: "Bakera",
+          envelopeId: "envelope-1",
+          categoryId: "category-1",
+          amount: 1234,
+          date: "2026-08-07",
+          currency: "PLN",
+          type: "expense",
+          isRefund: false,
+        });
+        expect(result.proposals[0]!.reviewReasons).not.toContain("history_conflict");
+      },
+    );
+
+    it("keeps known assignments when enrichment is unavailable", async () => {
+      const result = await recognizeBakery({ postingStatus: "unknown", modelFails: true });
+      expect(result.proposals[0]).toMatchObject({ name: "Bread", placeName: "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
+    });
+
+    it("lets the model shorten an old truncated place without losing historical assignments", async () => {
+      const result = await recognizeBakery({
+        postingStatus: "posted",
+        records: [bakeryHistory({ place: "Bakera Gdansk Cen..." })],
+        modelPlace: "Bakera",
+      });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", name: "Bread", envelopeId: "envelope-1", categoryId: "category-1" });
+      expect(result.rows[0]!.rawTextLines).toEqual(["12.34 PLN", "BAKERA SP Z OO", "CARD 9876"]);
+    });
+
+    it("keeps only the complete historical place prefix if the model is unavailable", async () => {
+      const result = await recognizeBakery({ records: [bakeryHistory({ place: "Bakera Gdansk..." })], modelFails: true });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
+    });
+
+    it("keeps a consistent envelope when historical transaction names differ", async () => {
+      const result = await recognizeBakery({ records: [bakeryHistory(), bakeryHistory({ name: "Rolls" })] });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
+      expect(result.proposals[0]!.reviewReasons).not.toContain("history_conflict");
+    });
+
+    it("leaves a conflicting envelope for human review even when AI chooses one", async () => {
+      const result = await recognizeBakery({
+        records: [bakeryHistory({ sourceRef: "12.34 PLN\nBAKERA SP Z OO\nCARD 9876" }), bakeryHistory({ envelope: "Travel" })],
+        modelEnvelope: "envelope-1",
+      });
+      expect(result.proposals[0]).toMatchObject({ name: "Bread", placeName: "Bakera", envelopeId: null, categoryId: "category-1" });
+      expect(result.proposals[0]!.reviewReasons).toContain("history_conflict");
+    });
+
+    it("does not revive an archived envelope", async () => {
+      const result = await recognizeBakery({ envelopeArchived: true });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", envelopeId: null });
+    });
+
+    it("does not hide a conflicting sixth pattern behind the five-candidate prompt limit", async () => {
+      const records = Array.from({ length: 5 }, (_, i) => bakeryHistory({ name: `Bread ${i}` }));
+      records.push(bakeryHistory({ name: "Rolls", envelope: "Travel" }));
+      const result = await recognizeBakery({ records, modelEnvelope: "envelope-1" });
+      expect(result.proposals[0]!.envelopeId).toBeNull();
+      expect(result.proposals[0]!.reviewReasons).toContain("history_conflict");
+    });
+
+    it("does not let history order or unrelated entries change the assignment", async () => {
+      const records = [bakeryHistory(), bakeryHistory({ name: "Rolls" })];
+      const first = await recognizeBakery({ records });
+      const second = await recognizeBakery({ records: [...records].reverse().concat(bakeryHistory({ accountId: "account-2", envelope: "Secret" })) });
+      expect(second.proposals).toEqual(first.proposals);
+      expect(first.proposals[0]!.envelopeId).toBe("envelope-1");
+    });
+  });
+
+  it.each(["posted", "pending"] as const)("enriches a new %s cafe purchase without merchant history", async (postingStatus) => {
+    // given: a readable merchant and amount, but no previous transaction to copy
     const requests: ChatRequest[] = [];
     const result = await runImportRecognitionPipeline({
       ...base,
+      chat: async (request) => {
+        requests.push(request);
+        if (requests.length === 1) {
+          const batch = JSON.parse(extracted());
+          Object.assign(batch.rows[0], { rawTextLines: ["NORTHSTAR CAFE"], amount: 6500, postingStatus });
+          return JSON.stringify(batch);
+        }
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Coffee and cake",
+              place: "Northstar Cafe",
+              envelopeId: "envelope-1",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+    // then: semantic enrichment supplies usable metadata while the bank's facts stay intact
+    expect(requests).toHaveLength(2);
+    const context = JSON.parse(requests[1]!.messages[1]!.content as string);
+    expect(context.rows[0].historyCandidates).toEqual([]);
+    expect(sysOf(requests[1]!.messages)).toContain("recognizable brands and business types");
+    expect(sysOf(requests[1]!.messages)).toContain("Matching transaction history is NOT required");
+    expect(context.entities.envelopes).toContainEqual({ id: "envelope-1", name: "Food" });
+    expect(result.rows[0]).toMatchObject({ amount: 6500, date: "2026-08-07", currency: "PLN", direction: "debit", postingStatus });
+    expect(result.proposals[0]).toMatchObject({
+      name: "Coffee and cake",
+      placeName: "Northstar Cafe",
+      envelopeId: "envelope-1",
+      amount: 6500,
+      date: "2026-08-07",
+      currency: "PLN",
+      type: "expense",
+      isRefund: false,
+      selected: true,
+    });
+    expect(result.proposals[0]!.reviewReasons).not.toContain("history_conflict");
+  });
+
+  it("does not flag parking as conflicting history because unrelated purchases share card boilerplate", async () => {
+    // given: different merchants share only the bank's long card and terminal details
+    const boilerplate = "CARD 2468 PURCHASE 20260807 TERMINAL 9999999999";
+    const requests: ChatRequest[] = [];
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      envelopes: [...base.envelopes, { ...base.envelopes[0]!, id: "envelope-parking", name: "Transport" }],
+      historyRecords: [
+        { ...history("account-1", "Food"), sourceRef: `NORTHSTAR CAFE\n${boilerplate}`, tag: "NORTHSTAR CAFE", place: "Northstar Cafe", name: "Coffee" },
+        { ...history("account-1", "Food"), sourceRef: `PAPERTRAIL BOOKS\n${boilerplate}`, tag: "PAPERTRAIL BOOKS", place: "Papertrail Books", name: "Books" },
+      ],
+      chat: async (request) => {
+        requests.push(request);
+        if (requests.length === 1) {
+          const batch = JSON.parse(extracted("card_purchase", "unknown"));
+          batch.rows[0].rawTextLines = ["PARKPORT APP", boilerplate];
+          return JSON.stringify(batch);
+        }
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Parking",
+              place: "Parkport",
+              envelopeId: "envelope-parking",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+    // then: weak similarity stays advisory and cannot fabricate a conflict for this merchant
+    expect(requests).toHaveLength(2);
+    const context = JSON.parse(requests[1]!.messages[1]!.content as string);
+    expect(context.rows[0].historyCandidates.map((candidate: { match: string }) => candidate.match)).toEqual(["source_similarity", "source_similarity"]);
+    expect(context.rows[0].historyConflict).toBe(false);
+    expect(result.proposals[0]).toMatchObject({ name: "Parking", placeName: "Parkport", envelopeId: "envelope-parking", amount: 1234 });
+    expect(result.proposals[0]!.reviewReasons).not.toContain("history_conflict");
+    expect(result.proposals[0]!.reviewReasons).not.toContain("multiple_history_candidates");
+  });
+
+  it("skips cycle two when a posted purchase already has its known merchant metadata", async () => {
+    const requests: ChatRequest[] = [];
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      historyRecords: [history("account-1", "Food")],
       chat: async (request) => {
         requests.push(request);
         return extracted();
       },
     });
     expect(requests).toHaveLength(1);
-    expect(result.proposals[0]).toMatchObject({ rowId: "r1", semanticKind: "card_purchase", name: "", selected: true });
+    expect(result.proposals[0]).toMatchObject({
+      rowId: "r1",
+      semanticKind: "card_purchase",
+      name: "Groceries",
+      placeName: "Lidl",
+      envelopeId: "envelope-1",
+      selected: true,
+    });
   });
 
   it("skips unnecessary enrichment for a straightforward exact duplicate", async () => {
@@ -667,37 +955,60 @@ describe("runImportRecognitionPipeline", () => {
 
   it("checkpoints cycle one and resumes without screenshots or another extraction request", async () => {
     const phases: string[] = [];
+    let calls = 0;
     let checkpoint: ImportRecognitionResult | undefined;
+    let stageA: ImportRecognitionResult | undefined;
+    const annotation = JSON.stringify({
+      rows: [
+        {
+          rowId: "r1",
+          name: "Groceries",
+          place: "Lidl",
+          envelopeId: "envelope-1",
+          categoryId: null,
+          semanticKind: "card_purchase",
+          relation: null,
+          reviewReasons: [],
+        },
+      ],
+    });
     await runImportRecognitionPipeline({
       ...base,
       pipelineMode: "durable",
-      chat: async () => extracted(),
+      chat: async () => (++calls === 1 ? extracted() : annotation),
       lifecycle: {
         afterUpstream: async () => phases.push("upstream"),
         saveExtraction: async (result) => {
           checkpoint = result;
           phases.push("checkpoint");
         },
+        saveResult: async (result) => (stageA = result),
         advancePhase: async (phase) => phases.push(phase),
       },
     });
-    expect(phases).toEqual(["upstream", "checkpoint", "reconciling"]);
+    expect(phases).toEqual(["upstream", "checkpoint", "enriching", "upstream", "reconciling"]);
     if (!checkpoint) throw new Error("expected durable extraction checkpoint");
+    expect(checkpoint.proposals[0]).toMatchObject({ name: "", envelopeId: null });
+    expect(stageA?.proposals[0]).toMatchObject({ name: "Groceries", envelopeId: "envelope-1" });
 
     const resumedPhases: string[] = [];
+    const resumedRequests: ChatRequest[] = [];
     const resumed = await runImportRecognitionPipeline({
       ...base,
       images: [],
       checkpoint,
       pipelineMode: "durable",
-      chat: async () => {
-        throw new Error("resume_must_not_extract_again");
+      chat: async (request) => {
+        resumedRequests.push(request);
+        return annotation;
       },
       lifecycle: { advancePhase: async (phase) => resumedPhases.push(phase) },
     });
 
-    expect(resumedPhases).toEqual(["reconciling"]);
-    expect(resumed.proposals[0]).toMatchObject({ rowId: "r1", selected: true });
+    expect(resumedRequests).toHaveLength(1);
+    expect(resumedRequests[0]!.responseFormat).toMatchObject({ json_schema: { name: "enriched_import_rows" } });
+    expect(resumedPhases).toEqual(["enriching", "reconciling"]);
+    expect(resumed.proposals[0]).toMatchObject({ rowId: "r1", name: "Groceries", envelopeId: "envelope-1", selected: true });
   });
 
   it("stores validated extraction before history and stores enriched Stage A before live-ledger reconciliation", async () => {
@@ -798,21 +1109,44 @@ describe("runImportRecognitionPipeline", () => {
     };
     let calls = 0;
     let durableResult: ImportRecognitionResult | undefined;
+    let rawCheckpoint: ImportRecognitionResult | undefined;
     const returned = await runImportRecognitionPipeline({
       ...base,
       pipelineMode: "durable",
       cycleTwoFailureMode: "strict",
       transactions: [duplicate],
       chat: async () => {
-        calls++;
-        if (calls > 1) throw new Error("durable duplicate should not enrich from live reconciliation");
-        return extracted();
+        if (++calls === 1) return extracted();
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Groceries",
+              place: "Lidl",
+              envelopeId: "envelope-1",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
       },
-      lifecycle: { saveResult: async (value) => (durableResult = value) },
+      lifecycle: {
+        saveExtraction: async (value) => (rawCheckpoint = value),
+        saveResult: async (value) => (durableResult = value),
+      },
     });
 
-    expect(calls).toBe(1);
-    expect(durableResult?.proposals[0]).toMatchObject({ disposition: "candidate", selected: true, reviewReasons: [] });
+    expect(calls).toBe(2);
+    expect(rawCheckpoint?.proposals[0]).toMatchObject({ name: "", envelopeId: null, selected: true });
+    expect(durableResult?.proposals[0]).toMatchObject({
+      name: "Groceries",
+      envelopeId: "envelope-1",
+      disposition: "candidate",
+      selected: true,
+      reviewReasons: [],
+    });
     expect(Object.hasOwn(durableResult?.proposals[0] ?? {}, "duplicateStatus")).toBe(false);
     expect(returned.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
   });
@@ -894,7 +1228,7 @@ describe("runImportRecognitionPipeline", () => {
 
     expect(enrichmentPrompt).toContain("Food");
     expect(enrichmentPrompt).toContain("Travel");
-    expect(resumed.proposals[0]?.name).toBe("From current history");
+    expect(resumed.proposals[0]?.name).toBe("Groceries");
     expect(resumed.proposals[0]?.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
   });
 
@@ -951,7 +1285,7 @@ describe("runImportRecognitionPipeline", () => {
       },
     });
     expect(requests).toHaveLength(2);
-    expect(result.proposals[0]).toMatchObject({ name: "Zakupy", envelopeId: "envelope-1", selected: true });
+    expect(result.proposals[0]).toMatchObject({ name: "Groceries", envelopeId: null, selected: true });
     expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
   });
 

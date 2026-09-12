@@ -268,6 +268,6 @@ describe("the real build output", () => {
     // the Add pane is open) rather than raw `screen`; the LazyChunk boundary this test pins is
     // otherwise unchanged.
     expect(app).toContain('{primaryScreen === "budget" && (\n        <LazyChunk onDismiss={() => nav("start")}>');
-    expect(app).toContain('{envEdit && (\n          <LazyChunk variant="overlay" onDismiss={() => setEnvEdit(null)}>');
+    expect(app).toMatch(/\{envEdit && \(\s*<LazyChunk variant="overlay" onDismiss=\{\(\) => setEnvEdit\(null\)\}>/);
   });
 });

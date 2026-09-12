@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
 import { IDBFactory } from "fake-indexeddb";
+import { generateDek } from "../crypto";
+import * as e2eeState from "../e2ee";
 import { __resetStorageForTests, idbGet, idbPut } from "../idb";
 import { type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
 import * as persist from "../persist";
@@ -187,6 +189,9 @@ describe("import job manager", () => {
     manager.start();
     await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
 
+    const receipt = { completedAt: null, currency: "EUR", balances: [{ accountId: ACCOUNT, name: "Checking", before: 10000, after: null }], rows: [] };
+    await manager.receiptDraft(ID, receipt);
+
     // when: two interrupted attempts report an overlapping applied row
     await manager.applyRow(ID, "row-one", async () => {});
     await manager.applyRow(ID, "row-one", async () => {});
@@ -215,12 +220,14 @@ describe("import job manager", () => {
       skippedRowIds: ["row-three"],
       skippedCount: 1,
     });
+    expect(await restarted.receiptDraft(ID)).toEqual(receipt);
     const raw = JSON.stringify(await idbGet("meta", JSON.stringify(["import-apply-progress", 3, "user-a", BUDGET, ID])));
     expect(raw).not.toContain("row-one");
     expect(raw).not.toContain("row-three");
 
     // and: successful completion ends the recovery record
     await restarted.complete(ID, { appliedCount: 2, skippedCount: 1 });
+    expect(await importJobStorage.getReceiptDraft({ ownerId: "user-a", budgetId: BUDGET }, ID)).toBeUndefined();
     expect(await restarted.appliedProgress(ID, ["row-one", "row-two", "row-three"])).toEqual({
       appliedRowIds: [],
       appliedCount: 0,
@@ -1053,4 +1060,56 @@ describe("import job manager", () => {
     expect(scopes).toEqual([OTHER_BUDGET]);
     manager.stop();
   });
+});
+
+it("keeps an E2EE recovery receipt encrypted and refuses to read it after locking", async () => {
+  const state = new FakeState();
+  state.status = "ready";
+  const adapters = ports([]);
+  const manager = new ImportJobManager({
+    state,
+    ownerId: async () => "user-a",
+    tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+    createPlain: adapters.plain,
+    createE2ee: adapters.e2ee,
+    randomId: () => ID,
+    visible: () => true,
+  });
+  e2eeState.setTierMeta({ tier: "e2ee", epoch: 3 });
+  e2eeState.setDek(generateDek(), 3);
+  try {
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en", images: [IMAGE] });
+    const receipt = {
+      completedAt: null,
+      currency: "EUR",
+      balances: [{ accountId: ACCOUNT, name: "Private receipt account", before: 10000, after: null }],
+      rows: [],
+    };
+    await manager.receiptDraft(ID, receipt);
+    const raw = await importJobStorage.getReceiptDraft({ ownerId: "user-a", budgetId: BUDGET }, ID);
+    expect(raw).toStartWith("v2.");
+    expect(raw).not.toContain("Private receipt account");
+    expect(await manager.receiptDraft(ID)).toEqual(receipt);
+    e2eeState.clearDekMemory();
+    await expect(manager.receiptDraft(ID)).rejects.toThrow("locked");
+  } finally {
+    manager.stop();
+    await persist.flushed();
+    e2eeState.__resetDekForTests();
+  }
+});
+
+it("prunes terminal and vanished receipt drafts after restart, preserving active and foreign drafts", async () => {
+  const scope = { ownerId: "user-a", budgetId: BUDGET };
+  const foreign = { ownerId: "user-b", budgetId: OTHER_BUDGET };
+  await importJobStorage.putReceiptDraft(scope, ID, "active");
+  await importJobStorage.putReceiptDraft(scope, OTHER_ID, "vanished");
+  await importJobStorage.putReceiptDraft(foreign, OTHER_ID, "foreign");
+  await importJobStorage.pruneReceiptDrafts(scope, new Set([ID]), () => true);
+  expect(await importJobStorage.getReceiptDraft(scope, ID)).toBe("active");
+  expect(await importJobStorage.getReceiptDraft(scope, OTHER_ID)).toBeUndefined();
+  expect(await importJobStorage.getReceiptDraft(foreign, OTHER_ID)).toBe("foreign");
+  await importJobStorage.pruneReceiptDrafts(scope, new Set(), () => false);
+  expect(await importJobStorage.getReceiptDraft(scope, ID)).toBe("active");
 });

@@ -1,9 +1,8 @@
-import { ImportActivityBadge } from "./ImportActivityBadge";
 import { SyncActivityBadge } from "./SyncActivityBadge";
 import { UpdatePrompt } from "./UpdatePrompt";
 
 /** Optional shell status that may fail closed without hiding rejected writes/auth/ownership. */
-export function OptionalStatusChrome({ showBadges, onOpenActivity }: { showBadges: boolean; onOpenActivity: () => void }) {
+export function OptionalStatusChrome({ showBadges }: { showBadges: boolean }) {
   return (
     <>
       {showBadges && (
@@ -21,7 +20,6 @@ export function OptionalStatusChrome({ showBadges, onOpenActivity }: { showBadge
           }}
         >
           <SyncActivityBadge />
-          <ImportActivityBadge onOpen={onOpenActivity} />
         </div>
       )}
       <UpdatePrompt />

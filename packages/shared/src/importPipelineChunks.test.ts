@@ -113,11 +113,12 @@ describe("chunked cycle one", () => {
       images: images(6),
       chat: async (request, _timeout, meta) => {
         stages.push(meta?.stage ?? "none");
+        if (meta?.stage === "enrich") return JSON.stringify({ rows: [] });
         return extractAnswer(request, (imageIndex) => [modelRow(`r${imageIndex}`, imageIndex, { amount: 100 + imageIndex })]);
       },
     });
 
-    expect(stages).toEqual(["extract"]);
+    expect(stages).toEqual(["extract", "enrich"]);
     expect(result.rows.map((row) => row.rowId)).toEqual(["r0", "r1", "r2", "r3", "r4", "r5"]);
   });
 });

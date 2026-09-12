@@ -5,6 +5,7 @@ import {
   ImportChunksPendingError,
   ImportExtractionFailedError,
   type ImportRecognitionResult,
+  importJobResultSchema,
 } from "@enveo/shared";
 import { IDBFactory } from "fake-indexeddb";
 import { decryptPayload, generateDek, importJobAadContext } from "../crypto";
@@ -770,4 +771,64 @@ describe("device-local E2EE import runner — screenshot windows", () => {
     expect(attempts).toEqual([0, 0]);
     expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "ready", screenshots: { total: 7, read: 7, failed: 0 } });
   });
+});
+
+it("retains only the encrypted completion receipt and reopens it after a runner restart", async () => {
+  const { runner, key } = setup();
+  await runner.create(createInput());
+  await runner.resume();
+  const receipt = {
+    completedAt: "2026-08-24T10:00:00.000Z",
+    currency: "EUR",
+    balances: [{ accountId: ACCOUNT, name: "Private bank", before: 10000, after: 10000 }],
+    rows: [],
+  };
+  await runner.complete(ID, { appliedCount: 0, skippedCount: 0, receipt });
+  const persisted = await importJobStorage.getJob(SCOPE, ID);
+  expect(persisted?.resultCiphertext).toStartWith("v2.");
+  expect(JSON.stringify(persisted)).not.toContain("Private bank");
+  expect(persisted?.inputCiphertext).toBeNull();
+  const raw = await decryptPayload(persisted!.resultCiphertext!, key, importJobAadContext(BUDGET, 3, ID, "result"));
+  expect(importJobResultSchema.parse(JSON.parse(raw)).receipt).toEqual(receipt);
+  const reopened = await setup({ key }).runner.list();
+  expect(reopened.find((job) => job.id === ID)?.result).toEqual({ rows: [], proposals: [], receipt });
+  expect((await setup({ key, unlocked: () => false }).runner.list()).find((job) => job.id === ID)?.result).toBeNull();
+});
+
+it("removes former plain receipt drafts when reconciling E2EE jobs", async () => {
+  const { runner } = setup();
+  await runner.create(createInput());
+  await runner.resume();
+  await importJobStorage.putReceiptDraft(SCOPE, ID, "encrypted-ready-draft");
+  await importJobStorage.putReceiptDraft(SCOPE, "former-plain-job", "private-plain-receipt");
+  await runner.list();
+  expect(await importJobStorage.getReceiptDraft(SCOPE, "former-plain-job")).toBeUndefined();
+  expect(await importJobStorage.getReceiptDraft(SCOPE, ID)).toBe("encrypted-ready-draft");
+});
+
+it("rejects an invalid receipt before changing the ready job or encrypting completion", async () => {
+  const { runner } = setup();
+  await runner.create(createInput());
+  await runner.resume();
+  const before = await importJobStorage.getJob(SCOPE, ID);
+  const receipt = {
+    completedAt: "2026-08-24T10:00:00.000Z",
+    currency: "EUR",
+    balances: [{ accountId: ACCOUNT, name: "Bank", before: 1.5, after: 0 }],
+    rows: [],
+  };
+  await expect(runner.complete(ID, { appliedCount: 0, skippedCount: 0, receipt })).rejects.toThrow();
+  expect(await importJobStorage.getJob(SCOPE, ID)).toEqual(before);
+});
+it("keeps a completed encrypted receipt for seven days from completion", async () => {
+  let now = new Date("2026-08-24T10:00:00.000Z");
+  const { runner } = setup({ now: () => now });
+  await runner.create(createInput());
+  await runner.resume();
+  now = new Date("2026-08-30T10:00:00.000Z");
+  await runner.complete(ID, { appliedCount: 0, skippedCount: 0, receipt: { completedAt: now.toISOString(), currency: "EUR", balances: [], rows: [] } });
+  now = new Date("2026-08-31T10:00:00.000Z");
+  expect((await runner.list()).find((job) => job.id === ID)?.status).toBe("completed");
+  now = new Date("2026-09-06T10:00:00.000Z");
+  expect((await runner.list()).find((job) => job.id === ID)).toBeUndefined();
 });

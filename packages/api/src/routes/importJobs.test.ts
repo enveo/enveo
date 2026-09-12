@@ -290,3 +290,24 @@ describe("plain durable import job routes", () => {
     expect(await Promise.all(responses.map((response) => response.json()))).toEqual(Array.from({ length: 6 }, () => ({ error: "internal" })));
   });
 });
+
+it("returns the original receipt when completion is retried after a lost response", async () => {
+  const receipt = { completedAt: "2026-09-10T12:00:00.000Z", currency: "PLN", balances: [], rows: [] };
+  const completed = job({ status: "completed", phase: "completed", result: { rows: [], proposals: [], receipt } });
+  const { app, calls } = harness({ repository: { getForBudget: async () => completed } });
+  const response = await post(app, `/api/import/jobs/${JOB_ID}/complete`, mutationBody({ appliedCount: 0, skippedCount: 0, receipt }));
+  expect(response.status).toBe(200);
+  expect((await response.json()).result.receipt).toEqual(receipt);
+  expect(calls.completes).toBe(0);
+});
+
+it("refuses a completion receipt whose added rows disagree with its counts", async () => {
+  const { app, calls } = harness({ repository: { getForBudget: async () => job({ status: "ready", phase: "ready" }) } });
+  const response = await post(
+    app,
+    `/api/import/jobs/${JOB_ID}/complete`,
+    mutationBody({ appliedCount: 1, skippedCount: 0, receipt: { completedAt: "2026-09-10T12:00:00.000Z", currency: "PLN", balances: [], rows: [] } }),
+  );
+  expect(response.status).toBe(400);
+  expect(calls.completes).toBe(0);
+});

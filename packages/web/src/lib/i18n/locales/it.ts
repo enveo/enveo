@@ -174,7 +174,6 @@ export const it: Dict = {
   "Download a backup (JSON)": "Scarica un backup (JSON)",
   "Drag {name}": "Trascina {name}",
   Duplicate: "Duplica",
-  "Duplicates skipped: {n}": "Duplicati saltati: {n}",
   E2EE: "E2EE",
   Edit: "Modifica",
   Economical: "Economico",
@@ -819,4 +818,5 @@ export const it: Dict = {
   "{amount} to cover · {pool} in To be budgeted": "{amount} da coprire · {pool} in Da assegnare",
   "{available} available": "{available} disponibili",
   "{available} available → {after} left": "{available} disponibili → ne resteranno {after}",
+  "Skipped: {n}": "Saltati: {n}",
 };

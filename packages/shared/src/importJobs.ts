@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { importReceiptSchema } from "./importReceipt";
 import {
   IMPORT_RELATION_KINDS,
   IMPORT_REVIEW_REASONS,
@@ -113,6 +114,7 @@ export const importJobResultSchema: z.ZodType<ImportRecognitionResult> = z
     rows: z.array(importExtractRowSchema),
     proposals: z.array(importProposalSchema),
     seam: importSeamOutcomeSchema.optional(),
+    receipt: importReceiptSchema.optional(),
   })
   .strict();
 

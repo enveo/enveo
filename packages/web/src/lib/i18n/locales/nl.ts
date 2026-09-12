@@ -176,7 +176,6 @@ export const nl: Dict = {
   "Download a backup (JSON)": "Back-up downloaden (JSON)",
   "Drag {name}": "{name} slepen",
   Duplicate: "Dupliceren",
-  "Duplicates skipped: {n}": "Overgeslagen duplicaten: {n}",
   E2EE: "E2EE",
   Edit: "Bewerken",
   Economical: "Zuinig",
@@ -806,4 +805,5 @@ export const nl: Dict = {
   "{amount} to cover · {pool} in To be budgeted": "{amount} te dekken · {pool} in Te budgetteren",
   "{available} available": "{available} beschikbaar",
   "{available} available → {after} left": "{available} beschikbaar → {after} blijft over",
+  "Skipped: {n}": "Overgeslagen: {n}",
 };
