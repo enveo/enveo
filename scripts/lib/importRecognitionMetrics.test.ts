@@ -35,6 +35,7 @@ const expectedRow = (overrides: Partial<ExpectedImportRecognitionRow> = {}): Exp
 
 const actualRow = (overrides: Partial<ActualImportRecognitionRow> = {}): ActualImportRecognitionRow => ({
   id: "purchase",
+  postingStatus: "posted",
   date: "2026-08-15",
   amount: 1299,
   currency: "EUR",
@@ -247,6 +248,26 @@ describe("scoreImportRecognition", () => {
 });
 
 describe("gateImportRecognition", () => {
+  test("rejects an incorrect posting status even when the baseline makes the same mistake", () => {
+    const truth = expectedRow({ postingStatus: "pending" });
+    const wrong = actualRow({ postingStatus: "posted" });
+
+    const decision = gateImportRecognition([truth], [wrong], [wrong]);
+
+    expect(decision.passed).toBe(false);
+    expect(decision.reasons).toContain("posting_status_incorrect");
+    expect(decision.candidate.postingStatusAccuracy).toEqual({ correct: 0, total: 1, rate: 0 });
+  });
+
+  test("requires candidate posting status while allowing a legacy baseline to omit it", () => {
+    const truth = expectedRow();
+    const legacy = actualRow({ postingStatus: undefined });
+    const correct = actualRow({ postingStatus: "posted" });
+
+    expect(gateImportRecognition([truth], [legacy], [correct]).passed).toBe(true);
+    expect(gateImportRecognition([truth], [legacy], [legacy]).reasons).toContain("posting_status_incorrect");
+  });
+
   test("cannot offset a newly broken protected field with improvements in other cases", () => {
     const truth = expectedRow({ expectedProposal: { ...expectedRow().expectedProposal!, name: "Groceries", placeName: "Market" } });
     const correct = actualRow({ proposal: { ...actualRow().proposal!, name: "Groceries", placeName: "Market" } });
@@ -761,8 +782,19 @@ describe("recognition evaluator adapters", () => {
     };
     const parsed = parseRecognitionManifest({ version: 1, fixtures: [fixture] }, false);
     expect(parsed.fixtures[0]!.rows[0]!.expectedProposal).toMatchObject({ name: "Groceries", placeName: null });
-    fixture.rows[0]!.expectedProposal!.name = 1 as never;
-    expect(() => parseRecognitionManifest({ version: 1, fixtures: [fixture] }, false)).toThrow("name");
+    fixture.rows[0]!.expectedProposal!.name = "";
+    const emptyName = parseRecognitionManifest({ version: 1, fixtures: [fixture] }, false).fixtures[0]!.rows[0]!;
+    expect(emptyName.expectedProposal!.name).toBe("");
+    expect(scoreImportRecognition([emptyName], [actualRow({ proposal: { ...actualRow().proposal!, name: "", placeName: null } })]).interpretationErrors).toBe(
+      0,
+    );
+    expect(
+      scoreImportRecognition([emptyName], [actualRow({ proposal: { ...actualRow().proposal!, name: "Invented", placeName: null } })]).interpretationErrors,
+    ).toBe(1);
+    for (const invalidName of [1, null]) {
+      fixture.rows[0]!.expectedProposal!.name = invalidName as never;
+      expect(() => parseRecognitionManifest({ version: 1, fixtures: [fixture] }, false)).toThrow("name");
+    }
   });
 
   test("candidate result validation fails closed before scoring malformed dynamic output", async () => {

@@ -115,6 +115,20 @@ describe("selectImportHistoryCandidates", () => {
     expect(result.metadata).toMatchObject({ name: "Fuel", place: "Fuel station", envelope: "Car" });
   });
 
+  test("keeps a conflicting merchant descriptor even beside an exact full bank row", () => {
+    // given: two strong records disagree; one includes the full bank wrapper
+    const rawPlace = "12.34 PLN\nBANK FUEL 123\nCARD 9876";
+    const result = selectImportHistoryCandidates(
+      query({ proposal: { ...query().proposal, rawPlace, tag: "" } }),
+      [record({ sourceRef: rawPlace }), record({ envelope: "Travel" })],
+      1,
+    );
+    // then: neither ranking nor the prompt limit can hide the other assignment
+    expect(result.candidates).toHaveLength(1);
+    expect(result.conflict).toBe(true);
+    expect(result.metadata).toMatchObject({ place: "Fuel station", envelope: null, category: "Fuel" });
+  });
+
   test("caps an oversized requested limit at five candidates", () => {
     const records = ["A", "B", "C", "D", "E", "F", "G"].map((envelope) => record({ envelope }));
 

@@ -238,22 +238,21 @@ export function selectImportHistoryCandidates(query: ImportHistoryQuery, records
       compareText(assignmentKey(left.candidate), assignmentKey(right.candidate)),
   );
   const displayLimit = Number.isFinite(limit) ? Math.max(0, Math.min(Math.trunc(limit), MAX_CANDIDATES)) : MAX_CANDIDATES;
-  // Strong merchant evidence takes precedence over incidental shared words.
-  const strongest =
-    ranked[0]?.rank === 4 ? ranked.filter((entry) => entry.rank === 4) : ranked[0] && ranked[0].rank >= 3 ? ranked.filter((entry) => entry.rank >= 3) : ranked;
+  // Keep every merchant-backed pattern: a full-row match cannot hide a conflicting
+  // descriptor-only match. Only incidental similarity evidence is discarded.
+  const strongEntries = ranked.filter(
+    ({ candidate }) =>
+      candidate.match === "merchant_identity" ||
+      candidate.match === "contained_source_ref" ||
+      (candidate.match === "exact_source_ref" && sourceHasMerchant(normalizeImportHistoryText(candidate.sourceRef), candidate)),
+  );
+  const strongest = strongEntries.length > 0 ? strongEntries : ranked;
   const candidates = strongest.map((entry) => entry.candidate);
   const moneyConflict = candidates.some(
     (candidate) =>
       candidate.type !== query.proposal.type || candidate.isRefund !== query.proposal.isRefund || candidate.toAccountId !== query.proposal.toAccountId,
   );
-  const strong =
-    candidates.length > 0 &&
-    candidates.every(
-      (candidate) =>
-        candidate.match === "merchant_identity" ||
-        candidate.match === "contained_source_ref" ||
-        (candidate.match === "exact_source_ref" && sourceHasMerchant(normalizeImportHistoryText(candidate.sourceRef), candidate)),
-    );
+  const strong = strongEntries.length > 0;
   const metadata: NonNullable<ImportHistorySelection["metadata"]> = {};
   if (strong && !moneyConflict) {
     for (const field of ["name", "place", "envelope", "category"] as const) {

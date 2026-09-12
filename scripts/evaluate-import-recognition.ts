@@ -672,13 +672,14 @@ const parseProposalTruth = (value: unknown, field: string): ImportRecognitionPro
     throw new Error(`manifest ${field}.type is invalid`);
   }
   if (typeof value.isRefund !== "boolean") throw new Error(`manifest ${field}.isRefund must be boolean`);
+  if (value.name !== undefined && typeof value.name !== "string") throw new Error(`manifest ${field}.name must be a string`);
   return {
     type: value.type,
     isRefund: value.isRefund,
     toAccountId: nullableString(value.toAccountId, `${field}.toAccountId`),
     envelopeId: nullableString(value.envelopeId, `${field}.envelopeId`),
     categoryId: nullableString(value.categoryId, `${field}.categoryId`),
-    ...(value.name !== undefined ? { name: requireString(value.name, `${field}.name`) } : {}),
+    ...(value.name !== undefined ? { name: value.name } : {}),
     ...(value.placeName !== undefined ? { placeName: nullableString(value.placeName, `${field}.placeName`) } : {}),
   };
 };

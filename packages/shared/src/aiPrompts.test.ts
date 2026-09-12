@@ -711,7 +711,10 @@ describe("runImportRecognitionPipeline", () => {
     });
 
     it("leaves a conflicting envelope for human review even when AI chooses one", async () => {
-      const result = await recognizeBakery({ records: [bakeryHistory(), bakeryHistory({ envelope: "Travel" })], modelEnvelope: "envelope-1" });
+      const result = await recognizeBakery({
+        records: [bakeryHistory({ sourceRef: "12.34 PLN\nBAKERA SP Z OO\nCARD 9876" }), bakeryHistory({ envelope: "Travel" })],
+        modelEnvelope: "envelope-1",
+      });
       expect(result.proposals[0]).toMatchObject({ name: "Bread", placeName: "Bakera", envelopeId: null, categoryId: "category-1" });
       expect(result.proposals[0]!.reviewReasons).toContain("history_conflict");
     });

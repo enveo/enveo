@@ -94,6 +94,7 @@ export interface ImportRecognitionMetrics {
     overall: ImportRecognitionRatio;
   };
   semanticKindAccuracy: ImportRecognitionRatio;
+  postingStatusAccuracy: ImportRecognitionRatio;
   duplicateStatusAccuracy: ImportRecognitionRatio;
   relationPrecision: ImportRecognitionRatio;
   /** Expected relations are the denominator, so omitting every relation scores zero. */
@@ -314,6 +315,7 @@ export function scoreImportRecognition(
       overall: ratio(overallCorrect, factTotal * 4),
     },
     semanticKindAccuracy: ratio(expected.filter((row) => actualById.get(row.id)?.semanticKind === row.semanticKind).length, expected.length),
+    postingStatusAccuracy: ratio(expected.filter((row) => actualById.get(row.id)?.postingStatus === row.postingStatus).length, expected.length),
     duplicateStatusAccuracy: ratio(
       financial.filter((row) => duplicateStatusMatches(row.expectedDuplicateStatus, actualById.get(row.id)?.proposal?.duplicateStatus)).length,
       financial.length,
@@ -432,6 +434,7 @@ export function gateImportRecognition(
   if (candidate.inclusion.nonLedgerIncluded > 0) reasons.push("non_ledger_selected");
   if (candidate.inclusion.exactDuplicateSelected > 0) reasons.push("exact_duplicate_selected");
   if (candidate.unexpectedRows.selected > 0) reasons.push("unexpected_row_selected");
+  if (candidate.postingStatusAccuracy.correct !== candidate.postingStatusAccuracy.total) reasons.push("posting_status_incorrect");
   if (candidate.duplicateStatusAccuracy.total > 0 && candidate.duplicateStatusAccuracy.rate !== 1) reasons.push("duplicate_status_incorrect");
   if (baseline.interpretationErrors === 0) {
     if (candidate.interpretationErrors !== 0) reasons.push("interpretation_error_regression_from_zero");
