@@ -126,6 +126,8 @@ interface BaselineItem {
   toAccountId?: string | null;
   envelopeId?: string | null;
   categoryId?: string | null;
+  name?: string;
+  placeName?: string | null;
 }
 
 interface BaselineRouteModule {
@@ -467,6 +469,8 @@ export function normalizeBaselineRecognition(
         toAccountId: item.toAccountId ?? null,
         envelopeId: item.envelopeId ?? null,
         categoryId: item.categoryId ?? null,
+        ...(item.name !== undefined ? { name: item.name } : {}),
+        ...(item.placeName !== undefined ? { placeName: item.placeName } : {}),
       },
     };
   });
@@ -572,6 +576,8 @@ export function normalizeCandidateRecognition(
             toAccountId: proposal.toAccountId,
             envelopeId: proposal.envelopeId,
             categoryId: proposal.categoryId,
+            ...(proposal.name !== undefined ? { name: proposal.name } : {}),
+            ...(proposal.placeName !== undefined ? { placeName: proposal.placeName } : {}),
           }
         : null,
     };
@@ -661,7 +667,7 @@ const parseRelation = (value: unknown, field: string): ImportRecognitionRelation
 const parseProposalTruth = (value: unknown, field: string): ImportRecognitionProposalTruth | null => {
   if (value === null) return null;
   if (!ownObject(value)) throw new Error(`manifest ${field} must be an object or null`);
-  assertOnlyKeys(value, ["type", "isRefund", "toAccountId", "envelopeId", "categoryId"], field);
+  assertOnlyKeys(value, ["type", "isRefund", "toAccountId", "envelopeId", "categoryId", "name", "placeName"], field);
   if (value.type !== null && value.type !== "expense" && value.type !== "income" && value.type !== "transfer") {
     throw new Error(`manifest ${field}.type is invalid`);
   }
@@ -672,6 +678,8 @@ const parseProposalTruth = (value: unknown, field: string): ImportRecognitionPro
     toAccountId: nullableString(value.toAccountId, `${field}.toAccountId`),
     envelopeId: nullableString(value.envelopeId, `${field}.envelopeId`),
     categoryId: nullableString(value.categoryId, `${field}.categoryId`),
+    ...(value.name !== undefined ? { name: requireString(value.name, `${field}.name`) } : {}),
+    ...(value.placeName !== undefined ? { placeName: nullableString(value.placeName, `${field}.placeName`) } : {}),
   };
 };
 
@@ -870,17 +878,17 @@ const parseManifestRow = (value: unknown, field: string): RecognitionManifestRow
     throw new Error(`manifest ${field} non-financial rows must be non_ledger without a proposal or safety reasons`);
   }
   if (rowRole === "financial_event" && safetyClass === "non_ledger") throw new Error(`manifest ${field} financial rows cannot be non_ledger`);
-  if ((safetyClass === "safe_auto" || safetyClass === "unsafe_auto") && (postingStatus !== "posted" || expectedProposal === null)) {
-    throw new Error(`manifest ${field} automatic safety classes require a posted financial proposal`);
+  if (
+    (safetyClass === "safe_auto" || safetyClass === "unsafe_auto") &&
+    ((postingStatus !== "posted" && postingStatus !== "pending") || expectedProposal === null)
+  ) {
+    throw new Error(`manifest ${field} automatic safety classes require a posted or pending financial proposal`);
   }
   if (safetyClass === "unsafe_auto" && requiredSafetyReasons.length === 0) throw new Error(`manifest ${field} unsafe_auto requires a safety reason`);
   if (safetyClass === "safe_auto" && requiredSafetyReasons.length > 0) throw new Error(`manifest ${field} safe_auto cannot require review`);
   if (safetyClass === "review_only" && requiredSafetyReasons.length === 0) throw new Error(`manifest ${field} review_only requires a safety reason`);
-  if (
-    (postingStatus === "pending" || postingStatus === "declined") &&
-    (safetyClass !== "review_only" || !requiredSafetyReasons.includes("pending_or_declined"))
-  ) {
-    throw new Error(`manifest ${field} pending or declined rows require review_only and pending_or_declined`);
+  if (postingStatus === "declined" && (safetyClass !== "review_only" || !requiredSafetyReasons.includes("pending_or_declined"))) {
+    throw new Error(`manifest ${field} declined rows require review_only and pending_or_declined`);
   }
   if (postingStatus === "unknown" && (safetyClass !== "review_only" || !requiredSafetyReasons.includes("unknown_posting_status"))) {
     throw new Error(`manifest ${field} unknown posting status requires review_only and unknown_posting_status`);
@@ -895,7 +903,7 @@ const parseManifestRow = (value: unknown, field: string): RecognitionManifestRow
   if (
     (semanticKind === "incoming_transfer" || semanticKind === "account_topup") &&
     rowRole === "financial_event" &&
-    postingStatus === "posted" &&
+    (postingStatus === "posted" || postingStatus === "pending") &&
     (safetyClass !== "unsafe_auto" || !requiredSafetyReasons.includes("possible_transfer"))
   ) {
     throw new Error(`manifest ${field} incoming transfers and top-ups require unsafe_auto and possible_transfer`);
@@ -1615,7 +1623,15 @@ export async function runHistorySafetyGate(candidateRoot: string): Promise<Histo
       archived: false,
     },
   ];
-  const categories = [{ id: "category-model", name: "Model category" }];
+  envelopes.push(
+    { ...envelopes[0]!, id: "envelope-history", name: "History envelope" },
+    { ...envelopes[0]!, id: "envelope-other", name: "Other history envelope" },
+  );
+  const categories = [
+    { id: "category-model", name: "Model category" },
+    { id: "category-history", name: "History category" },
+    { id: "category-other", name: "Other history category" },
+  ];
   const historyRecord = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
     accountId: account.id,
     currency: "PLN",
@@ -1723,6 +1739,7 @@ export async function runHistorySafetyGate(candidateRoot: string): Promise<Histo
     const outputRow = ownObject(result.rows[0]) ? result.rows[0] : {};
     const proposal = ownObject(result.proposals[0]) ? result.proposals[0] : {};
     const reviewReasons = Array.isArray(proposal.reviewReasons) ? proposal.reviewReasons : [];
+    const usesHistory = scenario.match === "exact_source_ref";
     safe &&=
       cycle === 2 &&
       contextRow.date === "2026-08-15" &&
@@ -1746,10 +1763,10 @@ export async function runHistorySafetyGate(candidateRoot: string): Promise<Histo
       proposal.currency === "PLN" &&
       proposal.type === "expense" &&
       proposal.isRefund === false &&
-      proposal.envelopeId === "envelope-model" &&
-      proposal.categoryId === "category-model" &&
-      proposal.name === "Model name" &&
-      proposal.placeName === "Model place" &&
+      proposal.envelopeId === (scenario.conflict ? null : usesHistory ? "envelope-history" : "envelope-model") &&
+      proposal.categoryId === (scenario.conflict ? null : usesHistory ? "category-history" : "category-model") &&
+      proposal.name === (usesHistory ? "History name" : "Model name") &&
+      proposal.placeName === (usesHistory ? "History place" : "Model place") &&
       reviewReasons.includes("unknown_posting_status") &&
       reviewReasons.includes("fact_correction") &&
       (!scenario.conflict || (reviewReasons.includes("history_conflict") && reviewReasons.includes("multiple_history_candidates")));

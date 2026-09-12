@@ -603,6 +603,141 @@ describe("runImportRecognitionPipeline", () => {
     historyRecords: [] as ImportHistoryRecord[],
   };
 
+  describe("historical metadata regression", () => {
+    it.each(["posted", "unknown"] as const)("keeps income destinations independent of history for a %s entry in both pipeline modes", async (postingStatus) => {
+      // given: legacy income history assigned a salary to an envelope
+      for (const pipelineMode of ["default", "durable"] as const) {
+        let calls = 0;
+        const result = await runImportRecognitionPipeline({
+          ...base,
+          pipelineMode,
+          historyRecords: [{ ...history("account-1", "Food"), type: "income" }],
+          chat: async () => {
+            if (++calls > 1) throw new Error("enrichment unavailable");
+            const batch = JSON.parse(extracted("incoming_transfer", postingStatus));
+            batch.rows[0].semanticKind = "salary";
+            return JSON.stringify(batch);
+          },
+        });
+        // then: neither the fast path nor enrichment fallback restores a historical income destination
+        expect(result.proposals[0]).toMatchObject({ type: "income", amount: 1234, envelopeId: null });
+      }
+    });
+
+    const bakeryHistory = (overrides: Partial<ImportHistoryRecord> = {}): ImportHistoryRecord => ({
+      ...history("account-1", "Food"),
+      sourceRef: "BAKERA SP Z OO",
+      tag: "BAKERA",
+      place: "Bakera",
+      name: "Bread",
+      category: "Groceries",
+      ...overrides,
+    });
+    const recognizeBakery = async (
+      options: {
+        records?: ImportHistoryRecord[];
+        postingStatus?: "posted" | "pending" | "unknown";
+        envelopeArchived?: boolean;
+        modelEnvelope?: string | null;
+        modelFails?: boolean;
+      } = {},
+    ) => {
+      let calls = 0;
+      return runImportRecognitionPipeline({
+        ...base,
+        envelopes: base.envelopes.map((e) => ({ ...e, archived: options.envelopeArchived ?? false })),
+        categories: [{ id: "category-1", name: "Groceries", archived: false }],
+        historyRecords: options.records ?? [
+          bakeryHistory(),
+          bakeryHistory(),
+          bakeryHistory({ sourceRef: "OTHER SP Z OO", tag: "OTHER", place: "Other", name: "Other", envelope: "Other" }),
+        ],
+        chat: async () => {
+          if (++calls === 1) {
+            const batch = JSON.parse(extracted());
+            batch.rows[0].rawTextLines = ["12.34 PLN", "BAKERA SP Z OO", "CARD 9876"];
+            batch.rows[0].postingStatus = options.postingStatus ?? "pending";
+            return JSON.stringify(batch);
+          }
+          if (options.modelFails) throw new Error("offline");
+          return JSON.stringify({
+            rows: [
+              {
+                rowId: "r1",
+                name: "",
+                place: "BAKERA SP Z OO",
+                envelopeId: options.modelEnvelope ?? null,
+                categoryId: null,
+                semanticKind: "card_purchase",
+                relation: null,
+                reviewReasons: [],
+              },
+            ],
+          });
+        },
+      });
+    };
+
+    it.each(["posted", "pending", "unknown"] as const)(
+      "restores a known merchant's metadata for a %s bank entry despite incidental history",
+      async (postingStatus) => {
+        // given: the bank wraps a known descriptor in amount/card details; AI supplies no useful assignment
+        const result = await recognizeBakery({ postingStatus });
+        // then: the existing merchant and assignments survive, with the read financial facts intact
+        expect(result.proposals[0]).toMatchObject({
+          name: "Bread",
+          placeName: "Bakera",
+          envelopeId: "envelope-1",
+          categoryId: "category-1",
+          amount: 1234,
+          date: "2026-08-07",
+          currency: "PLN",
+          type: "expense",
+          isRefund: false,
+        });
+        expect(result.proposals[0]!.reviewReasons).not.toContain("history_conflict");
+      },
+    );
+
+    it("keeps known assignments when enrichment is unavailable", async () => {
+      const result = await recognizeBakery({ postingStatus: "unknown", modelFails: true });
+      expect(result.proposals[0]).toMatchObject({ name: "Bread", placeName: "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
+    });
+
+    it("keeps a consistent envelope when historical transaction names differ", async () => {
+      const result = await recognizeBakery({ records: [bakeryHistory(), bakeryHistory({ name: "Rolls" })] });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
+      expect(result.proposals[0]!.reviewReasons).not.toContain("history_conflict");
+    });
+
+    it("leaves a conflicting envelope for human review even when AI chooses one", async () => {
+      const result = await recognizeBakery({ records: [bakeryHistory(), bakeryHistory({ envelope: "Travel" })], modelEnvelope: "envelope-1" });
+      expect(result.proposals[0]).toMatchObject({ name: "Bread", placeName: "Bakera", envelopeId: null, categoryId: "category-1" });
+      expect(result.proposals[0]!.reviewReasons).toContain("history_conflict");
+    });
+
+    it("does not revive an archived envelope", async () => {
+      const result = await recognizeBakery({ envelopeArchived: true });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", envelopeId: null });
+    });
+
+    it("does not hide a conflicting sixth pattern behind the five-candidate prompt limit", async () => {
+      const records = Array.from({ length: 5 }, (_, i) => bakeryHistory({ name: `Bread ${i}` }));
+      records.push(bakeryHistory({ name: "Rolls", envelope: "Travel" }));
+      const result = await recognizeBakery({ records, modelEnvelope: "envelope-1" });
+      expect(result.proposals[0]!.envelopeId).toBeNull();
+      expect(result.proposals[0]!.reviewReasons).toContain("history_conflict");
+    });
+
+    it("does not let history order or unrelated entries change the assignment", async () => {
+      const records = [bakeryHistory(), bakeryHistory({ name: "Rolls" })];
+      const first = await recognizeBakery({ records });
+      const second = await recognizeBakery({ records: [...records].reverse().concat(bakeryHistory({ accountId: "account-2", envelope: "Secret" })) });
+      expect(second.proposals).toEqual(first.proposals);
+      expect(first.proposals[0]!.envelopeId).toBe("envelope-1");
+    });
+  });
+
   it("skips cycle two for a straightforward posted purchase", async () => {
     const requests: ChatRequest[] = [];
     const result = await runImportRecognitionPipeline({
@@ -894,7 +1029,7 @@ describe("runImportRecognitionPipeline", () => {
 
     expect(enrichmentPrompt).toContain("Food");
     expect(enrichmentPrompt).toContain("Travel");
-    expect(resumed.proposals[0]?.name).toBe("From current history");
+    expect(resumed.proposals[0]?.name).toBe("Groceries");
     expect(resumed.proposals[0]?.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
   });
 
@@ -951,7 +1086,7 @@ describe("runImportRecognitionPipeline", () => {
       },
     });
     expect(requests).toHaveLength(2);
-    expect(result.proposals[0]).toMatchObject({ name: "Zakupy", envelopeId: "envelope-1", selected: true });
+    expect(result.proposals[0]).toMatchObject({ name: "Groceries", envelopeId: null, selected: true });
     expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
   });
 

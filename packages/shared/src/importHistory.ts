@@ -28,7 +28,7 @@ export interface ImportHistoryQuery {
   direction?: ImportDirection;
 }
 
-export type ImportHistoryMatch = "exact_source_ref" | "merchant_identity" | "source_similarity" | "fuzzy_similarity";
+export type ImportHistoryMatch = "exact_source_ref" | "contained_source_ref" | "merchant_identity" | "source_similarity" | "fuzzy_similarity";
 
 /** Historical evidence only. Consumers must decide whether and how to enrich a proposal. */
 export interface ImportHistoryCandidate {
@@ -48,6 +48,9 @@ export interface ImportHistoryCandidate {
 export interface ImportHistorySelection {
   candidates: ImportHistoryCandidate[];
   conflict: boolean;
+  /** Consensus over ALL strong patterns, before the prompt's display limit. Null means
+   * disagreement; an absent field means history has no value to contribute. */
+  metadata?: Partial<Record<"name" | "place" | "envelope" | "category", string | null>>;
 }
 
 const MIN_SIMILARITY = 0.3;
@@ -107,8 +110,11 @@ const compatibleWithVisibleFacts = (query: ImportHistoryQuery, record: ImportHis
 
 const merchantIdentity = (proposal: HistoryProposal, record: ImportHistoryRecord): boolean => {
   const tag = normalizeImportHistoryText(proposal.tag);
-  if (!tag) return false;
-  return [record.tag, record.place].some((value) => normalizeImportHistoryText(value) === tag);
+  const lines = proposal.rawPlace.split("\n").map(normalizeImportHistoryText);
+  return [record.tag, record.place].some((value) => {
+    const identity = normalizeImportHistoryText(value);
+    return /\p{L}{3}/u.test(identity) && (identity === tag || lines.includes(identity));
+  });
 };
 
 type CandidateValue = string | boolean | null;
@@ -137,6 +143,7 @@ const matchRank = (match: ImportHistoryMatch): number => {
   switch (match) {
     case "exact_source_ref":
       return 4;
+    case "contained_source_ref":
     case "merchant_identity":
       return 3;
     case "source_similarity":
@@ -146,12 +153,19 @@ const matchRank = (match: ImportHistoryMatch): number => {
   }
 };
 
+const sourceHasMerchant = (source: string, record: Pick<ImportHistoryRecord, "tag" | "place">): boolean =>
+  [record.tag, record.place].some((value) => {
+    const identity = normalizeImportHistoryText(value);
+    return /\p{L}{3}/u.test(identity) && ` ${source} `.includes(` ${identity} `);
+  });
+
 /**
  * Retrieves compatible historical assignment patterns as evidence. It never
  * treats a text match as certain and never changes the visible proposal facts.
  */
 export function selectImportHistoryCandidates(query: ImportHistoryQuery, records: readonly ImportHistoryRecord[], limit = 5): ImportHistorySelection {
   const raw = normalizeImportHistoryText(query.proposal.rawPlace);
+  const lines = query.proposal.rawPlace.split("\n").map(normalizeImportHistoryText);
   const grouped = new Map<string, { candidate: ImportHistoryCandidate; rank: number; score: number }>();
 
   records.forEach((record) => {
@@ -160,6 +174,8 @@ export function selectImportHistoryCandidates(query: ImportHistoryQuery, records
     const source = normalizeImportHistoryText(record.sourceRef);
     const exactSource = raw !== "" && raw === source;
     const exactMerchant = merchantIdentity(query.proposal, record);
+    // Match a complete descriptor line, never a merchant prefix or a shared card number.
+    const containedSource = source !== "" && lines.includes(source) && sourceHasMerchant(source, record);
     const sourceScore = source ? similarity(raw, source) : 0;
     const fuzzyScore = Math.max(
       similarity(raw, normalizeImportHistoryText(record.place)),
@@ -168,13 +184,15 @@ export function selectImportHistoryCandidates(query: ImportHistoryQuery, records
     );
     const match: ImportHistoryMatch | null = exactSource
       ? "exact_source_ref"
-      : exactMerchant
-        ? "merchant_identity"
-        : sourceScore >= MIN_SIMILARITY
-          ? "source_similarity"
-          : fuzzyScore >= MIN_SIMILARITY
-            ? "fuzzy_similarity"
-            : null;
+      : containedSource
+        ? "contained_source_ref"
+        : exactMerchant
+          ? "merchant_identity"
+          : sourceScore >= MIN_SIMILARITY
+            ? "source_similarity"
+            : fuzzyScore >= MIN_SIMILARITY
+              ? "fuzzy_similarity"
+              : null;
     if (!match) return;
 
     const candidate: ImportHistoryCandidate = {
@@ -220,15 +238,38 @@ export function selectImportHistoryCandidates(query: ImportHistoryQuery, records
       compareText(assignmentKey(left.candidate), assignmentKey(right.candidate)),
   );
   const displayLimit = Number.isFinite(limit) ? Math.max(0, Math.min(Math.trunc(limit), MAX_CANDIDATES)) : MAX_CANDIDATES;
-  // Exact source evidence takes precedence over incidental shared words in other entries.
-  const strongest = ranked[0]?.rank === matchRank("exact_source_ref") ? ranked.filter((entry) => entry.rank === ranked[0]!.rank) : ranked;
+  // Strong merchant evidence takes precedence over incidental shared words.
+  const strongest =
+    ranked[0]?.rank === 4 ? ranked.filter((entry) => entry.rank === 4) : ranked[0] && ranked[0].rank >= 3 ? ranked.filter((entry) => entry.rank >= 3) : ranked;
+  const candidates = strongest.map((entry) => entry.candidate);
+  const moneyConflict = candidates.some(
+    (candidate) =>
+      candidate.type !== query.proposal.type || candidate.isRefund !== query.proposal.isRefund || candidate.toAccountId !== query.proposal.toAccountId,
+  );
+  const strong =
+    candidates.length > 0 &&
+    candidates.every(
+      (candidate) =>
+        candidate.match === "merchant_identity" ||
+        candidate.match === "contained_source_ref" ||
+        (candidate.match === "exact_source_ref" && sourceHasMerchant(normalizeImportHistoryText(candidate.sourceRef), candidate)),
+    );
+  const metadata: NonNullable<ImportHistorySelection["metadata"]> = {};
+  if (strong && !moneyConflict) {
+    for (const field of ["name", "place", "envelope", "category"] as const) {
+      const values = [...new Set(candidates.map((candidate) => candidate[field]?.trim() || null))];
+      if (values.length === 1 && values[0] !== null) metadata[field] = values[0];
+      else if (values.length > 1 && field !== "name") metadata[field] = null;
+    }
+  }
+  const assignmentConflict = strong
+    ? ["place", "envelope", "category"].some(
+        (field) => new Set(candidates.map((candidate) => candidate[field as "place" | "envelope" | "category"]?.trim() || null)).size > 1,
+      )
+    : candidates.length > 1;
   return {
-    candidates: strongest.slice(0, displayLimit).map(({ candidate }) => candidate),
-    conflict:
-      strongest.length > 1 ||
-      (query.proposal.type !== null &&
-        strongest.some(
-          ({ candidate }) => candidate.type !== query.proposal.type || (candidate.type === "expense" && candidate.isRefund !== query.proposal.isRefund),
-        )),
+    candidates: candidates.slice(0, displayLimit),
+    conflict: assignmentConflict || (query.proposal.type !== null && moneyConflict),
+    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
   };
 }

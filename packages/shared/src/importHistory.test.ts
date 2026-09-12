@@ -94,6 +94,27 @@ describe("selectImportHistoryCandidates", () => {
     expect(result.candidates).toMatchObject([{ sourceRef: "BANK*FUEL 123", count: 2 }]);
   });
 
+  test("does not treat a shared numeric card tag as merchant identity", () => {
+    const result = selectImportHistoryCandidates(query({ proposal: { ...query().proposal, rawPlace: "OTHER SHOP 9876", tag: "9876" } }), [
+      record({ sourceRef: null, tag: "9876", place: null }),
+    ]);
+    expect(result.metadata).toBeUndefined();
+  });
+
+  test("does not auto-assign a merchant whose name is only a prefix of another merchant", () => {
+    const result = selectImportHistoryCandidates(query({ proposal: { ...query().proposal, rawPlace: "FUEL EXPRESS", tag: "" } }), [
+      record({ sourceRef: "FUEL", tag: "FUEL", place: "Fuel" }),
+    ]);
+    expect(result.metadata).toBeUndefined();
+  });
+
+  test("uses a complete merchant line from manual history without a source reference", () => {
+    const result = selectImportHistoryCandidates(query({ proposal: { ...query().proposal, rawPlace: "12.34 PLN\nFUEL STATION\nCARD 9876", tag: "" } }), [
+      record({ sourceRef: null, tag: null }),
+    ]);
+    expect(result.metadata).toMatchObject({ name: "Fuel", place: "Fuel station", envelope: "Car" });
+  });
+
   test("caps an oversized requested limit at five candidates", () => {
     const records = ["A", "B", "C", "D", "E", "F", "G"].map((envelope) => record({ envelope }));
 
