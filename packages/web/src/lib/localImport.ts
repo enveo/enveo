@@ -146,6 +146,7 @@ export function reviewedImportItemsForApply(args: {
             name: edited.name,
             envelopeId: edited.envelopeId,
             categoryId: edited.categoryId,
+            categoryName: null, // An explicitly cleared category must not be restored by its old name.
             placeName: edited.placeName,
             note: edited.note,
             automaticEnvelopeDefault: args.editedAutomaticDefaults[index] ?? false,

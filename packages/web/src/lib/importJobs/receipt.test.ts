@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { type ClientLedger, type ImportReceipt, importReceiptSchema } from "@enveo/shared";
 import type { ImportReviewRow } from "../importReview";
+import { planLocalImport } from "../localImport";
 import { finishImportReceipt, prepareImportReceipt } from "./receipt";
 
 test("completion freezes the actual applied rows and account balances, including a resumed import", () => {
@@ -65,6 +66,14 @@ test("skipped rows retain manual corrections and foreign rows retain their curre
     draftItem: { name: "Original", type: "expense", amount: 1000, date: "2026-09-10", tag: "" },
   } as ImportReviewRow;
   const emptyPlan = { dryRun: false, added: 0, skipped: 0, transactions: [], results: [] };
+  const unnamedPlan = planLocalImport({
+    ledger,
+    globalAccountId: "a",
+    dryRun: false,
+    items: [{ importRowId: "r", name: "", type: "expense", date: "2026-09-10", amount: 1000, tag: "", envelopeId: null }],
+  });
+  const unnamed = prepareImportReceipt(null, ledger, "a", [row], unnamedPlan, []);
+  expect(unnamed.rows[0]?.name).toBe("");
   const foreign = prepareImportReceipt(null, ledger, "a", [row], emptyPlan, []);
   expect(foreign.rows[0]).toMatchObject({ currency: "EUR", amount: 1000, selected: false });
   const edited = prepareImportReceipt(null, ledger, "a", [row], emptyPlan, [], {
