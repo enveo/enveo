@@ -19,6 +19,7 @@ import {
   type ImportReviewRow,
   importBalanceDiagnosis,
   importBalanceEffect,
+  importMissingDetails,
   importPeriodStart,
   importReviewDoneStats,
   importReviewReasonMessage,
@@ -129,6 +130,50 @@ const editedItem = (over: Partial<EditedImportItem> = {}): EditedImportItem => (
 });
 
 describe("screenshot import review view model", () => {
+  it("names every missing import detail without discarding a deliberately selected transaction", () => {
+    // given: a selected expense whose raw bank text masks an empty name
+    const item = { ...editedItem({ name: "   ", envelopeId: null, categoryId: null }), tag: "bank description" };
+    // when: reviewing its actual fields rather than a raw bank-text display fallback
+    expect(importMissingDetails(item, true)).toEqual(["Missing name", "Missing category", "Missing envelope"]);
+    const rows = buildImportReviewRows({
+      recognition: recognition([row("missing")], [proposal("missing")]),
+      ledger: ledger(),
+      dryRunResults: [dryResult(item)],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+    // then: the user can keep the row, or remove every warning with explicit corrections
+    expect(reviewedImportRowsForApply({ rows, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
+    const completed = { ...item, name: "Groceries", envelopeId: U(10), categoryId: U(11) };
+    expect(importMissingDetails(completed, true)).toEqual([]);
+  });
+
+  it("keeps an explicitly cleared category missing instead of recreating its suggested name", () => {
+    // given: the model suggested a new category, which the human clears in the editor
+    const rows = buildImportReviewRows({
+      recognition: recognition([row("category")], [proposal("category")]),
+      ledger: ledger(),
+      dryRunResults: [dryResult({ categoryName: "Suggested category" })],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+    // when: merging the editor's deliberate blank with the recognized row
+    const [chosen] = reviewedImportRowsForApply({ rows, edited: { 0: editedItem() }, editedAutomaticDefaults: {} });
+    // then: application cannot silently restore the category or bypass the warning
+    expect(chosen).toMatchObject({ categoryId: null, categoryName: null });
+    expect(importMissingDetails(chosen, true)).toContain("Missing category");
+  });
+
+  it("requires only fields applicable to the transaction and its current account", () => {
+    // given: transactions whose destination is not a spending envelope
+    const item = editedItem({ name: "Account movement" });
+    // then: income/transfers need no expense category, and off-budget expenses need no envelope
+    expect(importMissingDetails({ ...item, type: "income" }, true)).toEqual([]);
+    expect(importMissingDetails({ ...item, type: "transfer" }, true)).toEqual([]);
+    expect(importMissingDetails({ ...item, categoryId: U(11) }, false)).toEqual([]);
+    expect(importMissingDetails({ ...item, envelopeId: U(10), categoryName: "New category" }, true)).toEqual([]);
+  });
+
   it("keeps incomplete rows editable and unchecked, and applies a completed edit after rebuilding review", () => {
     // given: a synthetic cropped entry with no date or transaction type
     const result = recognition(

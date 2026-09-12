@@ -2,6 +2,16 @@
 import type { Dict } from "../index";
 
 export const pl: Dict = {
+  "Missing name": "Brak nazwy",
+  "Missing category": "Brak kategorii",
+  "Missing envelope": "Brak koperty",
+  "Unnamed transaction": "Transakcja bez nazwy",
+  "Selected transactions have missing details: {details}. On-budget expenses without an envelope reduce Ready to assign; refunds increase it. Add anyway?":
+    "Zaznaczone transakcje mają brakujące dane: {details}. Wydatki z kont budżetowych bez koperty pomniejszą kwotę do rozdysponowania, a zwroty ją zwiększą. Dodać mimo to?",
+  "Some selected transactions have missing details. Tap a row to complete it, or confirm adding it anyway.":
+    "Niektóre zaznaczone transakcje mają brakujące dane. Kliknij wiersz, aby je uzupełnić, lub potwierdź dodanie mimo braków.",
+  "Without an envelope, this transaction changes Ready to assign. Choose an envelope to show where it belongs.":
+    "Bez koperty ta transakcja zmienia kwotę do rozdysponowania. Wybierz kopertę, aby wskazać, do której puli należy.",
   "Complete or uncheck the unfinished rows before adding transactions.": "Uzupełnij lub odznacz niekompletne wiersze przed dodaniem transakcji.",
   "Choose a date": "Wybierz datę",
   "Choose a transaction type": "Wybierz typ transakcji",

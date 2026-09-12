@@ -55,7 +55,7 @@ export function prepareImportReceipt(
         detailsUnavailable: (applied.includes(row.rowId) && !old) || undefined,
         selected: !!tx || row.include || applied.includes(row.rowId),
         added: applied.includes(row.rowId),
-        name: item?.name ?? row.rawTextLines.join(" ").slice(0, 2000),
+        name: item ? (item.name ?? "") : row.rawTextLines.join(" ").slice(0, 2000),
         date: item?.date ?? row.date,
         amount: item?.amount ?? row.amount,
         type: item?.type ?? null,

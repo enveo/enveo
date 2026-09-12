@@ -40,6 +40,7 @@ import {
   type ImportReviewRow,
   importBalanceDiagnosis,
   importBalanceEffect,
+  importMissingDetails,
   importPeriodStart,
   isCompleteImportReviewItem,
   reviewBadges,
@@ -439,6 +440,25 @@ export function ImportSheet({
         setSourceAccountUnavailable(accountInvalid);
         if (accountInvalid || invalidatedEdit) return;
         const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: currentRows, edited: currentEdited, editedAutomaticDefaults });
+        const missingDetails = [
+          ...new Set(
+            chosen.flatMap((item) =>
+              importMissingDetails(item, ledger.accounts.find((account) => account.id === (item.accountId ?? job.accountId))?.onBudget ?? true),
+            ),
+          ),
+        ];
+        if (
+          missingDetails.length > 0 &&
+          !window.confirm(
+            t(
+              "Selected transactions have missing details: {details}. On-budget expenses without an envelope reduce Ready to assign; refunds increase it. Add anyway?",
+              {
+                details: missingDetails.map((message) => t(message)).join(", "),
+              },
+            ),
+          )
+        )
+          return;
         const chosenRowIds = new Set(chosen.flatMap((item) => (item.importRowId ? [item.importRowId] : [])));
         await importJobManager.recordSkipped(
           job.id,
@@ -543,6 +563,11 @@ export function ImportSheet({
   };
 
   const selectedCount = items.filter((row, i) => (row.item || edited[i]) && row.include && row.duplicateStatus !== "exists").length;
+  const missingDetailRows = items.flatMap((row, index) => {
+    const item = edited[index] ?? row.item;
+    const onBudget = state.accounts.find((account) => account.id === (edited[index]?.accountId ?? accountId))?.onBudget ?? true;
+    return row.include && row.duplicateStatus !== "exists" && importMissingDetails(item, onBudget).length > 0 ? [index] : [];
+  });
   // Account balances are global: recompute at currentMonth() from the replica, never from the
   // month `state` was built for (same pattern as Add / the Drawer).
   const ledgerVersion = useLedgerVersion();
@@ -948,7 +973,7 @@ export function ImportSheet({
               const e = edited[idx] as EditedImportItem | undefined;
               const type = e?.type ?? it?.type ?? null;
               const amount = e?.amount ?? it?.amount ?? row.amount;
-              const name = e?.name || it?.name || it?.tag || row.rawTextLines[0] || t("Unrecognized row");
+              const name = (e ?? it) ? (e ?? it)!.name?.trim() || t("Unnamed transaction") : row.rawTextLines[0] || t("Unrecognized row");
               const envId = e ? e.envelopeId : it?.envelopeId;
               const env = envId ? envById.get(envId) : null;
               const catName = e ? (e.categoryId ? (state.categories.find((c) => c.id === e.categoryId)?.name ?? null) : null) : (it?.categoryName ?? null);
@@ -975,6 +1000,10 @@ export function ImportSheet({
                   : null;
               const fxMismatch = !!row.currency && row.currency !== currency;
               const badges = reviewBadges(row, e);
+              const onBudget = state.accounts.find((account) => account.id === itemAccountId)?.onBudget ?? true;
+              if (!exists && row.editable) {
+                for (const label of importMissingDetails(e ?? it ?? row.draftItem, onBudget)) badges.push({ label, tone: "warning" });
+              }
               const controlLabels = reviewRowControlLabels(row, position);
               const ContentTag: "button" | "div" = controlLabels.edit ? "button" : "div";
               const contentControlProps = controlLabels.edit
@@ -1095,6 +1124,11 @@ export function ImportSheet({
                         </div>
                       )}
                       {automaticEffect && <AutomaticEnvelopeEffect data={automaticEffect} compact />}
+                      {!exists && type === "expense" && onBudget && !env && (
+                        <div style={{ fontSize: 11, color: C.warn, marginTop: 5 }}>
+                          {t("Without an envelope, this transaction changes Ready to assign. Choose an envelope to show where it belongs.")}
+                        </div>
+                      )}
                     </div>
                     {amount !== null && type && (
                       <span
@@ -1155,6 +1189,11 @@ export function ImportSheet({
               onDismiss={() => setMatch({ kind: "idle" })}
             />
 
+            {missingDetailRows.length > 0 && (
+              <div role="alert" style={{ fontSize: 12.5, color: C.warn, marginTop: 14 }}>
+                {t("Some selected transactions have missing details. Tap a row to complete it, or confirm adding it anyway.")}
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button
                 onClick={close}

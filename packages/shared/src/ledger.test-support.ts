@@ -165,12 +165,12 @@ export function ledgerArb(): fc.Arbitrary<Ledger> {
                 date,
               });
             }
-            // expense / refund — always with an envelope (domain requirement)
+            // Imports and older replicas may contain an unassigned expense/refund.
             return tx({
               type: "expense",
               accountId: accs[s.accIdx]!.id,
               amount: s.amount,
-              envelopeId: envs[s.envIdx]!.id,
+              envelopeId: s.withEnv ? envs[s.envIdx]!.id : null,
               isRefund: s.kind === "refund",
               date,
             });

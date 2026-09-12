@@ -19,7 +19,7 @@ export function ImportCompletionDetails({ receipt }: { receipt: ImportReceipt | 
         ) : (
           <li key={row.rowId} style={{ padding: "12px 0", borderBottom: `1px solid ${C.line}`, listStyle: "none" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <strong>{row.name || t("Transaction")}</strong>
+              <strong>{row.name || t("Unnamed transaction")}</strong>
               <strong style={{ whiteSpace: "nowrap" }}>{money(row.amount, row.currency ?? receipt.currency)}</strong>
             </div>
             <div style={{ color: C.soft, fontSize: 12, marginTop: 4 }}>

@@ -25,6 +25,20 @@ export type ImportReviewDraftItem = Omit<ImportItem, "type" | "date" | "amount">
   amount: number | null;
 };
 
+type ImportDetails = Pick<ImportReviewDraftItem, "type" | "name" | "envelopeId" | "categoryId" | "categoryName"> & { accountId?: string };
+
+/** Check the actual reviewed values, never the raw-text/name fallback shown in the row. */
+export function importMissingDetails(item: ImportDetails | null | undefined, onBudget: boolean): Message[] {
+  if (!item) return [];
+  const missing: Message[] = [];
+  if (!item.name?.trim()) missing.push(msg("Missing name"));
+  if (item.type === "expense") {
+    if (!item.categoryId && !item.categoryName?.trim()) missing.push(msg("Missing category"));
+    if (onBudget && !item.envelopeId) missing.push(msg("Missing envelope"));
+  }
+  return missing;
+}
+
 /** The apply boundary requires real calendar dates and integer money. */
 export function isCompleteImportReviewItem(item: Pick<ImportReviewDraftItem, "date" | "amount" | "type"> | null | undefined): boolean {
   return (
