@@ -153,6 +153,7 @@ export class E2eeByokProvider implements AiProvider {
       accounts: input.ledger.accounts,
       envelopes: input.ledger.envelopes,
       categories: input.ledger.categories,
+      places: input.ledger.places,
       transactions: input.ledger.transactions,
       historyRecords,
       chat: (request, timeoutMs) => this.deps.directChat(key, this.deps.model, request, timeoutMs),

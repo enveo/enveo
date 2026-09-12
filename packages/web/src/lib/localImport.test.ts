@@ -514,6 +514,46 @@ describe("local E2EE import planning", () => {
     expect(planLocalImport({ ledger: after, globalAccountId: U(2), items: accepted, dryRun: false }).added).toBe(0);
   });
 
+  it("reuses one existing place for different truncated branch descriptions without history", async () => {
+    const current = ledger();
+    current.transactions = [];
+    const descriptors = ["LIDL Gdansk...", "LIDL Wroclaw...", "LIDL..."];
+    const rows = descriptors.map((text, i) => recognitionRow(`new-${i}`, { amount: 2500 + i, rawTextLines: [text] }));
+    const result = await runImportRecognitionPipeline({
+      images: [],
+      checkpoint: { rows, proposals: [] },
+      locale: "en",
+      today: "2026-08-02",
+      budgetCurrency: "EUR",
+      accountId: U(2),
+      accounts: current.accounts,
+      envelopes: current.envelopes,
+      categories: current.categories,
+      places: current.places,
+      transactions: [],
+      historyRecords: [],
+      chat: async () =>
+        JSON.stringify({
+          rows: rows.map((row, i) => ({
+            rowId: row.rowId,
+            name: "Groceries",
+            place: descriptors[i],
+            envelopeId: U(5),
+            categoryId: U(6),
+            semanticKind: "card_purchase",
+            relation: null,
+            reviewReasons: [],
+          })),
+        }),
+    });
+    expect(result.proposals.map((row) => row.placeName)).toEqual(["Lidl", "Lidl", "Lidl"]);
+    const plan = planLocalImport({ ledger: current, globalAccountId: U(2), items: recognitionCandidatesForDryRun(result, current), dryRun: false });
+    const spy = mutationSpy();
+    applyLocalImport(plan, spy.mutations);
+    expect(spy.created.places).toEqual([]);
+    expect(spy.created.transactions).toEqual(descriptors.map((sourceRef) => expect.objectContaining({ placeId: U(7), sourceRef })));
+  });
+
   it("preserves per-item account, refund, ids, sourceRef and reuses place names case-insensitively", () => {
     const plan = planLocalImport({
       ledger: ledger(),

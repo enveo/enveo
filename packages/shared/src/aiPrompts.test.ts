@@ -8,6 +8,7 @@ import {
   buildImportExtractPrompt,
   buildSuggestPrompt,
   type ChatMessage,
+  cleanImportPlaceName,
   IMPORT_EXTRACT_JSON_SCHEMA,
   languageDirectives,
   languageName,
@@ -39,6 +40,37 @@ function fixture(): ClientLedger {
 }
 
 const sysOf = (m: ChatMessage[]): string => m[0]!.content as string;
+
+describe("canonical import places", () => {
+  it.each([
+    ["Parking Centr...", "Parking"],
+    ["TK Maxx Gdansk…", "TK Maxx"],
+    ["Kawiarnia Rondo Po...", "Kawiarnia Rondo"],
+    ["Unknown…", null],
+  ])("drops an incomplete suffix from %s", (input, expected) => {
+    expect(cleanImportPlaceName(input)).toBe(expected);
+  });
+
+  it("reuses the exact existing spelling without merging similar businesses", () => {
+    const places = [{ name: "TK Maxx" }, { name: "Cafe Rondo" }, { name: "old shop", archived: true }];
+    expect(cleanImportPlaceName(" tk   maxx ", places)).toBe("TK Maxx");
+    expect(cleanImportPlaceName("Cafe Rondo East", places)).toBe("Cafe Rondo East");
+    expect(cleanImportPlaceName("OLD SHOP", places)).toBe("OLD SHOP");
+  });
+
+  it("does not accept a copied unfinished word just because the model removed its dots", () => {
+    expect(cleanImportPlaceName("Kawiarnia Rondo Po", [], ["Kawiarnia Rondo Po..."])).toBe("Kawiarnia Rondo");
+    expect(cleanImportPlaceName("TK Maxx", [], ["TK Max..."])).toBe("TK Maxx");
+    expect(cleanImportPlaceName("ORLEN", [], ["ORLEN..."])).toBe("ORLEN");
+  });
+
+  it("keeps a known complete brand when the bank's ellipsis follows that brand", () => {
+    const places = [{ name: "TK Maxx" }, { name: "Cafe Rondo" }];
+    expect(cleanImportPlaceName("TK Maxx", places, ["TK Maxx..."])).toBe("TK Maxx");
+    expect(cleanImportPlaceName("TK Maxx...", places, ["TK Maxx..."])).toBe("TK Maxx");
+    expect(cleanImportPlaceName("Cafe Rondo", places, ["Cafe Rondo..."])).toBe("Cafe Rondo");
+  });
+});
 
 describe("buildSuggestPrompt", () => {
   const ledger = fixture();
@@ -639,6 +671,7 @@ describe("runImportRecognitionPipeline", () => {
         postingStatus?: "posted" | "pending" | "unknown";
         envelopeArchived?: boolean;
         modelEnvelope?: string | null;
+        modelPlace?: string;
         modelFails?: boolean;
       } = {},
     ) => {
@@ -665,7 +698,7 @@ describe("runImportRecognitionPipeline", () => {
               {
                 rowId: "r1",
                 name: "",
-                place: "BAKERA SP Z OO",
+                place: options.modelPlace ?? "BAKERA SP Z OO",
                 envelopeId: options.modelEnvelope ?? null,
                 categoryId: null,
                 semanticKind: "card_purchase",
@@ -702,6 +735,21 @@ describe("runImportRecognitionPipeline", () => {
     it("keeps known assignments when enrichment is unavailable", async () => {
       const result = await recognizeBakery({ postingStatus: "unknown", modelFails: true });
       expect(result.proposals[0]).toMatchObject({ name: "Bread", placeName: "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
+    });
+
+    it("lets the model shorten an old truncated place without losing historical assignments", async () => {
+      const result = await recognizeBakery({
+        postingStatus: "posted",
+        records: [bakeryHistory({ place: "Bakera Gdansk Cen..." })],
+        modelPlace: "Bakera",
+      });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", name: "Bread", envelopeId: "envelope-1", categoryId: "category-1" });
+      expect(result.rows[0]!.rawTextLines).toEqual(["12.34 PLN", "BAKERA SP Z OO", "CARD 9876"]);
+    });
+
+    it("keeps only the complete historical place prefix if the model is unavailable", async () => {
+      const result = await recognizeBakery({ records: [bakeryHistory({ place: "Bakera Gdansk..." })], modelFails: true });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
     });
 
     it("keeps a consistent envelope when historical transaction names differ", async () => {

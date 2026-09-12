@@ -26,7 +26,7 @@ import {
   rebaseChunkBatch,
   repairImportRelations,
 } from "./importChunks";
-import { type ImportHistoryRecord, type ImportHistorySelection, selectImportHistoryCandidates } from "./importHistory";
+import { type ImportHistoryRecord, type ImportHistorySelection, normalizeImportHistoryText, selectImportHistoryCandidates } from "./importHistory";
 import {
   applyImportEnrichment,
   applyImportSeamReviewReasons,
@@ -46,7 +46,7 @@ import {
   validateImportExtraction,
 } from "./importRecognition";
 import { decodeImportTextPage, isImportTextPage } from "./importStatement";
-import type { Account, Category, ClientLedger, Envelope, Transaction } from "./types";
+import type { Account, Category, ClientLedger, Envelope, Place, Transaction } from "./types";
 
 /* ── Shared chat request shape (OpenAI chat/completions) ─────────────── */
 
@@ -598,6 +598,7 @@ export interface ImportEnrichPromptInput {
   envelopes: Array<{ id: string; name: string }>;
   categories: Array<{ id: string; name: string }>;
   accounts: Array<{ id: string; name: string }>;
+  places?: Place[];
 }
 
 export interface ImportEnrichmentConstraints {
@@ -657,7 +658,10 @@ export function buildImportEnrichPrompt(input: ImportEnrichPromptInput, locale: 
   const system =
     "Enrich every financial event with a concise transaction name, merchant/place, and the best fitting existing envelope and category. " +
     "Use the visible merchant descriptor, recognizable brands and business types (such as a cafe, bakery, fuel station, gym or parking), and the meanings of the supplied envelope/category names. Matching transaction history is NOT required. " +
-    "Infer the spending purpose when supported by the descriptor, but do not invent a specific item purchased, an expanded truncated business name, or an unsupported assignment. If no supplied destination fits or several are equally plausible, use null for that destination; still fill the supported name and place. " +
+    "Infer the spending purpose when supported by the descriptor, but do not invent a specific item purchased or an unsupported assignment. If no supplied destination fits or several are equally plausible, use null for that destination; still fill the supported name and place. " +
+    "For place, prefer the exact name of a matching existing place in entities.places, even if it has no transaction history. Use one stable, short merchant or brand name across rows and branches: omit city, mall, address, terminal numbers and bank/legal suffixes. " +
+    "Unlike envelopeId/categoryId, place is free text: when no existing place matches, propose a new short canonical name. An absent dictionary entry is NOT a reason to return null; use the recognizable brand, complete business name prefix or business type. Use null only when none of those can be identified. " +
+    "An ellipsis marks an incomplete descriptor, not part of the place name. Recognize a well-known brand from a sufficiently clear partial name; otherwise keep only the complete distinctive words or the known business type (for example Parking). Never copy an unfinished word or ellipsis, and never invent the missing branch name. Do not merge distinct named businesses merely because they share a business type. " +
     "Compatible ledger history is additional evidence. Prefer consistent merchant-backed assignments; weak text similarities, shared amounts, currencies and card digits do not establish the same merchant or contradict an otherwise supported classification. " +
     "Return one annotation per supplied row. Preserve all visible facts: never correct or replace dates, amounts, currencies, directions, posting status, raw text, row identity, or transfer endpoint. " +
     "semanticKind is a classification, not a read fact. For an unknown kind or unsigned entry, matching prior income or reimbursements may support an incoming_transfer or merchant_refund suggestion for human review. A reimbursement need not come from a merchant. Never infer a refund from the counterparty alone when the screen clearly shows a debit, or change an explicit refund into a purchase. The historyConflict flag may mean disagreement with the first-pass guess, not disagreement between historical records. Prefer a matching prior reimbursement over a purchase guess when the read direction is credit and there is no contrary evidence. Keep the original kind if the evidence is weak or conflicting. " +
@@ -677,6 +681,9 @@ export function buildImportEnrichPrompt(input: ImportEnrichPromptInput, locale: 
             envelopes: canonicalPromptEntities(input.envelopes),
             categories: canonicalPromptEntities(input.categories),
             accounts: canonicalPromptEntities(input.accounts),
+            places: canonicalPromptEntities(
+              (input.places ?? []).filter((place) => !place.archived && !hasTruncatedPlaceName(place.name)).map(({ id, name }) => ({ id, name })),
+            ),
           },
         }),
       },
@@ -690,6 +697,34 @@ export function buildImportEnrichPrompt(input: ImportEnrichPromptInput, locale: 
  *  text cannot turn a name into a paragraph, and a rationale stays a rationale. */
 export const IMPORT_NAME_MAX_LENGTH = 80;
 export const IMPORT_RATIONALE_MAX_LENGTH = 300;
+const hasTruncatedPlaceName = (value: string | null | undefined): boolean => /\.{3,}|…/u.test(value ?? "");
+
+/** Model/history names are display metadata; retain bank evidence verbatim in rawTextLines. */
+export function cleanImportPlaceName(
+  value: string | null,
+  places: readonly { name: string; archived?: boolean }[] = [],
+  sourceLines: readonly string[] = [],
+): string | null {
+  const existingName = (name: string): string | undefined =>
+    places.find((place) => !place.archived && !hasTruncatedPlaceName(place.name) && place.name.trim().toLowerCase() === name.toLowerCase())?.name.trim();
+  const text = value?.replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  const known = existingName(text.replace(/(?:\.{3,}|…)$/u, "").trim());
+  if (known) return known;
+  let name = text.replace(/(?:^|\s)\S*(?:\.{3,}|…).*/u, "").trim();
+  if (!name) return null;
+  const knownPrefix = existingName(name);
+  if (knownPrefix) return knownPrefix;
+  // Removing just the dots does not complete the last word. Keep a fully expanded
+  // brand, but drop a copied partial suffix when the source proves it was cut off.
+  for (const line of sourceLines) {
+    if (hasTruncatedPlaceName(line) && normalizeImportHistoryText(name) === normalizeImportHistoryText(line)) {
+      const prefix = line.replace(/(?:^|\s)\S*(?:\.{3,}|…).*/u, "").trim();
+      if (prefix) name = prefix;
+    }
+  }
+  return existingName(name) ?? name;
+}
 export const boundedModelText = (value: string, max: number): string => {
   const flat = value.replace(/\s+/g, " ").trim();
   return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`;
@@ -784,6 +819,7 @@ export interface ImportRecognitionPipelineInput {
   accounts: Account[];
   envelopes: Envelope[];
   categories: Category[];
+  places?: Place[];
   transactions: Transaction[];
   historyRecords: ImportHistoryRecord[];
   chat: ImportRecognitionChat;
@@ -989,7 +1025,11 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       input.historyRecords,
     ),
   }));
-  const withHistoricalMetadata = (proposal: ImportProposal): ImportProposal => {
+  const withHistoricalMetadata = (proposal: ImportProposal, allowPlaceRefinement = false): ImportProposal => {
+    proposal = {
+      ...proposal,
+      placeName: cleanImportPlaceName(proposal.placeName, input.places, result.rows.find((row) => row.rowId === proposal.rowId)?.rawTextLines),
+    };
     const original = result.proposals.find((entry) => entry.rowId === proposal.rowId)!;
     const metadata = history.find((entry) => entry.rowId === proposal.rowId)!.selection.metadata;
     if (!metadata || proposal.type !== original.type || proposal.isRefund !== original.isRefund || proposal.toAccountId !== original.toAccountId)
@@ -1002,7 +1042,9 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     return {
       ...proposal,
       ...(metadata.name !== undefined ? { name: metadata.name ?? "" } : {}),
-      ...(metadata.place !== undefined ? { placeName: metadata.place } : {}),
+      ...(metadata.place !== undefined && !(allowPlaceRefinement && hasTruncatedPlaceName(metadata.place) && proposal.placeName !== null)
+        ? { placeName: cleanImportPlaceName(metadata.place, input.places) }
+        : {}),
       ...(metadata.envelope !== undefined ? { envelopeId: currentId(metadata.envelope, input.envelopes) } : {}),
       ...(metadata.category !== undefined ? { categoryId: currentId(metadata.category, input.categories) } : {}),
     };
@@ -1018,7 +1060,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       return withHistoricalMetadata({ ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) });
     }),
   };
-  if (!needsImportEnrichment(result)) {
+  if (!needsImportEnrichment(result) && !history.some((entry) => hasTruncatedPlaceName(entry.selection.metadata?.place))) {
     await input.lifecycle?.advancePhase?.("reconciling");
     if (durable) {
       await input.lifecycle?.saveResult?.(result);
@@ -1035,6 +1077,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     accountIds: currentAccounts.map((account) => account.id),
   };
   const entities = {
+    places: input.places ?? [],
     envelopes: activeEnvelopes.map(({ id, name }) => ({ id, name })),
     categories: input.categories.map(({ id, name }) => ({ id, name })),
     accounts: currentAccounts.map(({ id, name }) => ({ id, name })),
@@ -1131,7 +1174,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     });
     finalResult = {
       rows: result.rows,
-      proposals: enriched.map(withHistoricalMetadata),
+      proposals: enriched.map((proposal) => withHistoricalMetadata(proposal, true)),
       ...(result.seam ? { seam: result.seam } : {}),
     };
   } catch (error) {

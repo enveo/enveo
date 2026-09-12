@@ -8,6 +8,7 @@ import {
   type ImportRecognitionChatMeta,
   type ImportRecognitionPipelineInput,
   type ImportRecognitionResult,
+  type Place,
   runImportRecognitionPipeline,
   type Transaction,
 } from "@enveo/shared";
@@ -95,6 +96,7 @@ export interface ServerImportRecognitionAdapterInput {
   accountRows: Array<Omit<Account, "type"> & { type: string }>;
   envelopeRows: Envelope[];
   categoryRows: Category[];
+  placeRows?: Place[];
   transactionRows: Array<Omit<Transaction, "type" | "items"> & { type: string }>;
   historyRecords: ImportHistoryRecord[];
   chat: ImportModelChat;
@@ -123,6 +125,7 @@ export function runServerImportRecognitionAdapter(input: ServerImportRecognition
     accounts,
     envelopes: input.envelopeRows,
     categories: input.categoryRows,
+    places: input.placeRows,
     transactions,
     historyRecords: input.historyRecords,
     chat: input.chat,
@@ -138,12 +141,13 @@ export function runServerImportRecognitionAdapter(input: ServerImportRecognition
 export async function extractImportForBudget(input: { budgetId: string; accountId: string; images: string[]; locale: string; chat: ImportModelChat }) {
   const { budgetId, accountId, images, locale, chat } = input;
   const today = new Date().toISOString().slice(0, 10);
-  const [[budgetRow], accountRows, envelopeRows, categoryRows, transactionRows] = await Promise.all([
+  const [[budgetRow], accountRows, envelopeRows, categoryRows, transactionRows, placeRows] = await Promise.all([
     db.select({ currency: s.budgets.currency }).from(s.budgets).where(eq(s.budgets.id, budgetId)),
     db.select().from(s.accounts).where(eq(s.accounts.budgetId, budgetId)),
     db.select().from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId)),
     db.select().from(s.categories).where(eq(s.categories.budgetId, budgetId)),
     db.select().from(s.transactions).where(eq(s.transactions.budgetId, budgetId)),
+    db.select().from(s.places).where(eq(s.places.budgetId, budgetId)),
   ]);
   const currency = budgetRow?.currency ?? "EUR";
   const historyRecords = await loadImportHistory(budgetId, currency);
@@ -158,6 +162,7 @@ export async function extractImportForBudget(input: { budgetId: string; accountI
       envelopeRows,
       categoryRows,
       transactionRows,
+      placeRows,
       historyRecords,
       chat,
     });
