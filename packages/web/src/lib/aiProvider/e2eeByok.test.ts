@@ -299,6 +299,8 @@ describe("E2EE Own OpenAI provider", () => {
     const category = { id: "88888888-8888-4888-8888-888888888888", name: "Groceries", archived: false };
     const secondCategory = { id: "99999999-9999-4999-8999-999999999999", name: "Restaurants", archived: false };
     const place = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Shop", archived: false };
+    const unusedPlace = { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", name: "Papertrail Books", archived: false };
+    const archivedPlace = { id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", name: "Old Cafe", archived: true };
     const historicalTransaction = {
       id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       type: "expense" as const,
@@ -325,7 +327,7 @@ describe("E2EE Own OpenAI provider", () => {
       accounts: [secondAccount, ...ledger.accounts],
       envelopes: [secondEnvelope, envelope],
       categories: [secondCategory, category],
-      places: [place],
+      places: [unusedPlace, archivedPlace, place],
       transactions: [historicalTransaction],
     };
     const historyRecords: ImportHistoryRecord[] = [
@@ -345,7 +347,7 @@ describe("E2EE Own OpenAI provider", () => {
     ];
     const respond = (request: ChatRequest): string =>
       Array.isArray(request.messages[1]?.content)
-        ? '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":["SHOP 1"],"date":"2026-08-01","amount":1234,"currency":"EUR","direction":"debit","postingStatus":"posted","rowRole":"financial_event","semanticKind":"card_purchase","relation":null,"confidence":"medium","reviewReasons":["possible_ocr_error"]}]}'
+        ? '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":["SHOP 1"],"date":"2026-08-01","amount":1234,"currency":"EUR","direction":"debit","postingStatus":"unknown","rowRole":"financial_event","semanticKind":"card_purchase","relation":null,"confidence":"medium","reviewReasons":["possible_ocr_error"]}]}'
         : `{"rows":[{"rowId":"r1","name":"Zakupy","place":"Shop","envelopeId":"${envelope.id}","categoryId":"${category.id}","semanticKind":"card_purchase","relation":null,"reviewReasons":[]}]}`;
     const serverRequests: Array<{ request: ChatRequest; timeoutMs: number | undefined }> = [];
     const expected = await runServerImportRecognitionAdapter({
@@ -357,6 +359,7 @@ describe("E2EE Own OpenAI provider", () => {
       accountRows: [...reorderedLedger.accounts].reverse(),
       envelopeRows: [...reorderedLedger.envelopes].reverse(),
       categoryRows: [...reorderedLedger.categories].reverse(),
+      placeRows: [...reorderedLedger.places].reverse(),
       transactionRows: [...reorderedLedger.transactions].reverse(),
       historyRecords: [...historyRecords].reverse(),
       chat: async (request, timeoutMs) => {
@@ -370,6 +373,13 @@ describe("E2EE Own OpenAI provider", () => {
 
     expect(actual).toEqual(expected);
     expect(f.calls.direct.map(({ request, timeoutMs }) => ({ request, timeoutMs }))).toEqual(serverRequests);
+    expect(f.calls.direct).toHaveLength(2);
+    const context = JSON.parse(f.calls.direct[1]!.request.messages[1]!.content as string);
+    expect(context.entities.places).toEqual([
+      { id: place.id, name: place.name },
+      { id: unusedPlace.id, name: unusedPlace.name },
+    ]);
+    expect(context.rows[0].historyCandidates).not.toEqual(expect.arrayContaining([expect.objectContaining({ place: unusedPlace.name })]));
   });
 
   it("fails closed on malformed, legacy, cross-budget and stale-epoch records", async () => {
