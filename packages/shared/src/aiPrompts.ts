@@ -37,6 +37,7 @@ import {
   type ImportEnrichmentRow,
   type ImportExtractBatch,
   type ImportExtractRow,
+  type ImportProposal,
   type ImportRecognitionResult,
   type ImportSeamOutcome,
   needsImportEnrichment,
@@ -985,6 +986,24 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       input.historyRecords,
     ),
   }));
+  const withHistoricalMetadata = (proposal: ImportProposal): ImportProposal => {
+    const original = result.proposals.find((entry) => entry.rowId === proposal.rowId)!;
+    const metadata = history.find((entry) => entry.rowId === proposal.rowId)!.selection.metadata;
+    if (!metadata || proposal.type !== original.type || proposal.isRefund !== original.isRefund || proposal.toAccountId !== original.toAccountId)
+      return proposal;
+    const currentId = (name: string | null, entities: readonly { id: string; name: string; archived?: boolean }[]): string | null => {
+      if (name === null) return null;
+      const matches = entities.filter((entity) => !entity.archived && entity.name.trim().toLowerCase() === name.toLowerCase());
+      return matches.length === 1 ? matches[0]!.id : null;
+    };
+    return {
+      ...proposal,
+      ...(metadata.name !== undefined ? { name: metadata.name ?? "" } : {}),
+      ...(metadata.place !== undefined ? { placeName: metadata.place } : {}),
+      ...(metadata.envelope !== undefined ? { envelopeId: currentId(metadata.envelope, input.envelopes) } : {}),
+      ...(metadata.category !== undefined ? { categoryId: currentId(metadata.category, input.categories) } : {}),
+    };
+  };
   result = {
     ...result,
     proposals: result.proposals.map((proposal) => {
@@ -993,7 +1012,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
         ...(selection.conflict ? (["history_conflict"] as const) : []),
         ...(selection.candidates.length > 1 ? (["multiple_history_candidates"] as const) : []),
       ];
-      return { ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) };
+      return withHistoricalMetadata({ ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) });
     }),
   };
   if (!needsImportEnrichment(result)) {
@@ -1002,7 +1021,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       await input.lifecycle?.saveResult?.(result);
       return reconcile(result);
     }
-    return result as ReconciledImportRecognitionResult;
+    return reconcile(result);
   }
 
   const activeEnvelopes = input.envelopes.filter((envelope) => !envelope.archived);
@@ -1052,7 +1071,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       await input.lifecycle?.saveResult?.(result);
       return reconcile(result);
     }
-    return result as ReconciledImportRecognitionResult;
+    return reconcile(result);
   }
 
   let finalResult = result;
@@ -1091,7 +1110,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       const annotation = annotations.get(proposal.rowId)!;
       const row = finalRowById.get(proposal.rowId)!;
       const actionableAnnotationReasons =
-        row.rowRole === "financial_event" && row.postingStatus !== "pending" && row.postingStatus !== "declined"
+        row.rowRole === "financial_event" && row.postingStatus !== "declined"
           ? annotation.reviewReasons.filter((reason) => !["unknown_kind", "inconsistent_direction"].includes(reason) || proposal.reviewReasons.includes(reason))
           : [];
       return {
@@ -1109,7 +1128,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     });
     finalResult = {
       rows: result.rows,
-      proposals: enriched,
+      proposals: enriched.map(withHistoricalMetadata),
       ...(result.seam ? { seam: result.seam } : {}),
     };
   } catch (error) {
