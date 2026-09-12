@@ -261,14 +261,14 @@ export function selectImportHistoryCandidates(query: ImportHistoryQuery, records
       else if (values.length > 1 && field !== "name") metadata[field] = null;
     }
   }
-  const assignmentConflict = strong
-    ? ["place", "envelope", "category"].some(
-        (field) => new Set(candidates.map((candidate) => candidate[field as "place" | "envelope" | "category"]?.trim() || null)).size > 1,
-      )
-    : candidates.length > 1;
+  const assignmentConflict =
+    strong &&
+    ["place", "envelope", "category"].some(
+      (field) => new Set(candidates.map((candidate) => candidate[field as "place" | "envelope" | "category"]?.trim() || null)).size > 1,
+    );
   return {
     candidates: candidates.slice(0, displayLimit),
-    conflict: assignmentConflict || (query.proposal.type !== null && moneyConflict),
+    conflict: assignmentConflict || (strong && query.proposal.type !== null && moneyConflict),
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
   };
 }

@@ -90,7 +90,7 @@ function fixture(
       if (req.messages[1] && Array.isArray(req.messages[1].content)) {
         return '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":["SHOP 1"],"date":"2026-08-01","amount":1234,"currency":"EUR","direction":"unknown","postingStatus":"posted","rowRole":"financial_event","semanticKind":"unknown","relation":null,"confidence":"medium","reviewReasons":[]}]}';
       }
-      if (String(req.messages[0]?.content).includes("conservatively enrich")) {
+      if ((req.responseFormat?.json_schema as { name?: string } | undefined)?.name === "enriched_import_rows") {
         return '{"rows":[{"rowId":"r1","name":"Zakupy","place":"Shop","envelopeId":null,"categoryId":null,"semanticKind":"card_purchase","relation":null,"reviewReasons":[]}]}';
       }
       return "direct-answer";
@@ -202,6 +202,7 @@ describe("E2EE Own OpenAI provider", () => {
     expect(f.calls.direct[0]?.request.messages[1]?.content).not.toBeArray();
     expect(phases).toEqual(["enriching", "reconciling"]);
     expect(saved).toHaveLength(1);
+    expect(saved[0]?.proposals[0]).toMatchObject({ rowId: "r1", name: "Zakupy", placeName: "Shop", amount: 1234, date: "2026-08-01", currency: "EUR" });
   });
 
   it("skips enrichment for an exact duplicate identically to the default server pipeline", async () => {
