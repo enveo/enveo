@@ -741,17 +741,119 @@ describe("runImportRecognitionPipeline", () => {
     });
   });
 
-  it("skips cycle two for a straightforward posted purchase", async () => {
+  it.each(["posted", "pending"] as const)("enriches a new %s cafe purchase without merchant history", async (postingStatus) => {
+    // given: a readable merchant and amount, but no previous transaction to copy
     const requests: ChatRequest[] = [];
     const result = await runImportRecognitionPipeline({
       ...base,
+      chat: async (request) => {
+        requests.push(request);
+        if (requests.length === 1) {
+          const batch = JSON.parse(extracted());
+          Object.assign(batch.rows[0], { rawTextLines: ["NORTHSTAR CAFE"], amount: 6500, postingStatus });
+          return JSON.stringify(batch);
+        }
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Coffee and cake",
+              place: "Northstar Cafe",
+              envelopeId: "envelope-1",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+    // then: semantic enrichment supplies usable metadata while the bank's facts stay intact
+    expect(requests).toHaveLength(2);
+    const context = JSON.parse(requests[1]!.messages[1]!.content as string);
+    expect(context.rows[0].historyCandidates).toEqual([]);
+    expect(sysOf(requests[1]!.messages)).toContain("recognizable brands and business types");
+    expect(sysOf(requests[1]!.messages)).toContain("Matching transaction history is NOT required");
+    expect(context.entities.envelopes).toContainEqual({ id: "envelope-1", name: "Food" });
+    expect(result.rows[0]).toMatchObject({ amount: 6500, date: "2026-08-07", currency: "PLN", direction: "debit", postingStatus });
+    expect(result.proposals[0]).toMatchObject({
+      name: "Coffee and cake",
+      placeName: "Northstar Cafe",
+      envelopeId: "envelope-1",
+      amount: 6500,
+      date: "2026-08-07",
+      currency: "PLN",
+      type: "expense",
+      isRefund: false,
+      selected: true,
+    });
+    expect(result.proposals[0]!.reviewReasons).not.toContain("history_conflict");
+  });
+
+  it("does not flag parking as conflicting history because unrelated purchases share card boilerplate", async () => {
+    // given: different merchants share only the bank's long card and terminal details
+    const boilerplate = "CARD 2468 PURCHASE 20260807 TERMINAL 9999999999";
+    const requests: ChatRequest[] = [];
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      envelopes: [...base.envelopes, { ...base.envelopes[0]!, id: "envelope-parking", name: "Transport" }],
+      historyRecords: [
+        { ...history("account-1", "Food"), sourceRef: `NORTHSTAR CAFE\n${boilerplate}`, tag: "NORTHSTAR CAFE", place: "Northstar Cafe", name: "Coffee" },
+        { ...history("account-1", "Food"), sourceRef: `PAPERTRAIL BOOKS\n${boilerplate}`, tag: "PAPERTRAIL BOOKS", place: "Papertrail Books", name: "Books" },
+      ],
+      chat: async (request) => {
+        requests.push(request);
+        if (requests.length === 1) {
+          const batch = JSON.parse(extracted("card_purchase", "unknown"));
+          batch.rows[0].rawTextLines = ["PARKPORT APP", boilerplate];
+          return JSON.stringify(batch);
+        }
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Parking",
+              place: "Parkport",
+              envelopeId: "envelope-parking",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+    // then: weak similarity stays advisory and cannot fabricate a conflict for this merchant
+    expect(requests).toHaveLength(2);
+    const context = JSON.parse(requests[1]!.messages[1]!.content as string);
+    expect(context.rows[0].historyCandidates.map((candidate: { match: string }) => candidate.match)).toEqual(["source_similarity", "source_similarity"]);
+    expect(context.rows[0].historyConflict).toBe(false);
+    expect(result.proposals[0]).toMatchObject({ name: "Parking", placeName: "Parkport", envelopeId: "envelope-parking", amount: 1234 });
+    expect(result.proposals[0]!.reviewReasons).not.toContain("history_conflict");
+    expect(result.proposals[0]!.reviewReasons).not.toContain("multiple_history_candidates");
+  });
+
+  it("skips cycle two when a posted purchase already has its known merchant metadata", async () => {
+    const requests: ChatRequest[] = [];
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      historyRecords: [history("account-1", "Food")],
       chat: async (request) => {
         requests.push(request);
         return extracted();
       },
     });
     expect(requests).toHaveLength(1);
-    expect(result.proposals[0]).toMatchObject({ rowId: "r1", semanticKind: "card_purchase", name: "", selected: true });
+    expect(result.proposals[0]).toMatchObject({
+      rowId: "r1",
+      semanticKind: "card_purchase",
+      name: "Groceries",
+      placeName: "Lidl",
+      envelopeId: "envelope-1",
+      selected: true,
+    });
   });
 
   it("skips unnecessary enrichment for a straightforward exact duplicate", async () => {
@@ -805,37 +907,60 @@ describe("runImportRecognitionPipeline", () => {
 
   it("checkpoints cycle one and resumes without screenshots or another extraction request", async () => {
     const phases: string[] = [];
+    let calls = 0;
     let checkpoint: ImportRecognitionResult | undefined;
+    let stageA: ImportRecognitionResult | undefined;
+    const annotation = JSON.stringify({
+      rows: [
+        {
+          rowId: "r1",
+          name: "Groceries",
+          place: "Lidl",
+          envelopeId: "envelope-1",
+          categoryId: null,
+          semanticKind: "card_purchase",
+          relation: null,
+          reviewReasons: [],
+        },
+      ],
+    });
     await runImportRecognitionPipeline({
       ...base,
       pipelineMode: "durable",
-      chat: async () => extracted(),
+      chat: async () => (++calls === 1 ? extracted() : annotation),
       lifecycle: {
         afterUpstream: async () => phases.push("upstream"),
         saveExtraction: async (result) => {
           checkpoint = result;
           phases.push("checkpoint");
         },
+        saveResult: async (result) => (stageA = result),
         advancePhase: async (phase) => phases.push(phase),
       },
     });
-    expect(phases).toEqual(["upstream", "checkpoint", "reconciling"]);
+    expect(phases).toEqual(["upstream", "checkpoint", "enriching", "upstream", "reconciling"]);
     if (!checkpoint) throw new Error("expected durable extraction checkpoint");
+    expect(checkpoint.proposals[0]).toMatchObject({ name: "", envelopeId: null });
+    expect(stageA?.proposals[0]).toMatchObject({ name: "Groceries", envelopeId: "envelope-1" });
 
     const resumedPhases: string[] = [];
+    const resumedRequests: ChatRequest[] = [];
     const resumed = await runImportRecognitionPipeline({
       ...base,
       images: [],
       checkpoint,
       pipelineMode: "durable",
-      chat: async () => {
-        throw new Error("resume_must_not_extract_again");
+      chat: async (request) => {
+        resumedRequests.push(request);
+        return annotation;
       },
       lifecycle: { advancePhase: async (phase) => resumedPhases.push(phase) },
     });
 
-    expect(resumedPhases).toEqual(["reconciling"]);
-    expect(resumed.proposals[0]).toMatchObject({ rowId: "r1", selected: true });
+    expect(resumedRequests).toHaveLength(1);
+    expect(resumedRequests[0]!.responseFormat).toMatchObject({ json_schema: { name: "enriched_import_rows" } });
+    expect(resumedPhases).toEqual(["enriching", "reconciling"]);
+    expect(resumed.proposals[0]).toMatchObject({ rowId: "r1", name: "Groceries", envelopeId: "envelope-1", selected: true });
   });
 
   it("stores validated extraction before history and stores enriched Stage A before live-ledger reconciliation", async () => {
@@ -936,21 +1061,44 @@ describe("runImportRecognitionPipeline", () => {
     };
     let calls = 0;
     let durableResult: ImportRecognitionResult | undefined;
+    let rawCheckpoint: ImportRecognitionResult | undefined;
     const returned = await runImportRecognitionPipeline({
       ...base,
       pipelineMode: "durable",
       cycleTwoFailureMode: "strict",
       transactions: [duplicate],
       chat: async () => {
-        calls++;
-        if (calls > 1) throw new Error("durable duplicate should not enrich from live reconciliation");
-        return extracted();
+        if (++calls === 1) return extracted();
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Groceries",
+              place: "Lidl",
+              envelopeId: "envelope-1",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
       },
-      lifecycle: { saveResult: async (value) => (durableResult = value) },
+      lifecycle: {
+        saveExtraction: async (value) => (rawCheckpoint = value),
+        saveResult: async (value) => (durableResult = value),
+      },
     });
 
-    expect(calls).toBe(1);
-    expect(durableResult?.proposals[0]).toMatchObject({ disposition: "candidate", selected: true, reviewReasons: [] });
+    expect(calls).toBe(2);
+    expect(rawCheckpoint?.proposals[0]).toMatchObject({ name: "", envelopeId: null, selected: true });
+    expect(durableResult?.proposals[0]).toMatchObject({
+      name: "Groceries",
+      envelopeId: "envelope-1",
+      disposition: "candidate",
+      selected: true,
+      reviewReasons: [],
+    });
     expect(Object.hasOwn(durableResult?.proposals[0] ?? {}, "duplicateStatus")).toBe(false);
     expect(returned.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
   });

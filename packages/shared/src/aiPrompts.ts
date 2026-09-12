@@ -655,7 +655,10 @@ export function buildImportEnrichPrompt(input: ImportEnrichPromptInput, locale: 
     historyConflict: historyById.get(row.rowId)?.conflict ?? false,
   }));
   const system =
-    "You conservatively enrich validated screenshot-import rows using compatible ledger history as evidence, never as fact. " +
+    "Enrich every financial event with a concise transaction name, merchant/place, and the best fitting existing envelope and category. " +
+    "Use the visible merchant descriptor, recognizable brands and business types (such as a cafe, bakery, fuel station, gym or parking), and the meanings of the supplied envelope/category names. Matching transaction history is NOT required. " +
+    "Infer the spending purpose when supported by the descriptor, but do not invent a specific item purchased, an expanded truncated business name, or an unsupported assignment. If no supplied destination fits or several are equally plausible, use null for that destination; still fill the supported name and place. " +
+    "Compatible ledger history is additional evidence. Prefer consistent merchant-backed assignments; weak text similarities, shared amounts, currencies and card digits do not establish the same merchant or contradict an otherwise supported classification. " +
     "Return one annotation per supplied row. Preserve all visible facts: never correct or replace dates, amounts, currencies, directions, posting status, raw text, row identity, or transfer endpoint. " +
     "semanticKind is a classification, not a read fact. For an unknown kind or unsigned entry, matching prior income or reimbursements may support an incoming_transfer or merchant_refund suggestion for human review. A reimbursement need not come from a merchant. Never infer a refund from the counterparty alone when the screen clearly shows a debit, or change an explicit refund into a purchase. The historyConflict flag may mean disagreement with the first-pass guess, not disagreement between historical records. Prefer a matching prior reimbursement over a purchase guess when the read direction is credit and there is no contrary evidence. Keep the original kind if the evidence is weak or conflicting. " +
     "For envelopeId and categoryId select a supplied existing id or null; never invent an id. Relations may reference only a supplied rowId. " +
@@ -1010,7 +1013,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       const selection = history.find((entry) => entry.rowId === proposal.rowId)!.selection;
       const historyReasons = [
         ...(selection.conflict ? (["history_conflict"] as const) : []),
-        ...(selection.candidates.length > 1 ? (["multiple_history_candidates"] as const) : []),
+        ...(selection.conflict && selection.candidates.length > 1 ? (["multiple_history_candidates"] as const) : []),
       ];
       return withHistoricalMetadata({ ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) });
     }),

@@ -32,6 +32,19 @@ const query = (over: Partial<ImportHistoryQuery> = {}): ImportHistoryQuery => ({
 });
 
 describe("selectImportHistoryCandidates", () => {
+  test("does not turn weak bank-text similarities into a history conflict", () => {
+    const result = selectImportHistoryCandidates(
+      query({ direction: "unknown", proposal: { ...query().proposal, rawPlace: "12.00 PLN\nPARKING CENTRAL\n9988", tag: "" } }),
+      [
+        record({ sourceRef: "18.00 PLN\nBAKERY CENTRAL\n9988", tag: "", place: "Bakery", envelope: "Food" }),
+        record({ sourceRef: "12.00 PLN\nFLOWERS CENTRAL\n9988", tag: "", place: "Florist", envelope: "Gifts", isRefund: true }),
+      ],
+    );
+    expect(result.candidates.length).toBeGreaterThan(1);
+    expect(result.conflict).toBe(false);
+    expect(result.metadata).toBeUndefined();
+  });
+
   test("returns an exact source reference as ranked evidence without a certainty flag", () => {
     const result = selectImportHistoryCandidates(query(), [record()]);
 

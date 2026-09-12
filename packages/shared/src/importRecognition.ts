@@ -163,9 +163,14 @@ const addReasons = (current: ImportReviewReason[], ...added: ImportReviewReason[
   return [...unique];
 };
 
-/** Cycle two is reserved for rows carrying deterministic uncertainty or review risk. */
+/** Cycle two supplies missing metadata as well as reviewing uncertain facts. */
 export function needsImportEnrichment(result: ImportRecognitionResult): boolean {
-  return result.proposals.some((proposal) => proposal.reviewReasons.length > 0 || proposal.disposition === "unresolved");
+  return result.proposals.some(
+    (proposal) =>
+      proposal.reviewReasons.length > 0 ||
+      proposal.disposition === "unresolved" ||
+      (proposal.disposition === "candidate" && (!proposal.name.trim() || (proposal.type === "expense" && proposal.envelopeId === null))),
+  );
 }
 
 /** Surfaces unsettled seam pairs as review evidence on the later occurrence. Pure and
