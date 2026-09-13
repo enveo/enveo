@@ -151,6 +151,7 @@ export const pl: Dict = {
   "The assistant found no convincing combination.": "Asystent nie znalazł przekonującej kombinacji.",
   "Reconcile the account to {amount} now": "Wyrównaj teraz konto do {amount}",
   "May repeat a row from another screenshot": "Może powtarzać wiersz z innego zrzutu ekranu",
+  Date: "Data",
   "Date taken from the neighbouring screenshot": "Data z sąsiedniego zrzutu ekranu",
   "Text looks like an attempt to manipulate the import": "Tekst wygląda na próbę manipulacji importem",
   "Amount taken from the exchange line": "Kwota z wiersza wymiany",

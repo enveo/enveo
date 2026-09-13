@@ -20,6 +20,7 @@ export type TransactionKind = "expense" | "income" | "refund" | "transfer";
 export type TransactionAmountFilter = { mode: "exact"; minor: number } | { mode: "range"; minMinor: number | null; maxMinor: number | null };
 
 export interface TransactionFilters {
+  date?: string | null;
   accountIds: ReadonlySet<string>;
   envelopeIds: ReadonlySet<string>;
   placeIds: ReadonlySet<string>;
@@ -138,6 +139,7 @@ function groupedWholeDigits(value: string, separator: " " | "," | "."): string |
 }
 
 export function matchesTransactionFilters(transaction: Transaction, filters: TransactionFilters): boolean {
+  if (filters.date && transaction.date !== filters.date) return false;
   const matchesAccount =
     filters.accountIds.size === 0 ||
     filters.accountIds.has(transaction.accountId) ||

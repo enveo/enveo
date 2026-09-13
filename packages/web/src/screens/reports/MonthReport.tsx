@@ -33,10 +33,7 @@ import { type Mask, TITLES } from "./types";
  * the dominant envelope while naming three in the caption would disagree with itself), up to four
  * sign-correct transaction rows (`isRefund` reads "+", never a flat "−" that would misreport a
  * refund as a purchase), and an "Open in Transactions ›" link. That link opens the Transactions
- * list on the month already shared between every report screen (`month`/`onOpenTxns` — both
- * driven by the same `App.tsx` state Transactions itself reads) rather than a specific
- * transaction: there is no date-range filter in that list today, so pointing this link at one
- * transaction's edit screen would silently do something other than what it says. Selection
+ * list filtered to the selected calendar date. Selection
  * itself (`monthDay`/`dayDetail`) lives in `App.tsx`, not local state here — editing a row
  * unmounts this whole screen (`screen: "addExpense"`), which would otherwise lose it.
  */
@@ -68,7 +65,7 @@ export function MonthReport({
   onSelectDay: (date: string | null) => void;
   dayDetail: DaySpending | null;
   onEditTxn: (t: Transaction) => void;
-  onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
+  onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string; date?: string }) => void;
   M: Mask;
   month: string;
   onPrev: () => void;
@@ -237,7 +234,7 @@ export function MonthReport({
             })}
             {dayDetail.txns.length > 4 && <div style={{ fontSize: 9.5, color: C.mute }}>{tp("+ {n} more | + {n} more", dayDetail.txns.length - 4)}</div>}
             <button
-              onClick={() => onOpenTxns({})}
+              onClick={() => onOpenTxns({ date: monthDay })}
               
 
 
@@ -266,8 +263,15 @@ export function MonthReport({
   const eyebrowStyle = { fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase" as const, color: C.mute, margin: "18px 2px 8px" };
   const rowStyle = (last: boolean) => ({
     display: "flex",
+    width: "100%",
+    minHeight: 44,
+    background: "none",
+    border: "none",
+    fontFamily: "inherit",
+    textAlign: "left" as const,
+    cursor: "pointer",
     justifyContent: "space-between",
-    alignItems: "baseline" as const,
+    alignItems: "center" as const,
     padding: "9px 1px",
     borderBottom: last ? "none" : `1px solid ${C.line}`,
     fontSize: 13.5,
@@ -305,12 +309,15 @@ export function MonthReport({
         <>
           <div style={eyebrowStyle}>{t("Most frequent places")}</div>
           {places.map((p, i) => (
-            <div key={p.key} style={rowStyle(i === places.length - 1)}>
+            <button type="button" key={p.key} onClick={() => onOpenTxns({ placeId: p.key })} style={rowStyle(i === places.length - 1)}>
               <span style={{ color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dimNullLabel(p.name, "place", t)}</span>
               <span style={{ fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>
                 {t("{count}× · {amount}", { count: p.count, amount: M(p.total) })}
+                <span aria-hidden="true" style={{ color: "var(--accent)", marginLeft: 8 }}>
+                  ›
+                </span>
               </span>
-            </div>
+            </button>
           ))}
         </>
       )}
@@ -323,12 +330,25 @@ export function MonthReport({
              the transaction's date only when there is no context at all, so the muted slot next
              to the label is never empty. */}
           {largest.map((e, i) => (
-            <div key={e.id} style={rowStyle(i === largest.length - 1)}>
+            <button
+              type="button"
+              key={e.id}
+              onClick={() => {
+                const tx = state.transactions.find((tx) => tx.id === e.id);
+                if (tx) onEditTxn(tx);
+              }}
+              style={rowStyle(i === largest.length - 1)}
+            >
               <span style={{ color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {e.label} <span style={{ color: C.mute }}>· {e.context ?? shortDate(e.date, lang)}</span>
               </span>
-              <span style={{ fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>{M(e.amount)}</span>
-            </div>
+              <span style={{ fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>
+                {M(e.amount)}
+                <span aria-hidden="true" style={{ color: "var(--accent)", marginLeft: 8 }}>
+                  ›
+                </span>
+              </span>
+            </button>
           ))}
         </>
       )}

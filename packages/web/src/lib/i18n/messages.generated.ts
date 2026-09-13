@@ -240,6 +240,7 @@ export const MESSAGES = [
   "Dark",
   "Data & sync",
   "Data and synchronization",
+  "Date",
   "Date taken from the neighbouring screenshot",
   "Date unknown",
   "Day by day",

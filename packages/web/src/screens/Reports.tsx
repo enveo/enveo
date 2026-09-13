@@ -59,7 +59,7 @@ export function ReportsScreen({
   onMenu: () => void;
   onPrev: () => void;
   onNext: () => void;
-  onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
+  onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string; date?: string }) => void;
   
 
 
