@@ -1,12 +1,10 @@
  
-export const APP_VERSION = "4.8.8";
+export const APP_VERSION = "4.8.9";
 
  
-export const BUILD_INFO: { time: string; sha: string } = typeof __BUILD_INFO__ !== "undefined" ? __BUILD_INFO__ : { time: "", sha: "" };
+export const BUILD_INFO = Object.freeze(typeof __BUILD_INFO__ !== "undefined" ? __BUILD_INFO__ : { time: "", sha: "" });
 
  
 export function buildLabel(): string {
-  const { time, sha } = BUILD_INFO;
-  if (!time && !sha) return "";
-  return ["build", time, sha ? `· ${sha}` : ""].filter(Boolean).join(" ");
+  return BUILD_INFO.time ? `build ${BUILD_INFO.time}` : "";
 }
