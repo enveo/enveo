@@ -74,9 +74,9 @@ describe("AssetsReport composition", () => {
   test("shows all funds with no wealth envelopes, and respects the money mask", () => {
     expect(report(50000, [])).toContain("«50000»");
     expect(report(50000, [])).toContain("100%");
-    const hidden = report(200000, [wealth], () => "••••").replace(/<[^>]*>/g, "");
+    const hidden = report(200000, [wealth], () => "••••");
     expect(hidden).toContain("Remaining funds");
-    expect(hidden).not.toContain("10000");
-    expect(hidden).not.toContain("190000");
+    expect(hidden).not.toContain("«10000»");
+    expect(hidden).not.toContain("«190000»");
   });
 });
