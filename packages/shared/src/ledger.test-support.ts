@@ -170,7 +170,7 @@ export function ledgerArb(): fc.Arbitrary<Ledger> {
               type: "expense",
               accountId: accs[s.accIdx]!.id,
               amount: s.amount,
-              envelopeId: envs[s.envIdx]!.id,
+              envelopeId: s.withEnv ? envs[s.envIdx]!.id : null,
               isRefund: s.kind === "refund",
               date,
             });

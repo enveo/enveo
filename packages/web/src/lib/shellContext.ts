@@ -47,3 +47,5 @@ export const InWideShell = createContext<WideHostInfo | null>(null);
 export function useWideHost(): WideHostInfo | null {
   return useContext(InWideShell);
 }
+
+export const OpenImportActivity = createContext<(() => void) | null>(null);

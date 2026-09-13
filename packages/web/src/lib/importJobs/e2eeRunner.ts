@@ -1,3 +1,4 @@
+import type { ImportCompletion } from "@enveo/shared";
 import {
   advanceImportJob,
   type ClientLedger,
@@ -12,6 +13,7 @@ import {
   importExtractBatchSchema,
   importImageChunks,
   importJobResultSchema,
+  importReceiptSchema,
   OPENAI_MODELS,
   type OpenAiModel,
 } from "@enveo/shared";
@@ -281,6 +283,10 @@ export class E2eeImportJobRunner {
     }
     this.assertCurrent();
     const current = (await importJobStorage.listJobs(this.options.scope)).filter((job) => !this.expired(job));
+    this.assertCurrent();
+    await importJobStorage.pruneReceiptDrafts(this.options.scope, new Set(current.filter((job) => job.status === "ready").map((job) => job.id)), () =>
+      this.isCurrent(),
+    );
     this.assertCurrent();
     const ids = new Set(current.map((job) => job.id));
     for (const item of this.options.activity.list()) {
@@ -711,23 +717,19 @@ export class E2eeImportJobRunner {
     if (!this.isCurrent()) return Promise.resolve();
     if (this.resumePromise) return this.resumePromise;
     const work = (async () => {
-      let jobs = await this.currentJobs();
+      await this.list();
       this.assertCurrent();
-      for (const job of jobs) {
-        this.assertCurrent();
-        this.options.activity.upsert(importActivityFromE2ee(job));
-      }
       // A tab that can see the shared replica but does not own the execution lock must
       // remain observational. Even stale-running recovery is an execution mutation:
       // performing it here would fence the active leader out through revision CAS.
       if (!this.canRun()) return;
       await this.recoverInterrupted();
       this.assertCurrent();
-      jobs = await this.currentJobs();
+      const jobs = await this.currentJobs();
       this.assertCurrent();
       for (let job of jobs) {
         this.assertCurrent();
-        this.options.activity.upsert(importActivityFromE2ee(job));
+        if (job.status !== "ready" && job.status !== "completed") this.options.activity.upsert(importActivityFromE2ee(job));
         if (job.status === "failed" && job.retryAt !== null && job.retryAt <= this.timestamp()) {
           try {
             job = await this.transition(job, { type: "retry", at: this.timestamp() });
@@ -802,13 +804,24 @@ export class E2eeImportJobRunner {
     }
   }
 
-  async complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void> {
+  async complete(id: string, counts: ImportCompletion): Promise<void> {
     if (!this.isCurrent()) return;
     let job = await importJobStorage.getJob(this.options.scope, id);
     if (!this.isCurrent() || job?.status !== "ready") return;
     try {
+      const receipt = counts.receipt === undefined ? undefined : importReceiptSchema.parse(counts.receipt);
       if (job.phase === "ready") job = await this.transition(job, { type: "begin_apply", at: this.timestamp() });
       if (job.phase !== "applying") return;
+      const result = receipt ? { rows: [], proposals: [], receipt } : null;
+      let resultCiphertext: string | null = null;
+      if (result) {
+        const key = this.requireDek(job.epoch);
+        try {
+          resultCiphertext = await this.encrypt(JSON.stringify(result), key, importJobAadContext(job.budgetId, job.epoch, job.id, "result"));
+        } finally {
+          key.fill(0);
+        }
+      }
       await this.transition(
         job,
         { type: "completed", at: this.timestamp() },
@@ -816,11 +829,12 @@ export class E2eeImportJobRunner {
           inputCiphertext: null,
           chunkCiphertext: null,
           checkpointCiphertext: null,
-          resultCiphertext: null,
+          resultCiphertext,
+          expiresAt: new Date(this.now().getTime() + IMPORT_JOB_RETENTION_MS).toISOString(),
           appliedCount: counts.appliedCount,
           skippedCount: counts.skippedCount,
         },
-        null,
+        result,
       );
     } catch (error) {
       if (!(error instanceof StaleImportJobRunner)) throw error;

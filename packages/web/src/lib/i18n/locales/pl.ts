@@ -2,6 +2,16 @@
 import type { Dict } from "../index";
 
 export const pl: Dict = {
+  "Missing name": "Brak nazwy",
+  "Missing category": "Brak kategorii",
+  "Missing envelope": "Brak koperty",
+  "Unnamed transaction": "Transakcja bez nazwy",
+  "Selected transactions have missing details: {details}. On-budget expenses without an envelope reduce Ready to assign; refunds increase it. Add anyway?":
+    "Zaznaczone transakcje mają brakujące dane: {details}. Wydatki z kont budżetowych bez koperty pomniejszą kwotę do rozdysponowania, a zwroty ją zwiększą. Dodać mimo to?",
+  "Some selected transactions have missing details. Tap a row to complete it, or confirm adding it anyway.":
+    "Niektóre zaznaczone transakcje mają brakujące dane. Kliknij wiersz, aby je uzupełnić, lub potwierdź dodanie mimo braków.",
+  "Without an envelope, this transaction changes Ready to assign. Choose an envelope to show where it belongs.":
+    "Bez koperty ta transakcja zmienia kwotę do rozdysponowania. Wybierz kopertę, aby wskazać, do której puli należy.",
   "Complete or uncheck the unfinished rows before adding transactions.": "Uzupełnij lub odznacz niekompletne wiersze przed dodaniem transakcji.",
   "Choose a date": "Wybierz datę",
   "Choose a transaction type": "Wybierz typ transakcji",
@@ -419,7 +429,6 @@ export const pl: Dict = {
   "Drag {name}": "Przeciągnij {name}",
   Duet: "Duet",
   Duplicate: "Duplikuj",
-  "Duplicates skipped: {n}": "Duplikaty pominięte: {n}",
   E2EE: "E2EE",
   Edit: "Edytuj",
   Economical: "Ekonomiczny",
@@ -1437,4 +1446,16 @@ export const pl: Dict = {
   "{amount} to cover · {pool} in To be budgeted": "Do pokrycia {amount} · w Do rozdysponowania {pool}",
   "{available} available": "Dostępne {available}",
   "{available} available → {after} left": "Dostępne {available} → zostanie {after}",
+  "Import details": "Szczegóły importu",
+  "Skipped: {n}": "Pominięto: {n}",
+  "Details were not saved for this import.": "Nie zapisano szczegółów tego importu.",
+  "Selected in review": "Zaznaczono podczas przeglądu",
+  "Balance before import": "Saldo przed importem",
+  "Balance change": "Zmiana salda",
+  "Balances saved when this import was completed. Later transaction changes do not update this summary.":
+    "Salda zapisane w chwili zakończenia importu. Późniejsze zmiany transakcji nie aktualizują tego podsumowania.",
+  "Historical details are unavailable for this transaction.": "Szczegóły historyczne tej transakcji są niedostępne.",
+  Added: "Dodano",
+  Skipped: "Pominięto",
+  "Balance after import": "Saldo po imporcie",
 };

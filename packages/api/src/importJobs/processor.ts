@@ -428,7 +428,7 @@ export function createImportJobChat(job: ClaimedImportJob, deps: ProviderChatDep
 
 export function createDatabaseImportRecognition(job: ClaimedImportJob, deps: ProviderChatDeps) {
   return async (run: ImportRecognitionRunInput): Promise<ImportRecognitionResult> => {
-    const [[budget], accountRows, envelopeRows, categoryRows, transactionRows] = await Promise.all([
+    const [[budget], accountRows, envelopeRows, categoryRows, transactionRows, placeRows] = await Promise.all([
       deps.database
         .select({ userId: schema.budgets.userId, currency: schema.budgets.currency, tier: schema.budgets.tier, epoch: schema.budgets.epoch })
         .from(schema.budgets)
@@ -437,6 +437,7 @@ export function createDatabaseImportRecognition(job: ClaimedImportJob, deps: Pro
       deps.database.select().from(schema.envelopes).where(eq(schema.envelopes.budgetId, job.budgetId)),
       deps.database.select().from(schema.categories).where(eq(schema.categories.budgetId, job.budgetId)),
       deps.database.select().from(schema.transactions).where(eq(schema.transactions.budgetId, job.budgetId)),
+      deps.database.select().from(schema.places).where(eq(schema.places.budgetId, job.budgetId)),
     ]);
     if (!budget || budget.userId !== job.userId) throw new ImportJobBudgetMismatch();
     if (budget.tier !== "plain" || budget.epoch !== job.epoch) throw new ImportJobTierMismatch();
@@ -461,6 +462,7 @@ export function createDatabaseImportRecognition(job: ClaimedImportJob, deps: Pro
       envelopeRows,
       categoryRows,
       transactionRows,
+      placeRows,
       historyRecords,
       chat: createImportJobChat(job, deps),
       checkpoint: run.checkpoint ?? undefined,

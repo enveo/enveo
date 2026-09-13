@@ -176,7 +176,7 @@ export const de: Dict = {
   "Download a backup (JSON)": "Sicherung herunterladen (JSON)",
   "Drag {name}": "{name} ziehen",
   Duplicate: "Duplizieren",
-  "Duplicates skipped: {n}": "Übersprungene Duplikate: {n}",
+  "Skipped: {n}": "Übersprungen: {n}",
   E2EE: "E2EE",
   Edit: "Bearbeiten",
   Economical: "Sparsam",

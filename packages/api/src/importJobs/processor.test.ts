@@ -8,11 +8,15 @@ import {
   type ImportJobErrorCode,
   type ImportRecognitionResult,
 } from "@enveo/shared";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { ByokInvalidBodyError, ByokUpstreamError } from "../aiCredentials/transport";
 import { SpendDenied } from "../aiSpend/transport";
+import * as schema from "../db/schema";
 import { UpstreamNetworkError, UpstreamTimeoutError } from "../openaiHttp";
 import {
   classifyImportJobFailure,
+  createDatabaseImportRecognition,
   createImportJobChat,
   ImportJobAccountUnavailable,
   ImportJobBudgetMismatch,
@@ -300,6 +304,98 @@ describe("plain import job processor", () => {
 });
 
 describe("plain import provider dispatch", () => {
+  test("loads unused place names only from the claimed job budget into recognition", async () => {
+    const job = claimedJob();
+    const places = [
+      { id: "place-own", budgetId: job.budgetId, name: "Northstar Cafe", archived: false },
+      { id: "place-foreign", budgetId: "foreign-budget", name: "Private foreign place", archived: false },
+    ];
+    const placeQueries: Array<{ sql: string; params: unknown[] }> = [];
+    const database = {
+      select: () => ({
+        from: (table: unknown) => ({
+          where: async (predicate: SQL) => {
+            const query = new PgDialect().sqlToQuery(predicate);
+            if (table === schema.places) {
+              placeQueries.push(query);
+              return places.filter((place) => place.budgetId === query.params[0]);
+            }
+            if (table === schema.budgets) return [{ userId: job.userId, currency: "EUR", tier: "plain", epoch: job.epoch }];
+            if (table === schema.accounts) return [{ id: job.accountId, name: "Checking", type: "checking", archived: false }];
+            return [];
+          },
+        }),
+      }),
+    };
+    let context: { entities: { places: Array<{ id: string; name: string }> }; rows: Array<{ historyCandidates: unknown[] }> } | undefined;
+    const recognize = createDatabaseImportRecognition(job, {
+      database: database as never,
+      credentials: { withServerCredentialForWorker: async (_database, _owner, _budgetId, use) => use("unused") },
+      operatorChat: async ({ payload }) => {
+        const messages = payload.messages as Array<{ content: string }>;
+        context = JSON.parse(messages[1]!.content);
+        return {
+          kind: "ok",
+          json: {},
+          requestId: null,
+          content: JSON.stringify({
+            rows: [
+              {
+                rowId: "r1",
+                name: "Coffee",
+                place: "Northstar Cafe",
+                envelopeId: null,
+                categoryId: null,
+                semanticKind: "card_purchase",
+                relation: null,
+                reviewReasons: [],
+              },
+            ],
+          }),
+        };
+      },
+      logUpstreamCall: () => {},
+    });
+    const noop = async () => {};
+    const result = await recognize({
+      checkpoint: {
+        rows: [
+          {
+            rowId: "r1",
+            imageIndex: 0,
+            visualOrder: 0,
+            rawTextLines: ["NORTHSTAR CAFE"],
+            date: "2026-08-24",
+            amount: 1250,
+            currency: "EUR",
+            direction: "debit",
+            postingStatus: "posted",
+            rowRole: "financial_event",
+            semanticKind: "card_purchase",
+            relation: null,
+            confidence: "high",
+            reviewReasons: [],
+          },
+        ],
+        proposals: [],
+      },
+      chunks: undefined,
+      beforeUpstream: noop,
+      afterUpstream: noop,
+      saveChunkExtraction: noop,
+      failChunk: async () => "permanent",
+      saveExtraction: noop,
+      advancePhase: noop,
+      saveResult: noop,
+    });
+
+    expect(placeQueries.length).toBeGreaterThan(0);
+    for (const query of placeQueries) expect(query).toMatchObject({ sql: '"places"."budget_id" = $1', params: [job.budgetId] });
+    expect(context?.entities.places).toEqual([{ id: "place-own", name: "Northstar Cafe" }]);
+    expect(context?.rows[0]?.historyCandidates).toEqual([]);
+    expect(result.proposals[0]).toMatchObject({ placeName: "Northstar Cafe", amount: 1250, date: "2026-08-24" });
+  });
+
   test("selects the explicit durable shared-pipeline ordering instead of changing the default", () => {
     const source = readFileSync(new URL("./processor.ts", import.meta.url), "utf8");
 

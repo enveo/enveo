@@ -177,7 +177,7 @@ export function useCurrency(): string {
 export function useMask() {
   const { settings } = useSettings();
   const currency = useCurrency();
-  return (minor: number) => (settings.discreet ? "••••" : formatMoney(minor, currency, settings.lang));
+  return (minor: number, amountCurrency = currency) => (settings.discreet ? "••••" : formatMoney(minor, amountCurrency, settings.lang));
 }
 
 

@@ -176,7 +176,7 @@ export const sv: Dict = {
   "Download a backup (JSON)": "Ladda ned en säkerhetskopia (JSON)",
   "Drag {name}": "Dra {name}",
   Duplicate: "Duplicera",
-  "Duplicates skipped: {n}": "Överhoppade dubbletter: {n}",
+  "Skipped: {n}": "Överhoppade: {n}",
   E2EE: "E2EE",
   Edit: "Redigera",
   Economical: "Ekonomisk",

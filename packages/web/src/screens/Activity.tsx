@@ -1,5 +1,6 @@
 import type { StateResponse } from "@enveo/shared";
 import { useCallback, useEffect, useState } from "react";
+import { HeaderImportBadge } from "../components/HeaderImportBadge";
 import { ImportProgress, importProgressPresentation } from "../components/ImportProgress";
 import { ImportSheet } from "../components/ImportSheet";
 import { useBand } from "../components/kit";
@@ -220,9 +221,9 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
                       {t("Added: {added} · Skipped: {skipped}", { added: job.appliedCount, skipped: job.skippedCount })}
                     </div>
                   )}
-                  {job.status === "ready" && (
+                  {(job.status === "ready" || job.status === "completed") && (
                     <button type="button" onClick={() => setSelectedJobId(job.id)} style={{ ...primaryButton, background: C.text, color: C.card }}>
-                      {t("Review import")}
+                      {job.status === "completed" ? t("Import details") : t("Review import")}
                     </button>
                   )}
                   {job.status === "failed" && !scheduledRetry && (
@@ -274,9 +275,13 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
             clipPath: band ? "polygon(0 0, 100% 0, 100% calc(100% - 12px), 50% 100%, 0 calc(100% - 12px))" : undefined,
           }}
         >
-          <button type="button" onClick={onMenu} aria-label={t("Menu")} style={iconButton}>
-            <Ico d="M4 6h16M4 12h16M4 18h16" size={21} color={hc(C.headerInk, C.text)} sw={2} />
-          </button>
+          <div style={{ position: "relative", display: "flex" }}>
+            {" "}
+            <button type="button" onClick={onMenu} aria-label={t("Menu")} style={iconButton}>
+              <Ico d="M4 6h16M4 12h16M4 18h16" size={21} color={hc(C.headerInk, C.text)} sw={2} />
+            </button>
+            <HeaderImportBadge />
+          </div>
           <h1 style={{ margin: 0, color: hc(C.headerInk, C.text), fontSize: 18, fontWeight: 750 }}>{t("Imports")}</h1>
         </header>
       )}

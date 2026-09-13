@@ -4,6 +4,7 @@ import { AccountEditSheet, AutomaticEnvelopeControl } from "../components/Accoun
 import { AmountField } from "../components/AmountField";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { Surface } from "../components/chrome";
+import { HeaderImportBadge } from "../components/HeaderImportBadge";
 import { IconColorPicker } from "../components/IconColorPicker";
 import { SegBar } from "../components/reportKit";
 import { accountIconColor } from "../components/tiles";
@@ -417,9 +418,13 @@ export function AccountsScreen({
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: `12px ${P}px 4px` }}>
-            <button onClick={onMenu} aria-label={t("Menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
-              <Ico d="M4 6h16M4 12h16M4 18h16" size={20} />
-            </button>
+            <div style={{ position: "relative", display: "flex" }}>
+              {" "}
+              <button onClick={onMenu} aria-label={t("Menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+                <Ico d="M4 6h16M4 12h16M4 18h16" size={20} />
+              </button>
+              <HeaderImportBadge />
+            </div>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 18.5, fontWeight: 600, color: C.text }}>{t("Accounts")}</div>
               <div style={{ fontSize: 12, color: C.soft, marginTop: 1 }}>

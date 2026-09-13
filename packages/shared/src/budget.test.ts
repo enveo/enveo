@@ -7,6 +7,59 @@ import type { Ledger } from "./types";
  
 
 describe("computeBudgetState — scenarios", () => {
+  it("an expense without an envelope spends unassigned money until an envelope is chosen", () => {
+     
+    const account = acc({ initialBalance: 100_00 });
+    const group = grp();
+    const envelope = env(group.id);
+    const transaction = tx({ accountId: account.id, envelopeId: null, amount: 30_00 });
+    const ledger: Ledger = {
+      accounts: [account],
+      groups: [group],
+      envelopes: [envelope],
+      allocations: [alloc(envelope.id, "2026-06", 50_00)],
+      transactions: [transaction],
+    };
+     
+    const unassigned = computeBudgetState(ledger, "2026-06");
+    // then: the money leaves the unassigned pool, not an arbitrary envelope
+    expect(unassigned.accounts[0]!.balance).toBe(70_00);
+    expect(unassigned.envelopes[0]!.available).toBe(50_00);
+    expect(unassigned.toBeBudgeted).toBe(20_00);
+    expect(unassigned.readyToAssign).toBe(20_00);
+    expect(budgetedPlusToBeBudgeted(unassigned)).toBe(totalOnBudget(unassigned));
+     
+    const assigned = computeBudgetState({ ...ledger, transactions: [{ ...transaction, envelopeId: envelope.id }] }, "2026-06");
+     
+    expect(assigned.toBeBudgeted).toBe(50_00);
+    expect(assigned.envelopes[0]!.available).toBe(20_00);
+    expect(budgetedPlusToBeBudgeted(assigned)).toBe(totalOnBudget(assigned));
+  });
+
+  it("an unassigned refund returns money to the pool, with the same month and account scope as other expenses", () => {
+     
+    const account = acc({ initialBalance: 100_00 });
+    const offBudget = acc({ onBudget: false, initialBalance: 100_00 });
+    const ledger: Ledger = {
+      accounts: [account, offBudget],
+      groups: [],
+      envelopes: [],
+      allocations: [],
+      transactions: [
+        tx({ accountId: account.id, envelopeId: null, isRefund: true, amount: 30_00, date: "2026-07-01" }),
+        tx({ accountId: offBudget.id, envelopeId: null, amount: 90_00 }),
+      ],
+    };
+     
+    const june = computeBudgetState(ledger, "2026-06");
+    const july = computeBudgetState(ledger, "2026-07");
+     
+    expect(june.toBeBudgeted).toBe(100_00);
+    expect(june.readyToAssign).toBe(130_00);
+    expect(july.toBeBudgeted).toBe(130_00);
+    expect(budgetedPlusToBeBudgeted(july)).toBe(totalOnBudget(july));
+  });
+
   it("an expense lowers the account balance and envelope available", () => {
     const g = grp();
     const a = acc({ initialBalance: 100_00 });

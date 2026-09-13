@@ -1,3 +1,4 @@
+import type { ImportCompletion } from "@enveo/shared";
 import { type AiLocale, type ImportJobDetail, type ImportJobSummary, importJobDetailSchema, importJobSummarySchema } from "@enveo/shared";
 import { http } from "../api";
 
@@ -12,6 +13,5 @@ export const importJobsApi = {
   cancel: (id: string, budgetId: string) => detail("POST", `/import/jobs/${encodeURIComponent(id)}/cancel`, { budgetId }),
   retry: (id: string, budgetId: string) => detail("POST", `/import/jobs/${encodeURIComponent(id)}/retry`, { budgetId }),
   removeMany: (ids: string[], budgetId: string) => http<{ deleted: number }>("POST", "/import/jobs/delete", { budgetId, ids }),
-  complete: (id: string, input: { budgetId: string; appliedCount: number; skippedCount: number }) =>
-    detail("POST", `/import/jobs/${encodeURIComponent(id)}/complete`, input),
+  complete: (id: string, input: ImportCompletion & { budgetId: string }) => detail("POST", `/import/jobs/${encodeURIComponent(id)}/complete`, input),
 };

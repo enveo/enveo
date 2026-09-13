@@ -421,6 +421,17 @@ export function createSync2Routes(options: { masterKeys: VaultMasterKeyProvider 
           ),
         )
         .returning({ id: s.importJobs.id });
+      await tx
+        .update(s.importJobs)
+        .set({ extraction: null, result: null })
+        .where(
+          and(
+            eq(s.importJobs.budgetId, meta.id),
+            eq(s.importJobs.userId, body.userId),
+            eq(s.importJobs.tier, "plain"),
+            inArray(s.importJobs.status, ["completed", "cancelled"]),
+          ),
+        );
       if (revokedJobs.length > 0) {
         await tx.delete(s.importJobImages).where(
           inArray(
