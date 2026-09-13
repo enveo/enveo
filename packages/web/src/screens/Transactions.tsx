@@ -5,7 +5,7 @@ import { CardBox, SectionEyebrow, useBand } from "../components/kit";
 import { LazyChunk } from "../components/lazy";
 import type { StateResponse } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
-import { dayHeading } from "../lib/dates";
+import { dayHeading, shortDate } from "../lib/dates";
 import { INPUT_FOCUS_CLASS } from "../lib/focusPresentation";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
@@ -193,6 +193,9 @@ export function TransactionsScreen({
         ? M(filters.amount.minor)
         : `${filters.amount.minMinor === null ? "…" : M(filters.amount.minMinor)} – ${filters.amount.maxMinor === null ? "…" : M(filters.amount.maxMinor)}`;
     filterChips.push({ key: "amount", label: t("Amount"), value, onRemove: () => clearDimension("amount") });
+  }
+  if (filters.date) {
+    filterChips.push({ key: "date", label: t("Date"), value: shortDate(filters.date, lang), onRemove: () => setFilters({ ...filters, date: null }) });
   }
   const filterCount = activeFilterCount(filters);
 
@@ -445,36 +448,35 @@ export function TransactionsScreen({
           </>
         )}
 
-        {/* Design parity wave C task 5: on wide these chips move INSIDE the inline panel
-            (`WideFilterPanel` above, v3:319-327) and show only while it is open — this standalone
-            row is phone-only now, unaffected by C5 (owner rule 2's phone-chrome-in-a-panel avoided
-            the other way here: a panel-adjacent affordance never leaks onto phone either). */}
-        {filterChips.length > 0 && !inWide && (
+        { }
+        {filterChips.length > 0 && (!inWide || !!filters.date) && (
           <div className="gs" style={{ display: "flex", alignItems: "center", gap: 7, padding: `0 ${P}px 8px`, overflowX: "auto" }}>
             <span style={{ fontSize: 13.5, color: C.text, flexShrink: 0 }}>{t("Filter:")}</span>
-            {filterChips.map((chip) => (
-              <button
-                key={chip.key}
-                onClick={chip.onRemove}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 5,
-                  padding: "6px 9px",
-                  borderRadius: 18,
-                  border: "none",
-                  background: C.surface,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
-                  flexShrink: 0,
-                }}
-              >
-                <span style={{ fontSize: 12, color: C.soft }}>{chip.label}:</span>
-                <span style={{ fontSize: 12.5, color: C.text, fontWeight: 650 }}>{chip.value}</span>
-                <Ico d="M6 6l12 12M18 6L6 18" size={13} color={C.soft} sw={2} />
-              </button>
-            ))}
+            {filterChips
+              .filter((chip) => !inWide || chip.key === "date")
+              .map((chip) => (
+                <button
+                  key={chip.key}
+                  onClick={chip.onRemove}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    padding: "6px 9px",
+                    borderRadius: 18,
+                    border: "none",
+                    background: C.surface,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ fontSize: 12, color: C.soft }}>{chip.label}:</span>
+                  <span style={{ fontSize: 12.5, color: C.text, fontWeight: 650 }}>{chip.value}</span>
+                  <Ico d="M6 6l12 12M18 6L6 18" size={13} color={C.soft} sw={2} />
+                </button>
+              ))}
           </div>
         )}
 
