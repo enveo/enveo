@@ -21,6 +21,7 @@ const wealth: EnvelopeView = {
   available: 190000,
 };
 
+ 
 function report(net: number, envelopes = [wealth], mask = (n: number) => `«${n}»`) {
   const state: StateResponse = {
     month: "2026-09",
@@ -75,6 +76,9 @@ describe("AssetsReport composition", () => {
     expect(report(50000, [])).toContain("«50000»");
     expect(report(50000, [])).toContain("100%");
     const hidden = report(200000, [wealth], () => "••••");
+    const [maskedWealth, maskedRemaining] = [...hidden.matchAll(/<dd\b[^>]*>(.*?)<\/dd>/g)].map((match) => match[1]);
+    expect(maskedWealth).toBe("••••");
+    expect(maskedRemaining).toBe("••••");
     expect(hidden).toContain("Remaining funds");
     expect(hidden).not.toContain("«10000»");
     expect(hidden).not.toContain("«190000»");
