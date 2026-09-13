@@ -375,7 +375,7 @@ function AppContent() {
   
 
 
-  const openTxns = (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => {
+  const openTxns = (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string; date?: string }) => {
     setTxQuery("");
     setTxFilters({
       ...initialTransactionFilters(),
@@ -383,6 +383,7 @@ function AppContent() {
       accountIds: f?.accId ? new Set([f.accId]) : new Set(),
       categoryIds: f?.catId ? new Set([f.catId]) : new Set(),
       placeIds: f?.placeId ? new Set([f.placeId]) : new Set(),
+      date: f?.date ?? null,
     });
     setEditTxn(null);
     setEnvView(null);
@@ -486,8 +487,14 @@ function AppContent() {
     setEditReturn(screen === "addExpense" ? editReturn : screen);
     setScreen("addExpense");
   };
-  const prev = () => setMonth((m) => shiftMonth(m, -1));
-  const next = () => setMonth((m) => shiftMonth(m, 1));
+  const prev = () => {
+    setTxFilters((f) => ({ ...f, date: null }));
+    setMonth((m) => shiftMonth(m, -1));
+  };
+  const next = () => {
+    setTxFilters((f) => ({ ...f, date: null }));
+    setMonth((m) => shiftMonth(m, 1));
+  };
   // The decorative frame around the phone column: it appears once the window is meaningfully
   // wider than that column (a rounded corner + shadow so the card reads as a deliberate frame,
   // not a stray narrow window). This is NOT the layout mode — it is kept on its historical

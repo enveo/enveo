@@ -36,6 +36,7 @@ interface TransactionFilterSheetProps {
 }
 
 const cloneFilters = (filters: TransactionFilters): TransactionFilters => ({
+  date: filters.date ?? null,
   accountIds: new Set(filters.accountIds),
   envelopeIds: new Set(filters.envelopeIds),
   placeIds: new Set(filters.placeIds),
@@ -47,7 +48,8 @@ const cloneFilters = (filters: TransactionFilters): TransactionFilters => ({
 export function activeFilterCount(filters: TransactionFilters): number {
   return (
     [filters.accountIds, filters.envelopeIds, filters.placeIds, filters.categoryIds, filters.kinds].filter((selection) => selection.size > 0).length +
-    (filters.amount ? 1 : 0)
+    (filters.amount ? 1 : 0) +
+    (filters.date ? 1 : 0)
   );
 }
 

@@ -2,6 +2,7 @@
 import type { Dict } from "../index";
 
 export const it: Dict = {
+  Date: "Data",
   "+ Add envelope": "+ Aggiungi busta",
   "+ Add item": "+ Aggiungi voce",
   "+ Add profile": "+ Aggiungi profilo",
