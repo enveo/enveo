@@ -1100,6 +1100,7 @@ export const MESSAGES = [
   "{n} healthy envelope | {n} healthy envelopes",
   "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored",
   "{n} hour ago | {n} hours ago",
+  "{n} import needs attention | {n} imports need attention",
   "{n} import needs attention — open Imports | {n} imports need attention — open Imports",
   "{n} item | {n} items",
   "{n} minute ago | {n} minutes ago",
