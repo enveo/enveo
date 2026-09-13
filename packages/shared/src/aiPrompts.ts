@@ -1040,11 +1040,21 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       const matches = entities.filter((entity) => !entity.archived && entity.name.trim().toLowerCase() === name.toLowerCase());
       return matches.length === 1 ? matches[0]!.id : null;
     };
+    const historicalPlace = cleanImportPlaceName(metadata.place ?? null, input.places);
+    // Callers without a place catalog cannot establish archival; production supplies it.
+    const historicalPlaceIsCurrent =
+      input.places === undefined ||
+      metadata.place === null ||
+      input.places.some(
+        (place) => !place.archived && [metadata.place, historicalPlace].some((name) => name?.trim().toLowerCase() === place.name.trim().toLowerCase()),
+      );
     return {
       ...proposal,
       ...(metadata.name !== undefined ? { name: metadata.name ?? "" } : {}),
-      ...(metadata.place !== undefined && !(allowPlaceRefinement && hasTruncatedPlaceName(metadata.place) && proposal.placeName !== null)
-        ? { placeName: cleanImportPlaceName(metadata.place, input.places) }
+      ...(metadata.place !== undefined &&
+      historicalPlaceIsCurrent &&
+      !(allowPlaceRefinement && hasTruncatedPlaceName(metadata.place) && proposal.placeName !== null)
+        ? { placeName: historicalPlace }
         : {}),
       ...(metadata.envelope !== undefined ? { envelopeId: currentId(metadata.envelope, input.envelopes) } : {}),
       ...(metadata.category !== undefined ? { categoryId: currentId(metadata.category, input.categories) } : {}),
