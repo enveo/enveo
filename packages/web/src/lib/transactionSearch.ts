@@ -19,6 +19,9 @@ export type TransactionKind = "expense" | "income" | "refund" | "transfer";
 
 export type TransactionAmountFilter = { mode: "exact"; minor: number } | { mode: "range"; minMinor: number | null; maxMinor: number | null };
 
+ 
+export const MISSING_TRANSACTION_FIELD = "";
+
 export interface TransactionFilters {
   date?: string | null;
   accountIds: ReadonlySet<string>;
@@ -147,12 +150,16 @@ export function matchesTransactionFilters(transaction: Transaction, filters: Tra
   const matchesEnvelope =
     filters.envelopeIds.size === 0 ||
     (!!transaction.envelopeId && filters.envelopeIds.has(transaction.envelopeId)) ||
-    transaction.items.some((item) => filters.envelopeIds.has(item.envelopeId));
-  const matchesPlace = filters.placeIds.size === 0 || (!!transaction.placeId && filters.placeIds.has(transaction.placeId));
+    (transaction.items.length
+      ? transaction.items.some((item) => filters.envelopeIds.has(item.envelopeId ?? MISSING_TRANSACTION_FIELD))
+      : filters.envelopeIds.has(transaction.envelopeId ?? MISSING_TRANSACTION_FIELD));
+  const matchesPlace = filters.placeIds.size === 0 || filters.placeIds.has(transaction.placeId ?? MISSING_TRANSACTION_FIELD);
   const matchesCategory =
     filters.categoryIds.size === 0 ||
     (!!transaction.categoryId && filters.categoryIds.has(transaction.categoryId)) ||
-    transaction.items.some((item) => !!item.categoryId && filters.categoryIds.has(item.categoryId));
+    (transaction.items.length
+      ? transaction.items.some((item) => filters.categoryIds.has(item.categoryId ?? MISSING_TRANSACTION_FIELD))
+      : filters.categoryIds.has(transaction.categoryId ?? MISSING_TRANSACTION_FIELD));
   const kind: TransactionKind = transaction.type === "expense" && transaction.isRefund ? "refund" : transaction.type;
   const matchesKind = filters.kinds.size === 0 || filters.kinds.has(kind);
   const matchesAmount =

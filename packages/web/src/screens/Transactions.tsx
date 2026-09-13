@@ -13,6 +13,7 @@ import { useWideHost } from "../lib/shellContext";
 import { font, P, TEAL, TRANSFER, tint } from "../lib/theme";
 import {
   createTransactionSearchIndex,
+  MISSING_TRANSACTION_FIELD,
   matchesTransactionFilters,
   matchesTransactionQuery,
   type TransactionFilters,
@@ -74,15 +75,16 @@ export function TransactionsScreen({
   const catById = useMemo(() => new Map(state.categories.map((c) => [c.id, c])), [state.categories]);
   const placeById = useMemo(() => new Map(state.places.map((p) => [p.id, p])), [state.places]);
   const filterReferences = useMemo(() => transactionFilterReferences(state.transactions), [state.transactions]);
-  const envelopes = state.envelopes
-    .filter((e) => !e.archived || filters.envelopeIds.has(e.id) || filterReferences.envelopeIds.has(e.id))
-    .sort((a, b) => a.sort - b.sort);
+  const envelopes = [
+    { id: MISSING_TRANSACTION_FIELD, name: t("No envelope") },
+    ...state.envelopes.filter((e) => !e.archived || filters.envelopeIds.has(e.id) || filterReferences.envelopeIds.has(e.id)).sort((a, b) => a.sort - b.sort),
+  ];
    
   const accounts = state.accounts
     .filter((a) => !a.archived || filters.accountIds.has(a.id) || filterReferences.accountIds.has(a.id))
     .sort((a, b) => a.sort - b.sort);
-  const categories = [...state.categories].sort((a, b) => a.name.localeCompare(b.name));
-  const places = [...state.places].sort((a, b) => a.name.localeCompare(b.name));
+  const categories = [{ id: MISSING_TRANSACTION_FIELD, name: t("No category") }, ...[...state.categories].sort((a, b) => a.name.localeCompare(b.name))];
+  const places = [{ id: MISSING_TRANSACTION_FIELD, name: t("No place") }, ...[...state.places].sort((a, b) => a.name.localeCompare(b.name))];
   const searchIndex = useMemo(
     () => createTransactionSearchIndex({ accounts: state.accounts, envelopes: state.envelopes, categories: state.categories, places: state.places }),
     [state.accounts, state.categories, state.envelopes, state.places],
