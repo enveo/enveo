@@ -74,6 +74,18 @@ sit outside `verify`: `bun run image:inventory <ref>` (the runtime contract) and
 `bun run image:scan <ref>` (pinned, fail-closed Trivy). The release runs both, per
 architecture — see [docs/releasing.md](docs/releasing.md).
 
+CodeQL runs separately in `.github/workflows/codeql.yml`, scanning JavaScript/TypeScript
+and GitHub Actions on PRs to `main`, pushes to `main`, and weekly. It uses advanced setup:
+repository administrators must disable CodeQL **default setup** when adopting this workflow,
+because default setup rejects results uploaded by an advanced workflow.
+
+To repeat an infrastructure failure, use **Actions → CodeQL → the failed run → Re-run failed jobs**
+or `gh run rerun <run-id> --failed`. To start a fresh scan, use **Run workflow** and select
+the branch, or `gh workflow run codeql.yml --ref <branch>`. Manual dispatch becomes available
+after this workflow reaches the default branch; its first PR run starts automatically.
+Check both analysis jobs and the code-scanning result before merging: successful execution
+does not by itself mean the scan found no vulnerabilities. Never mark a failed scan as passed.
+
 The DB-backed suites migrate and **write**, so `test:db` refuses to start unless you
 point it at a database you have explicitly acknowledged as disposable:
 
