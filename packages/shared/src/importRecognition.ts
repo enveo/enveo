@@ -164,12 +164,15 @@ const addReasons = (current: ImportReviewReason[], ...added: ImportReviewReason[
 };
 
  
-export function needsImportEnrichment(result: ImportRecognitionResult): boolean {
+export function needsImportEnrichment(result: ImportRecognitionResult, categories: readonly Category[] = []): boolean {
   return result.proposals.some(
     (proposal) =>
       proposal.reviewReasons.length > 0 ||
       proposal.disposition === "unresolved" ||
-      (proposal.disposition === "candidate" && (!proposal.name.trim() || (proposal.type === "expense" && proposal.envelopeId === null))),
+      (proposal.disposition === "candidate" &&
+        (!proposal.name.trim() ||
+          (proposal.type === "expense" &&
+            (proposal.envelopeId === null || (proposal.categoryId === null && categories.some((category) => !category.archived)))))),
   );
 }
 

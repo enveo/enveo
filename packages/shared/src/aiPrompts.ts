@@ -663,6 +663,7 @@ export function buildImportEnrichPrompt(input: ImportEnrichPromptInput, locale: 
     "Unlike envelopeId/categoryId, place is free text: when no existing place matches, propose a new short canonical name. An absent dictionary entry is NOT a reason to return null; use the recognizable brand, complete business name prefix or business type. Use null only when none of those can be identified. " +
     "An ellipsis marks an incomplete descriptor, not part of the place name. Recognize a well-known brand from a sufficiently clear partial name; otherwise keep only the complete distinctive words or the known business type (for example Parking). Never copy an unfinished word or ellipsis, and never invent the missing branch name. Do not merge distinct named businesses merely because they share a business type. " +
     "Compatible ledger history is additional evidence. Prefer consistent merchant-backed assignments; weak text similarities, shared amounts, currencies and card digits do not establish the same merchant or contradict an otherwise supported classification. " +
+    "Use a consistent historical transaction name as evidence of the purchase purpose when filling missing fields: for example, bread or rolls support an existing Groceries category even when the merchant name alone is unfamiliar. A null category in history means missing information, not an instruction to leave it blank. Select the best supported existing category independently of the envelope; leave it null when the purpose is unclear or no category fits. " +
     "Return one annotation per supplied row. Preserve all visible facts: never correct or replace dates, amounts, currencies, directions, posting status, raw text, row identity, or transfer endpoint. " +
     "semanticKind is a classification, not a read fact. For an unknown kind or unsigned entry, matching prior income or reimbursements may support an incoming_transfer or merchant_refund suggestion for human review. A reimbursement need not come from a merchant. Never infer a refund from the counterparty alone when the screen clearly shows a debit, or change an explicit refund into a purchase. The historyConflict flag may mean disagreement with the first-pass guess, not disagreement between historical records. Prefer a matching prior reimbursement over a purchase guess when the read direction is credit and there is no contrary evidence. Keep the original kind if the evidence is weak or conflicting. " +
     "For envelopeId and categoryId select a supplied existing id or null; never invent an id. Relations may reference only a supplied rowId. " +
@@ -1060,7 +1061,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       return withHistoricalMetadata({ ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) });
     }),
   };
-  if (!needsImportEnrichment(result) && !history.some((entry) => hasTruncatedPlaceName(entry.selection.metadata?.place))) {
+  if (!needsImportEnrichment(result, input.categories) && !history.some((entry) => hasTruncatedPlaceName(entry.selection.metadata?.place))) {
     await input.lifecycle?.advancePhase?.("reconciling");
     if (durable) {
       await input.lifecycle?.saveResult?.(result);
