@@ -1071,16 +1071,17 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
   }
 
   const activeEnvelopes = input.envelopes.filter((envelope) => !envelope.archived);
+  const activeCategories = input.categories.filter((category) => !category.archived);
   const currentAccounts = input.accounts.filter((account) => !account.archived);
   const constraints = {
     envelopeIds: activeEnvelopes.map((envelope) => envelope.id),
-    categoryIds: input.categories.map((category) => category.id),
+    categoryIds: activeCategories.map((category) => category.id),
     accountIds: currentAccounts.map((account) => account.id),
   };
   const entities = {
     places: input.places ?? [],
     envelopes: activeEnvelopes.map(({ id, name }) => ({ id, name })),
-    categories: input.categories.map(({ id, name }) => ({ id, name })),
+    categories: activeCategories.map(({ id, name }) => ({ id, name })),
     accounts: currentAccounts.map(({ id, name }) => ({ id, name })),
   };
   await input.lifecycle?.advancePhase?.("enriching");

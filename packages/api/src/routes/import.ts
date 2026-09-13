@@ -172,12 +172,15 @@ export async function extractImportForBudget(input: { budgetId: string; accountI
 }
 
 /** Compatibility-window adapter: no account was present on the old wire, so no
- * ledger/history context is consulted. Only universally safe selected rows are
+ * account-scoped ledger/history context is consulted; budget places still canonicalize names. Only universally safe selected rows are
  * projected back into the old `{items}` response. This preserves the wire, not
  * the former assignment quality: a clear row that needs no cycle two may have a
  * blank generated name, so old clients must retain their raw-place fallback. */
 export async function extractLegacyImportForBudget(input: { budgetId: string; images: string[]; locale: string; chat: ImportModelChat }) {
-  const [budgetRow] = await db.select({ currency: s.budgets.currency }).from(s.budgets).where(eq(s.budgets.id, input.budgetId));
+  const [[budgetRow], placeRows] = await Promise.all([
+    db.select({ currency: s.budgets.currency }).from(s.budgets).where(eq(s.budgets.id, input.budgetId)),
+    db.select().from(s.places).where(eq(s.places.budgetId, input.budgetId)),
+  ]);
   const legacyAccount: Account = {
     id: "legacy-no-history",
     name: "Legacy import",
@@ -198,6 +201,7 @@ export async function extractLegacyImportForBudget(input: { budgetId: string; im
       budgetCurrency: budgetRow?.currency ?? "EUR",
       accountId: legacyAccount.id,
       accounts: [legacyAccount],
+      places: placeRows,
       envelopes: [],
       categories: [],
       transactions: [],
