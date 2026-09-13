@@ -1433,6 +1433,12 @@ export const pl: Dict = {
   "Waiting for this device…": "Oczekiwanie na to urządzenie…",
   "Waiting to start…": "Oczekiwanie na rozpoczęcie…",
   "You can leave this view. The import will stay in Imports.": "Możesz opuścić ten widok. Import pozostanie w Importach.",
+  "{n} import needs attention | {n} imports need attention": {
+    one: "{n} import wymaga uwagi",
+    few: "{n} importy wymagają uwagi",
+    many: "{n} importów wymaga uwagi",
+    other: "{n} importu wymaga uwagi",
+  },
   "{n} import needs attention — open Imports | {n} imports need attention — open Imports": {
     one: "{n} import wymaga uwagi — otwórz Importy",
     few: "{n} importy wymagają uwagi — otwórz Importy",

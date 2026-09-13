@@ -2,7 +2,7 @@ import { lazy, useContext } from "react";
 import { OpenImportActivity } from "../lib/shellContext";
 import { LazyChunk } from "./lazy";
 
-const Badge = lazy(() => import("./ImportActivityBadge").then((module) => ({ default: module.ImportActivityBadge })));
+export const ImportBadge = lazy(() => import("./ImportActivityBadge").then((module) => ({ default: module.ImportActivityBadge })));
 
  
 export function HeaderImportBadge() {
@@ -11,7 +11,7 @@ export function HeaderImportBadge() {
   return (
     <span data-header-import-badge style={{ position: "absolute", top: -5, right: -9, display: "flex" }}>
       <LazyChunk variant="silent">
-        <Badge onOpen={onOpen} />
+        <ImportBadge onOpen={onOpen} />
       </LazyChunk>
     </span>
   );

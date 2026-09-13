@@ -14,7 +14,8 @@ import { store } from "../lib/store";
 import { CORAL, CTA, font, P, type Theme } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
 import { PHONE_COL } from "../lib/viewMode";
-import { HeaderImportBadge } from "./HeaderImportBadge";
+import { HeaderImportBadge, ImportBadge } from "./HeaderImportBadge";
+import { LazyChunk } from "./lazy";
 
 // Lazy — the pane-surface presentation lives in the wide chunk; phone (and any un-hosted mount)
 // never requests it, since `Surface` below only reaches this branch when `useWideHost()?.surfaces`
@@ -677,7 +678,12 @@ export function Drawer({
               onClose();
               onNav("activity");
             },
-            chevron,
+            <>
+              <LazyChunk variant="silent">
+                <ImportBadge />
+              </LazyChunk>
+              {chevron}
+            </>,
           )}
           {shortcut(
             D_BARS,
