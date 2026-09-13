@@ -2,6 +2,7 @@
 import type { Dict } from "../index";
 
 export const ptBR: Dict = {
+  Date: "Data",
   "+ Add envelope": "+ Adicionar envelope",
   "+ Add item": "+ Adicionar item",
   "+ Add profile": "+ Adicionar perfil",

@@ -334,7 +334,7 @@ type WideShellBag = {
 
 
 
-  openTxns: (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
+  openTxns: (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string; date?: string }) => void;
   panelClosed: boolean;
   setEnvView: (v: null) => void;
   

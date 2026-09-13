@@ -2,6 +2,7 @@
 import type { Dict } from "../index";
 
 export const sv: Dict = {
+  Date: "Datum",
   "+ Add envelope": "+ Lägg till kuvert",
   "+ Add item": "+ Lägg till rad",
   "+ Add profile": "+ Lägg till profil",
