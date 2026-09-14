@@ -312,8 +312,9 @@ export function BudgetScreen({
       {groups.map((g, gi) => {
         const items = envs.filter((e) => e.groupId === g.id).sort((a, b) => a.sort - b.sort);
         if (!items.length) return null;
-        const gA = items.reduce((s, e) => s + e.allocated, 0);
-        const gV = items.reduce((s, e) => s + e.available, 0);
+        const previewDelta = activeEnv?.groupId === g.id && activePreview !== null ? activePreview - activeEnv.allocated : 0;
+        const gA = items.reduce((s, e) => s + e.allocated, previewDelta);
+        const gV = items.reduce((s, e) => s + e.available, previewDelta);
         return (
           <div key={g.id} className="fu" style={{ animationDelay: `${gi * 40}ms`, marginBottom: 2 }}>
             { }
