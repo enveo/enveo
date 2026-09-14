@@ -316,14 +316,19 @@ export function BudgetScreen({
         const gV = items.reduce((s, e) => s + e.available, 0);
         return (
           <div key={g.id} className="fu" style={{ animationDelay: `${gi * 40}ms`, marginBottom: 2 }}>
-            {
-
-}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: inWide ? "5px 10px 3px" : "7px 18px 4px" }}>
-              <span style={{ fontSize: 12, fontWeight: 750, color: C.text }}>{g.name}</span>
-              <span style={{ fontSize: 10, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
-                {M(gA)} · {M(gV)}
-              </span>
+            { }
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: COLS,
+                gap: 8,
+                alignItems: "baseline",
+                padding: inWide ? `5px ${P + 12}px 3px` : `7px ${P + 12}px 4px`,
+              }}
+            >
+              <span style={{ minWidth: 0, overflowWrap: "anywhere", fontSize: 12, fontWeight: 750, color: C.text }}>{g.name}</span>
+              <span style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 10, color: C.soft, fontVariantNumeric: "tabular-nums" }}>{M(gA)}</span>
+              <span style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 10, color: C.soft, fontVariantNumeric: "tabular-nums" }}>{M(gV)}</span>
             </div>
             <CardBox style={{ padding: "0 12px", marginBottom: 6, overflow: "hidden" }}>
               {items.map((e, ei) => {
@@ -351,8 +356,8 @@ export function BudgetScreen({
                     style={{
                       display: "grid",
                       gridTemplateColumns: COLS,
-                      // Edge-to-edge selection bleed (v3:270), WIDE ONLY — gated like the group
-                      // header's padding fork above: row padding matches the CardBox's own 12px
+                      // Edge-to-edge selection bleed (v3:270), WIDE ONLY:
+                      // row padding matches the CardBox's own 12px
                       // horizontal padding, and the equal-and-opposite negative margin lets the
                       // row's background reach the card's edges while leaving the CONTENT at the
                       // same horizontal position as an unselected row (the padding/margin cancel
