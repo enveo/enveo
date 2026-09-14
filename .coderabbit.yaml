@@ -26,9 +26,11 @@ reviews:
       instructions: |
         AGENTS.md at the repository root is the authoritative description of the architecture,
         invariants and known pitfalls — read it before reviewing and hold changes to it.
-        This is a public repository: flag any real-looking bank account number, IBAN, BIC,
-        person's name, address or bank balance in fixtures, prompts, docs or screenshots — test
-        data must be invented. Code, comments, tests and commit messages are English.
+        Regardless of repository visibility, flag plausible banking identifiers, secrets, private-data
+        provenance claims, and evidence binaries in fixtures, prompts, docs, screenshots or commit
+        messages. Values must be synthetic; ordinary names and amounts alone are not evidence of
+        private data. Do not quote suspected values in review comments. Code, comments, tests and
+        commit messages are English.
     - path: "packages/shared/**"
       instructions: |
         Pure domain, zero I/O, shared byte-for-byte by client and server. Amounts are integer

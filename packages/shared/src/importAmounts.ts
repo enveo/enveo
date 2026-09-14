@@ -11,7 +11,7 @@ export function parseDisplayAmount(token: string): number | null {
   return Number.isSafeInteger(minor) ? minor : null;
 }
 
-/** Reads the figure printed next to the requested currency code; never computes an exchange rate. */
+ 
 export function printedAmountIn(lines: readonly string[], currency: string): number | null {
   const pattern = new RegExp(`(-?\\d[\\d\\s\\u00a0.,]*\\d|\\d)\\s*${currency}(?![A-Z])`, "i");
   for (const line of lines) {

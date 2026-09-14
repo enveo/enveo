@@ -1173,7 +1173,7 @@ const symlinkTargetIsConfined = async (root: string, path: string): Promise<bool
 };
 
 const hashFile = async (path: string): Promise<string> => sha256([await readFile(path)]);
-const BASELINE_REVISION = "a3676d8d8ff2273f40e10aadd79e5bad4594974f";
+const BASELINE_REVISION = "3b667b275daba66f06795a8547a8f79190c6d5e0";
 const moduleDigest = (hashes: Record<string, string>): string =>
   sha256(
     Object.entries(hashes)

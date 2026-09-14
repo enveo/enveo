@@ -14,18 +14,3 @@
   adding a translation.
 - **[Releasing](releasing.md)** — what a version tag does, the gates it passes,
   and how to recover from a partial release.
-
-## Screens
-
-Synthetic data. Phones open in the Duet theme, wider screens in Cisza — both are a tap away in Settings.
-
-<p align="center">
-</p>
-
-<p align="center">
-</p>
-
-<p align="center">
-</p>
-<p align="center">
-</p>
