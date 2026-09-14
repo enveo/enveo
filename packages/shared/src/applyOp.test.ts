@@ -24,7 +24,7 @@ function base(): ClientLedger {
     envelopes: [e1, e2, e3],
     allocations: [alloc("E1", "2026-06", 50_00)],
     transactions: [],
-    categories: [{ id: "C1", name: "Jedzenie" }],
+    categories: [{ id: "C1", name: "Groceries" }],
     places: [{ id: "P1", name: "Linden Market" }],
   };
 }
@@ -41,7 +41,7 @@ describe("applyOp: txn.create", () => {
       amount: 30_00,
       date: "2026-06-05",
       envelopeId: "E1",
-      sourceRef: "LINDEN MARKET 123 WARSZAWA",
+      sourceRef: "LINDEN MARKET 123 DENVER",
       createdAt: "2026-06-05T10:00:00.000Z",
     });
     expect(next.transactions.map((t) => t.id)).toEqual(["T0", "T1"]);  
@@ -59,7 +59,7 @@ describe("applyOp: txn.create", () => {
       name: null,
       note: null,
       tag: null,
-      sourceRef: "LINDEN MARKET 123 WARSZAWA",
+      sourceRef: "LINDEN MARKET 123 DENVER",
       allocationFromEnvelopeId: null,
       allocationToEnvelopeId: null,
       items: [],
@@ -131,9 +131,9 @@ describe("applyOp: txn.update", () => {
       accountId: "A1",
       envelopeId: "E1",
       amount: 30_00,
-      note: "stara notatka",
+      note: "previous note",
       tag: "LINDEN MARKET",
-      sourceRef: "LINDEN MARKET 123 WARSZAWA",
+      sourceRef: "LINDEN MARKET 123 DENVER",
       createdAt: "2026-06-01T08:00:00.000Z",
       items: [{ id: "srv-item-1", envelopeId: "E1", categoryId: null, amount: 30_00 }],
     });
@@ -162,7 +162,7 @@ describe("applyOp: txn.update", () => {
       name: null,
       note: null, // full replacement — a field not sent = null
       tag: "LINDEN MARKET",  
-      sourceRef: "LINDEN MARKET 123 WARSZAWA",  
+      sourceRef: "LINDEN MARKET 123 DENVER",  
       allocationFromEnvelopeId: null,
       allocationToEnvelopeId: null,
       items: [],  
@@ -199,7 +199,7 @@ describe("applyOp: txn.update", () => {
         envelopeId: "E1",
         ...(sourceRef !== undefined ? { sourceRef } : {}),
       }).transactions[0]!.sourceRef;
-    expect(upd(undefined)).toBe("LINDEN MARKET 123 WARSZAWA");
+    expect(upd(undefined)).toBe("LINDEN MARKET 123 DENVER");
     expect(upd(null)).toBeNull();
     expect(upd("CLOVER MARKET RAW")).toBe("CLOVER MARKET RAW");
   });
@@ -372,9 +372,9 @@ describe("applyOp: account.*", () => {
   });
 
   it("update: partial merge — only the fields sent", () => {
-    const next = apply(base(), "account.update", { id: "A1", name: "Zmienione", sort: 5 });
+    const next = apply(base(), "account.update", { id: "A1", name: "Updated", sort: 5 });
     const a = next.accounts[0]!;
-    expect(a.name).toBe("Zmienione");
+    expect(a.name).toBe("Updated");
     expect(a.sort).toBe(5);
     expect(a.initialBalance).toBe(100_00);  
     expect(a.onBudget).toBe(true);
@@ -418,11 +418,11 @@ describe("applyOp: account.*", () => {
 
 describe("applyOp: envelope.*", () => {
   it("create: DB defaults for omitted fields", () => {
-    const next = apply(base(), "envelope.create", { id: "E9", groupId: "G1", name: "Nowa" });
+    const next = apply(base(), "envelope.create", { id: "E9", groupId: "G1", name: "New envelope" });
     expect(next.envelopes[3]).toEqual({
       id: "E9",
       groupId: "G1",
-      name: "Nowa",
+      name: "New envelope",
       color: "#f1dca0",
       icon: "tag",
       note: null,
@@ -434,10 +434,10 @@ describe("applyOp: envelope.*", () => {
   });
 
   it("update: partial merge; missing id → no-op", () => {
-    const next = apply(base(), "envelope.update", { id: "E1", note: "notka", archived: true });
-    expect(next.envelopes[0]!.note).toBe("notka");
+    const next = apply(base(), "envelope.update", { id: "E1", note: "note", archived: true });
+    expect(next.envelopes[0]!.note).toBe("note");
     expect(next.envelopes[0]!.archived).toBe(true);
-    expect(next.envelopes[0]!.name).toBe("Koperta");
+    expect(next.envelopes[0]!.name).toBe("Envelope");
     const frozen = deepFreeze(next);
     expect(applyOp(frozen, mkOp("envelope.update", { id: "MISSING", name: "x" }))).toBe(frozen);
   });
@@ -483,10 +483,10 @@ describe("applyOp: envelope.*", () => {
 
 describe("applyOp: group.*", () => {
   it("create with the sort=0 default and a partial update", () => {
-    const created = apply(base(), "group.create", { id: "G9", name: "Nowa grupa" });
-    expect(created.groups[2]).toEqual({ id: "G9", name: "Nowa grupa", sort: 0 });
+    const created = apply(base(), "group.create", { id: "G9", name: "New group" });
+    expect(created.groups[2]).toEqual({ id: "G9", name: "New group", sort: 0 });
     const updated = apply(created, "group.update", { id: "G9", sort: 3 });
-    expect(updated.groups[2]).toEqual({ id: "G9", name: "Nowa grupa", sort: 3 });
+    expect(updated.groups[2]).toEqual({ id: "G9", name: "New group", sort: 3 });
     const frozen = deepFreeze(updated);
     expect(applyOp(frozen, mkOp("group.update", { id: "MISSING", name: "x" }))).toBe(frozen);
   });
@@ -523,9 +523,9 @@ describe("applyOp: group.*", () => {
 
 describe("applyOp: category/place create", () => {
   it("appends dictionary rows, visible in entry until archived", () => {
-    let l = apply(base(), "category.create", { id: "C9", name: "Paliwo" });
+    let l = apply(base(), "category.create", { id: "C9", name: "Fuel" });
     l = apply(l, "place.create", { id: "P9", name: "Prairie Fuel" });
-    expect(l.categories[1]).toEqual({ id: "C9", name: "Paliwo", archived: false });
+    expect(l.categories[1]).toEqual({ id: "C9", name: "Fuel", archived: false });
     expect(l.places[1]).toEqual({ id: "P9", name: "Prairie Fuel", archived: false });
   });
 });
@@ -544,7 +544,7 @@ describe("applyOp: dictionary upkeep", () => {
   });
 
   it("deletes an unreferenced entry outright", () => {
-    let l = apply(base(), "place.create", { id: "P9", name: "Literowka" });
+    let l = apply(base(), "place.create", { id: "P9", name: "Typo" });
     l = apply(l, "place.delete", { id: "P9" });
     expect(l.places.some((p) => p.id === "P9")).toBe(false);
   });
@@ -561,7 +561,7 @@ describe("applyOp: dictionary upkeep", () => {
   });
 
   it("counts a SPLIT ITEM as a reference when deleting a category", () => {
-    let l = apply(base(), "category.create", { id: "C9", name: "Kawa" });
+    let l = apply(base(), "category.create", { id: "C9", name: "Coffee" });
     l = apply(l, "txn.create", {
       id: "T9",
       type: "expense",
@@ -572,7 +572,7 @@ describe("applyOp: dictionary upkeep", () => {
     });
 
     l = apply(l, "category.delete", { id: "C9" });
-    expect(l.categories.find((c) => c.id === "C9")).toEqual({ id: "C9", name: "Kawa", archived: true });
+    expect(l.categories.find((c) => c.id === "C9")).toEqual({ id: "C9", name: "Coffee", archived: true });
   });
 });
 
@@ -617,11 +617,11 @@ describe("applyOp: create on an existing id is a no-op", () => {
   it("account/group/envelope/category/place.create: existing id ⇒ no-op", () => {
     const l = base();
 
-    expect(apply(l, "account.create", { id: "A1", name: "Dubel" })).toBe(l);
-    expect(apply(l, "group.create", { id: "G1", name: "Dubel" })).toBe(l);
-    expect(apply(l, "envelope.create", { id: "E1", groupId: "G2", name: "Dubel" })).toBe(l);
-    expect(apply(l, "category.create", { id: "C1", name: "Dubel" })).toBe(l);
-    expect(apply(l, "place.create", { id: "P1", name: "Dubel" })).toBe(l);
+    expect(apply(l, "account.create", { id: "A1", name: "Duplicate" })).toBe(l);
+    expect(apply(l, "group.create", { id: "G1", name: "Duplicate" })).toBe(l);
+    expect(apply(l, "envelope.create", { id: "E1", groupId: "G2", name: "Duplicate" })).toBe(l);
+    expect(apply(l, "category.create", { id: "C1", name: "Duplicate" })).toBe(l);
+    expect(apply(l, "place.create", { id: "P1", name: "Duplicate" })).toBe(l);
   });
 });
 
@@ -704,8 +704,8 @@ describe("applyOp: dictionary merge", () => {
   });
 
   it("repoints a category inside SPLIT ITEMS, not just the parent", () => {
-    let l = apply(base(), "category.create", { id: "C1", name: "Kawa" });
-    l = apply(l, "category.create", { id: "C2", name: "kawa" });
+    let l = apply(base(), "category.create", { id: "C1", name: "Coffee" });
+    l = apply(l, "category.create", { id: "C2", name: "coffee" });
     l = apply(l, "txn.create", {
       id: "T1",
       type: "expense",

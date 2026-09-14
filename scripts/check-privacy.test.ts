@@ -28,6 +28,22 @@ afterEach(() => {
 });
 
 describe("runPrivacyPolicy", () => {
+  it("detects fine-grained GitHub tokens across all scan inputs", async () => {
+    const root = repository();
+    const token = ["github", "pat", "synthetic".repeat(5)].join("_");
+    writeFileSync(join(root, "fixture.txt"), token);
+    Bun.spawnSync(["git", "-C", root, "add", "-A"]);
+    for (const args of [[], ["--staged"], ["--message", token]]) {
+      const output: string[] = [];
+      expect(await runPrivacyPolicy(args, output.push.bind(output), root)).toBe(1);
+      expect(output.join("\n")).not.toContain(token);
+    }
+    commit(root, "test: synthetic token canary");
+    const output: string[] = [];
+    expect(await runPrivacyPolicy(["--range", "--all"], output.push.bind(output), root)).toBe(1);
+    expect(output.join("\n")).not.toContain(token);
+  });
+
   it("staged mode reads index blobs instead of differing working-tree content", async () => {
     const root = repository();
     const name = "-note\nwith-newline.txt";

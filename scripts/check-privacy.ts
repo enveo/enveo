@@ -46,7 +46,7 @@ function rangeEntries(root: string, range: string): Entry[] {
   const entries: Entry[] = [];
   const seen = new Set<string>();
   for (const commit of commits) {
-    entries.push({ path: `commit ${commit.slice(0, 12)} metadata and message`, bytes: git(root, ["cat-file", "commit", commit]) });
+    entries.push({ path: `commit ${commit.slice(0, 12)}: metadata and message`, bytes: git(root, ["cat-file", "commit", commit]) });
     const changes = records(git(root, ["diff-tree", "--root", "-m", "--no-commit-id", "-r", "--raw", "-z", commit]));
     for (let index = 0; index < changes.length; ) {
       const metadata = changes[index++]!;

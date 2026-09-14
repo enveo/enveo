@@ -13,7 +13,7 @@ export const uid = (p: string) => `${p}_${idc++}`;
 export function acc(over: Partial<Account> = {}): Account {
   return {
     id: uid("a"),
-    name: "Konto",
+    name: "Checking",
     color: "#fff",
     icon: "wallet",
     type: "checking",
@@ -30,7 +30,7 @@ export function env(groupId: string, over: Partial<Envelope> = {}): Envelope {
   return {
     id: uid("e"),
     groupId,
-    name: "Koperta",
+    name: "Envelope",
     color: "#fff",
     icon: "tag",
     note: null,
@@ -44,7 +44,7 @@ export function env(groupId: string, over: Partial<Envelope> = {}): Envelope {
 
 export const grp = (over: Partial<EnvelopeGroup> = {}): EnvelopeGroup => ({
   id: uid("g"),
-  name: "Grupa",
+  name: "Group",
   sort: 0,
   ...over,
 });
@@ -361,7 +361,7 @@ export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncO
     case "accCreate":
       return mkOp("account.create", {
         id: nextId(),
-        name: "Konto",
+        name: "Checking",
         onBudget: s.onBudget,
         initialBalance: s.initial,
       });
@@ -375,11 +375,11 @@ export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncO
     }
     case "envCreate": {
       const g = pick(l.groups, s.gi);
-      return g ? mkOp("envelope.create", { id: nextId(), groupId: g.id, name: "Koperta" }) : null;
+      return g ? mkOp("envelope.create", { id: nextId(), groupId: g.id, name: "Envelope" }) : null;
     }
     case "envUpdate": {
       const e = pick(l.envelopes, s.ei);
-      return e ? mkOp("envelope.update", { id: e.id, name: "Zmieniona", archived: true }) : null;
+      return e ? mkOp("envelope.update", { id: e.id, name: "Updated", archived: true }) : null;
     }
     case "envDelete": {
       const e = pick(
@@ -389,7 +389,7 @@ export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncO
       return e ? mkOp("envelope.delete", { id: e.id }) : null;
     }
     case "grpCreate":
-      return mkOp("group.create", { id: nextId(), name: "Grupa" });
+      return mkOp("group.create", { id: nextId(), name: "Group" });
     case "grpDelete": {
       const g = pick(
         l.groups.filter((x) => l.envelopes.filter((e) => e.groupId === x.id).every((e) => envDeletable(l, e.id))),
@@ -398,8 +398,8 @@ export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncO
       return g ? mkOp("group.delete", { id: g.id }) : null;
     }
     case "catCreate":
-      return mkOp("category.create", { id: nextId(), name: "Kategoria" });
+      return mkOp("category.create", { id: nextId(), name: "Category" });
     case "placeCreate":
-      return mkOp("place.create", { id: nextId(), name: "Miejsce" });
+      return mkOp("place.create", { id: nextId(), name: "Place" });
   }
 }

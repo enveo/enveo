@@ -15,7 +15,7 @@ function syntheticValidIban(): string {
 describe("checkPrivacy", () => {
   it("detects plausible financial identifiers without echoing them", () => {
     const iban = syntheticValidIban();
-    const routing = "021000021";
+    const routing = "000000000";
     const result = checkPrivacy("notes.txt", `IBAN: ${iban}\nrouting number: ${routing}\naccount number: 123456789012`);
 
     expect(result.map((item) => item.rule)).toEqual(["iban", "routing-number", "account-number"]);

@@ -20,7 +20,7 @@ function fullLedger(): ClientLedger {
     accounts: [
       {
         id: U(1),
-        name: "Konto",
+        name: "Checking",
         color: "#000",
         icon: "wallet",
         type: "checking",
@@ -31,9 +31,9 @@ function fullLedger(): ClientLedger {
         automaticEnvelopeId: null,
       },
     ],
-    groups: [{ id: U(2), name: "Grupa", sort: 0 }],
-    envelopes: [{ id: U(3), groupId: U(2), name: "Jedzenie", color: "#f1dca0", icon: "food", note: null, sort: 0, archived: false }],
-    categories: [{ id: U(4), name: "Sklep" }],
+    groups: [{ id: U(2), name: "Group", sort: 0 }],
+    envelopes: [{ id: U(3), groupId: U(2), name: "Groceries", color: "#f1dca0", icon: "food", note: null, sort: 0, archived: false }],
+    categories: [{ id: U(4), name: "Store" }],
     places: [{ id: U(5), name: "Linden Market" }],
     allocations: [{ id: "alloc-local:x", envelopeId: U(3), month: "2026-07", amount: -1200 }],
     transactions: [
@@ -48,10 +48,10 @@ function fullLedger(): ClientLedger {
         envelopeId: null,
         placeId: U(5),
         categoryId: null,
-        name: "Zakupy",
+        name: "Shopping",
         note: null,
         tag: null,
-        sourceRef: "LINDEN MARKET POZNAN 123",
+        sourceRef: "LINDEN MARKET DENVER 123",
         allocationFromEnvelopeId: null,
         allocationToEnvelopeId: null,
         items: [
@@ -120,7 +120,7 @@ describe("clientLedgerSchema", () => {
 
   test("sourceRef round-trips, while an old backup without it defaults to null", () => {
     const current = clientLedgerSchema.parse(fullLedger());
-    expect(current.transactions[0]!.sourceRef).toBe("LINDEN MARKET POZNAN 123");
+    expect(current.transactions[0]!.sourceRef).toBe("LINDEN MARKET DENVER 123");
     const old = fullLedger() as unknown as { transactions: Array<Record<string, unknown>> };
     delete old.transactions[0]!.sourceRef;
     expect(clientLedgerSchema.parse(old).transactions[0]!.sourceRef).toBeNull();
@@ -187,7 +187,7 @@ describe("clientLedgerSchema", () => {
   test("a pre-flag envelope without isSavings parses to false, never undefined (flag = only savings signal)", () => {
     const l = fullLedger();
     // fullLedger()'s envelope deliberately omits `isSavings` — exactly what a pre-flag backup looks like.
-    const flagged = { ...l.envelopes[0]!, id: U(10), name: "Poduszka", isSavings: true };
+    const flagged = { ...l.envelopes[0]!, id: U(10), name: "Emergency fund", isSavings: true };
     l.envelopes = [l.envelopes[0]!, flagged];
     const res = clientLedgerSchema.safeParse(l);
     expect(res.success).toBe(true);
