@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import type { normalizeBaselineRecognition } from "./evaluate-import-recognition";
 
 const evaluator = resolve(import.meta.dir, "evaluate-import-recognition.ts");
 setDefaultTimeout(120_000);
@@ -421,11 +422,11 @@ export async function runImportRecognitionPipeline(input) {
   const baselineItems = (fixtureRows: typeof mobileRows) =>
     fixtureRows
       .filter((item) => item.baselineIndex !== null)
-      .map((item) => ({
+      .map((item): Parameters<typeof normalizeBaselineRecognition>[2][number] => ({
         date: item.date,
         amount: item.amount,
         currency: item.currency,
-        type: item.id === "refund" ? "refund" : item.id === "outgoing" ? "expense" : item.expectedProposal?.type === "income" ? "income" : "expense",
+        type: item.id === "outgoing" ? "expense" : item.expectedProposal?.type === "income" ? "income" : "expense",
         isRefund: item.expectedProposal?.isRefund ?? false,
         rawPlace: item.matchText,
         tag: item.id.toUpperCase(),
