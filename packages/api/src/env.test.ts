@@ -34,9 +34,12 @@ describe("assertSeedEnv", () => {
     expect(() => assertSeedEnv(dev)).toThrow("db:seed requires");
   });
 
-  it("db:seed refuses a non-development target before attempting a database query", () => {
+  it.each([
+    { NODE_ENV: "production", DATABASE_URL: "postgres://fixture:fixture@127.0.0.1:1/enveo" },
+    { NODE_ENV: "development", DATABASE_URL: "", DB_HOST: "127.0.0.1", DB_PORT: "1", DB_NAME: "example_dev" },
+  ])("db:seed rejects unsafe or implicit configuration before querying: %j", (configuration) => {
     const result = Bun.spawnSync([process.execPath, join(ROOT, "packages/api/src/db/seed.ts")], {
-      env: { ...process.env, NODE_ENV: "production", ENVEO_SEED_ACK: "throwaway", DATABASE_URL: "postgres://fixture:fixture@127.0.0.1:1/enveo" },
+      env: { ...process.env, ENVEO_SEED_ACK: "throwaway", ...configuration },
       stdout: "pipe",
       stderr: "pipe",
     });

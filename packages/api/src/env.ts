@@ -53,7 +53,7 @@ export const env = {
 };
 
 /** Destructive demo seeding requires a deliberately named development database and explicit intent. */
-export function assertSeedEnv(databaseUrl = env.DATABASE_URL): void {
+export function assertSeedEnv(databaseUrl = process.env.DATABASE_URL ? env.DATABASE_URL : ""): void {
   let developmentDatabase = false;
   try {
     const url = new URL(databaseUrl);

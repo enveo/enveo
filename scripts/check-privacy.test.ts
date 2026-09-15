@@ -28,12 +28,14 @@ afterEach(() => {
 });
 
 describe("runPrivacyPolicy", () => {
-  it("detects fine-grained GitHub tokens across all scan inputs", async () => {
+  it.each(["plain", "parameterized data URL"])("detects fine-grained GitHub tokens across all scan inputs: %s", async (mode) => {
     const root = repository();
     const token = ["github", "pat", "synthetic".repeat(5)].join("_");
-    writeFileSync(join(root, "fixture.txt"), token);
+    const value =
+      mode === "plain" ? token : `data:application/json;name=fixture;charset=utf-8;base64,${Buffer.from(JSON.stringify({ token })).toString("base64")}`;
+    writeFileSync(join(root, "fixture.txt"), value);
     Bun.spawnSync(["git", "-C", root, "add", "-A"]);
-    for (const args of [[], ["--staged"], ["--message", token]]) {
+    for (const args of [[], ["--staged"], ["--message", value]]) {
       const output: string[] = [];
       expect(await runPrivacyPolicy(args, output.push.bind(output), root)).toBe(1);
       expect(output.join("\n")).not.toContain(token);

@@ -67,7 +67,7 @@ function addMatches(
 
 function decodedTextDataUrls(text: string): string[] {
   const decoded: string[] = [];
-  for (const match of text.matchAll(/data:(?:text\/[a-z0-9.+-]+|application\/(?:json|xml)|image\/svg\+xml)(?:;charset=[^;,]+)?;base64,([A-Za-z0-9+/=]+)/gi)) {
+  for (const match of text.matchAll(/data:(?:text\/[a-z0-9.+-]+|application\/(?:json|xml)|image\/svg\+xml)(?:;[^;,=]+=[^;,]*)*;base64,([A-Za-z0-9+/=]+)/gi)) {
     try {
       decoded.push(Buffer.from(match[1]!, "base64").toString("utf8"));
     } catch {
