@@ -22,7 +22,7 @@ function fixture(): ClientLedger {
       tx({ id: "T-evening", accountId: "A1", envelopeId: "E1", amount: 4_00, date: "2026-06-10", createdAt: "2026-06-10T21:00:00Z" }),
       tx({ id: "T-recent", accountId: "A1", envelopeId: "E1", amount: 5_00, date: "2026-06-20", createdAt: "2026-06-20T08:00:00Z" }),
     ],
-    categories: [{ id: "C1", name: "Jedzenie" }],
+    categories: [{ id: "C1", name: "Groceries" }],
     places: [{ id: "P1", name: "Linden Market" }],
   };
 }

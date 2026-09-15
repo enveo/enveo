@@ -271,8 +271,8 @@ describe("repairing the model's duplicate relations", () => {
 
   it("never links a repeat inside one screenshot: repeated entries on one screen are separate transactions", () => {
     const rows = [
-      row("a", 0, { visualOrder: 0, rawTextLines: ["5.00 PLN", "COFFEE"] }),
-      row("b", 0, { visualOrder: 1, rawTextLines: ["5.00 PLN", "COFFEE"], relation: { kind: "duplicate_of", rowId: "nope" } }),
+      row("a", 0, { visualOrder: 0, rawTextLines: ["$5.00", "COFFEE"] }),
+      row("b", 0, { visualOrder: 1, rawTextLines: ["$5.00", "COFFEE"], relation: { kind: "duplicate_of", rowId: "nope" } }),
     ];
     expect(repairImportRelations({ rows }).batch.rows[1]!.relation).toBeNull();
   });

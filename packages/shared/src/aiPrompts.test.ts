@@ -25,11 +25,24 @@ import type { ClientLedger, Transaction } from "./types";
 
 function fixture(): ClientLedger {
   return {
-    accounts: [{ id: "A0", name: "Konto", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: 1000_00, archived: false, sort: 0 }],
-    groups: [{ id: "G0", name: "Grupa", sort: 0 }],
+    accounts: [
+      { id: "A0", name: "Checking", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: 1000_00, archived: false, sort: 0 },
+    ],
+    groups: [{ id: "G0", name: "Group", sort: 0 }],
     envelopes: [
-      { id: "E1", groupId: "G0", name: "Jedzenie", color: "#fff", icon: "tag", note: null, sort: 0, archived: false, monthlyTarget: null, isSavings: false },
-      { id: "E2", groupId: "G0", name: "Obligacje", color: "#fff", icon: "tag", note: null, sort: 1, archived: false, monthlyTarget: null, isSavings: true },
+      { id: "E1", groupId: "G0", name: "Groceries", color: "#fff", icon: "tag", note: null, sort: 0, archived: false, monthlyTarget: null, isSavings: false },
+      {
+        id: "E2",
+        groupId: "G0",
+        name: "Savings bonds",
+        color: "#fff",
+        icon: "tag",
+        note: null,
+        sort: 1,
+        archived: false,
+        monthlyTarget: null,
+        isSavings: true,
+      },
     ],
     budgets: [],
     categories: [],
@@ -43,32 +56,32 @@ const sysOf = (m: ChatMessage[]): string => m[0]!.content as string;
 
 describe("canonical import places", () => {
   it.each([
-    ["Parking Centr...", "Parking"],
-    ["Maple Outfitters Gdansk…", "Maple Outfitters"],
-    ["Kawiarnia Rondo Po...", "Kawiarnia Rondo"],
+    ["Parking Center...", "Parking"],
+    ["Maple Outfitters Denver…", "Maple Outfitters"],
+    ["Maple Cafe Do...", "Maple Cafe"],
     ["Unknown…", null],
   ])("drops an incomplete suffix from %s", (input, expected) => {
     expect(cleanImportPlaceName(input)).toBe(expected);
   });
 
   it("reuses the exact existing spelling without merging similar businesses", () => {
-    const places = [{ name: "Maple Outfitters" }, { name: "Cafe Rondo" }, { name: "old shop", archived: true }];
+    const places = [{ name: "Maple Outfitters" }, { name: "Maple Cafe" }, { name: "old shop", archived: true }];
     expect(cleanImportPlaceName(" maple   outfitters ", places)).toBe("Maple Outfitters");
-    expect(cleanImportPlaceName("Cafe Rondo East", places)).toBe("Cafe Rondo East");
+    expect(cleanImportPlaceName("Maple Cafe East", places)).toBe("Maple Cafe East");
     expect(cleanImportPlaceName("OLD SHOP", places)).toBe("OLD SHOP");
   });
 
   it("does not accept a copied unfinished word just because the model removed its dots", () => {
-    expect(cleanImportPlaceName("Kawiarnia Rondo Po", [], ["Kawiarnia Rondo Po..."])).toBe("Kawiarnia Rondo");
+    expect(cleanImportPlaceName("Maple Cafe Do", [], ["Maple Cafe Do..."])).toBe("Maple Cafe");
     expect(cleanImportPlaceName("Maple Outfitters", [], ["Maple Outf..."])).toBe("Maple Outfitters");
     expect(cleanImportPlaceName("EXAMPLEFUEL", [], ["EXAMPLEFUEL..."])).toBe("EXAMPLEFUEL");
   });
 
   it("keeps a known complete brand when the bank's ellipsis follows that brand", () => {
-    const places = [{ name: "Maple Outfitters" }, { name: "Cafe Rondo" }];
+    const places = [{ name: "Maple Outfitters" }, { name: "Maple Cafe" }];
     expect(cleanImportPlaceName("Maple Outfitters", places, ["Maple Outfitters..."])).toBe("Maple Outfitters");
     expect(cleanImportPlaceName("Maple Outfitters...", places, ["Maple Outfitters..."])).toBe("Maple Outfitters");
-    expect(cleanImportPlaceName("Cafe Rondo", places, ["Cafe Rondo..."])).toBe("Cafe Rondo");
+    expect(cleanImportPlaceName("Maple Cafe", places, ["Maple Cafe..."])).toBe("Maple Cafe");
   });
 });
 
@@ -90,7 +103,7 @@ describe("buildSuggestPrompt", () => {
     expect((req.responseFormat as any).json_schema.strict).toBe(true);
     const user = JSON.parse(req.messages[1]!.content as string) as { amountToDistribute: number; candidates: Array<{ name: string }> };
     expect(user.amountToDistribute).toBe(basis.amountToDistribute);
-    expect(user.candidates.map((c) => c.name)).toContain("Jedzenie");
+    expect(user.candidates.map((c) => c.name)).toContain("Groceries");
   });
 
   it("appends custom guidance and switches language for en", () => {
@@ -170,19 +183,19 @@ describe("parseSuggestResponse", () => {
 
 describe("buildAgentSuggestContext / buildAgentSuggestPrompt", () => {
   const ledger = fixture();
-  const basis = buildBudgetSuggestionBasis({ ledger, month: "2026-07", profile: "custom", customPrompt: "pomiń Obligacje" });
-  const ctx = buildAgentSuggestContext({ ledger, month: "2026-07", basis, directive: "pomiń Obligacje", locale: "pl" });
+  const basis = buildBudgetSuggestionBasis({ ledger, month: "2026-07", profile: "custom", customPrompt: "skip Savings bonds" });
+  const ctx = buildAgentSuggestContext({ ledger, month: "2026-07", basis, directive: "skip Savings bonds", locale: "pl" });
 
   it("ctx: month state per active envelope (group by NAME) + PREVIOUS month + amount from basis", () => {
     expect(ctx.month).toBe("2026-07");
     expect(ctx.amount).toBe(basis.amountToDistribute);
     expect(ctx.envelopes).toEqual([
-      { id: "E1", name: "Jedzenie", group: "Grupa", allocated: 0, spent: 0, available: 0, carryIn: 0, monthlyTarget: null, isSavings: false },
-      { id: "E2", name: "Obligacje", group: "Grupa", allocated: 0, spent: 0, available: 0, carryIn: 0, monthlyTarget: null, isSavings: true },
+      { id: "E1", name: "Groceries", group: "Group", allocated: 0, spent: 0, available: 0, carryIn: 0, monthlyTarget: null, isSavings: false },
+      { id: "E2", name: "Savings bonds", group: "Group", allocated: 0, spent: 0, available: 0, carryIn: 0, monthlyTarget: null, isSavings: true },
     ]);
     expect(ctx.prevMonth.month).toBe("2026-06");
     expect((ctx.prevMonth.envelopes as Array<{ id: string }>).map((e) => e.id)).toEqual(["E1", "E2"]);
-    expect(ctx.directive).toBe("pomiń Obligacje");
+    expect(ctx.directive).toBe("skip Savings bonds");
   });
 
   it("prompt: agent role + hard rules + language directives; STRICT json_schema {items}", () => {
@@ -204,11 +217,11 @@ describe("buildAgentSuggestContext / buildAgentSuggestPrompt", () => {
     const user = JSON.parse(req.messages[1]!.content as string) as Record<string, any>;
     expect(user.amountToDistribute).toBe(basis.amountToDistribute);
     expect(user.currentMonth.month).toBe("2026-07");
-    expect((user.currentMonth.envelopes as Array<{ name: string }>).map((e) => e.name)).toEqual(["Jedzenie", "Obligacje"]);
+    expect((user.currentMonth.envelopes as Array<{ name: string }>).map((e) => e.name)).toEqual(["Groceries", "Savings bonds"]);
     expect(user.previousMonth.month).toBe("2026-06");
     expect(user.previousMonth.note).toContain("reference");
     expect((user.previousMonth.envelopes as Array<{ id: string }>).map((e) => e.id)).toEqual(["E1", "E2"]);
-    expect(user.directive).toBe("pomiń Obligacje");
+    expect(user.directive).toBe("skip Savings bonds");
   });
 
   it("locale en: the language directive switches like in the other prompts", () => {
@@ -249,10 +262,10 @@ describe("parseAgentSuggestResponse", () => {
 });
 
 describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
-  const refs = { envelopes: [{ id: "E1", name: "Jedzenie" }], categories: [] };
+  const refs = { envelopes: [{ id: "E1", name: "Groceries" }], categories: [] };
 
   it("builds vision messages with data-URL image parts and a json_schema format", () => {
-    const req = buildImportExtractPrompt(["data:image/png;base64,AAA"], refs, "2026-07-07", "pl", "PLN");
+    const req = buildImportExtractPrompt(["data:image/png;base64,AAA"], refs, "2026-07-07", "pl", "USD");
     const sys = sysOf(req.messages);
     expect(sys).toContain("You extract facts from screenshots");
     expect(sys).toContain("Today is 2026-07-07");
@@ -266,14 +279,14 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   });
 
   it("binds the structured-output image index to the supplied screenshot count", () => {
-    const req = buildImportExtractPrompt(["data:image/png;base64,AAA", "data:image/png;base64,BBB"], refs, "2026-07-07", "pl", "PLN");
+    const req = buildImportExtractPrompt(["data:image/png;base64,AAA", "data:image/png;base64,BBB"], refs, "2026-07-07", "pl", "USD");
     const imageIndex = (req.responseFormat as any).json_schema.schema.properties.rows.items.properties.imageIndex;
 
     expect(imageIndex).toEqual({ type: "integer", minimum: 0, maximum: 1 });
   });
 
   it("groups one coherent list entry without splitting its secondary text into invented transactions", () => {
-    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
+    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "USD").messages);
     expect(sys).toContain("One output row means one coherent transaction-list entry");
     expect(sys).toContain("Group its amount, merchant/payee, card suffix, and secondary text");
     expect(sys).toContain("Do not create separate rows for icons, loyalty/reward points");
@@ -285,8 +298,8 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   });
 
   it("keeps FX evidence as a linked row instead of silently merging it", () => {
-    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
-    expect(sys).toContain("account currency is PLN");
+    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "USD").messages);
+    expect(sys).toContain("account currency is USD");
     expect(sys).toContain("supporting_detail");
     expect(sys).toContain("fx_for");
     expect(sys).toContain("primary ledger amount");
@@ -295,7 +308,7 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   });
 
   it("anchors direction and inherited dates in visible evidence instead of semantic guesses", () => {
-    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
+    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "USD").messages);
     expect(sys).toContain("An explicit + or incoming label means credit; an explicit − or outgoing label means debit");
     expect(sys).toContain("Do not infer direction from semanticKind");
     expect(sys).toContain("unsigned amounts in the contrasting incoming style mean credit");
@@ -304,7 +317,7 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   });
 
   it("distinguishes one ledger movement from secondary numbers inside the same entry", () => {
-    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
+    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "USD").messages);
 
     expect(sys).toContain("exactly one financial_event for each coherent entry with a primary ledger amount");
     expect(sys).toContain("amount is the positive magnitude without its visible sign");
@@ -347,7 +360,7 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   it("throws on a malformed payload (route maps this to 502)", () => {
     expect(() =>
       parseImportExtractResponse(
-        '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":[],"date":"1 lipca","amount":-5,"currency":"PLN","direction":"debit","postingStatus":"posted","rowRole":"financial_event","semanticKind":"card_purchase","relation":null,"confidence":"high","reviewReasons":[]}]}',
+        '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":[],"date":"July 1","amount":-5,"currency":"USD","direction":"debit","postingStatus":"posted","rowRole":"financial_event","semanticKind":"card_purchase","relation":null,"confidence":"high","reviewReasons":[]}]}',
         1,
       ),
     ).toThrow();
@@ -365,7 +378,7 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
       rawTextLines: [rowId],
       date: "2026-08-07",
       amount: 1234,
-      currency: "PLN",
+      currency: "USD",
       direction: "debit",
       postingStatus: "posted",
       rowRole: "financial_event",
@@ -399,7 +412,7 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
             rawTextLines: ["1.00 USD = 0.80 EUR"],
             date: "2026-08-07",
             amount: 0,
-            currency: "PLN",
+            currency: "USD",
             direction: "unknown",
             postingStatus: "posted",
             rowRole: "supporting_detail",
@@ -427,7 +440,7 @@ describe("buildImportEnrichPrompt / parseImportEnrichResponse", () => {
         rawTextLines: ["LINDEN MARKET 123"],
         date: "2026-08-07",
         amount: 1234,
-        currency: "PLN",
+        currency: "USD",
         direction: "debit" as const,
         postingStatus: "posted" as const,
         rowRole: "financial_event" as const,
@@ -444,7 +457,7 @@ describe("buildImportEnrichPrompt / parseImportEnrichResponse", () => {
         disposition: "candidate" as const,
         date: "2026-08-07",
         amount: 1234,
-        currency: "PLN",
+        currency: "USD",
         type: "expense" as const,
         isRefund: false,
         toAccountId: null,
@@ -560,7 +573,7 @@ describe("runImportRecognitionPipeline", () => {
           rawTextLines: ["LINDEN MARKET 123"],
           date: "2026-08-07",
           amount: 1234,
-          currency: "PLN",
+          currency: "USD",
           direction: semanticKind === "unknown" ? "unknown" : semanticKind === "incoming_transfer" || semanticKind === "account_topup" ? "credit" : "debit",
           postingStatus,
           rowRole: "financial_event",
@@ -573,7 +586,7 @@ describe("runImportRecognitionPipeline", () => {
     });
   const history = (accountId: string, envelope: string): ImportHistoryRecord => ({
     accountId,
-    currency: "PLN",
+    currency: "USD",
     sourceRef: "LINDEN MARKET 123",
     tag: "LINDEN MARKET",
     place: "Linden Market",
@@ -588,7 +601,7 @@ describe("runImportRecognitionPipeline", () => {
     images: ["data:image/png;base64,AA=="],
     locale: "pl",
     today: "2026-08-16",
-    budgetCurrency: "PLN",
+    budgetCurrency: "USD",
     accountId: "account-1",
     accounts: [
       {
@@ -658,9 +671,9 @@ describe("runImportRecognitionPipeline", () => {
 
     const bakeryHistory = (overrides: Partial<ImportHistoryRecord> = {}): ImportHistoryRecord => ({
       ...history("account-1", "Food"),
-      sourceRef: "BAKERA SP Z OO",
-      tag: "BAKERA",
-      place: "Bakera",
+      sourceRef: "PRAIRIE BAKERY LLC",
+      tag: "PRAIRIE BAKERY",
+      place: "Prairie Bakery",
       name: "Bread",
       category: "Groceries",
       ...overrides,
@@ -686,12 +699,12 @@ describe("runImportRecognitionPipeline", () => {
         historyRecords: options.records ?? [
           bakeryHistory(),
           bakeryHistory(),
-          bakeryHistory({ sourceRef: "OTHER SP Z OO", tag: "OTHER", place: "Other", name: "Other", envelope: "Other" }),
+          bakeryHistory({ sourceRef: "OTHER BAKERY LLC", tag: "OTHER", place: "Other", name: "Other", envelope: "Other" }),
         ],
         chat: async () => {
           if (++calls === 1) {
             const batch = JSON.parse(extracted());
-            batch.rows[0].rawTextLines = ["12.34 PLN", "BAKERA SP Z OO", "CARD 9876"];
+            batch.rows[0].rawTextLines = ["12.34 USD", "PRAIRIE BAKERY LLC", "CARD 9876"];
             batch.rows[0].postingStatus = options.postingStatus ?? "pending";
             return JSON.stringify(batch);
           }
@@ -701,7 +714,7 @@ describe("runImportRecognitionPipeline", () => {
               {
                 rowId: "r1",
                 name: "",
-                place: options.modelPlace ?? "BAKERA SP Z OO",
+                place: options.modelPlace ?? "PRAIRIE BAKERY LLC",
                 envelopeId: options.modelEnvelope ?? null,
                 categoryId: options.modelCategory ?? null,
                 semanticKind: "card_purchase",
@@ -722,12 +735,12 @@ describe("runImportRecognitionPipeline", () => {
          
         expect(result.proposals[0]).toMatchObject({
           name: "Bread",
-          placeName: "Bakera",
+          placeName: "Prairie Bakery",
           envelopeId: "envelope-1",
           categoryId: "category-1",
           amount: 1234,
           date: "2026-08-07",
-          currency: "PLN",
+          currency: "USD",
           type: "expense",
           isRefund: false,
         });
@@ -737,36 +750,36 @@ describe("runImportRecognitionPipeline", () => {
 
     it("keeps known assignments when enrichment is unavailable", async () => {
       const result = await recognizeBakery({ postingStatus: "unknown", modelFails: true });
-      expect(result.proposals[0]).toMatchObject({ name: "Bread", placeName: "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
+      expect(result.proposals[0]).toMatchObject({ name: "Bread", placeName: "Prairie Bakery", envelopeId: "envelope-1", categoryId: "category-1" });
     });
 
     it("lets the model shorten an old truncated place without losing historical assignments", async () => {
       const result = await recognizeBakery({
         postingStatus: "posted",
-        records: [bakeryHistory({ place: "Bakera Gdansk Cen..." })],
-        modelPlace: "Bakera",
+        records: [bakeryHistory({ place: "Prairie Bakery Denver Cen..." })],
+        modelPlace: "Prairie Bakery",
       });
-      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", name: "Bread", envelopeId: "envelope-1", categoryId: "category-1" });
-      expect(result.rows[0]!.rawTextLines).toEqual(["12.34 PLN", "BAKERA SP Z OO", "CARD 9876"]);
+      expect(result.proposals[0]).toMatchObject({ placeName: "Prairie Bakery", name: "Bread", envelopeId: "envelope-1", categoryId: "category-1" });
+      expect(result.rows[0]!.rawTextLines).toEqual(["12.34 USD", "PRAIRIE BAKERY LLC", "CARD 9876"]);
     });
 
     it("keeps only the complete historical place prefix if the model is unavailable", async () => {
-      const result = await recognizeBakery({ records: [bakeryHistory({ place: "Bakera Gdansk..." })], modelFails: true });
-      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
+      const result = await recognizeBakery({ records: [bakeryHistory({ place: "Prairie Bakery Denver..." })], modelFails: true });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Prairie Bakery", envelopeId: "envelope-1", categoryId: "category-1" });
     });
 
     it("keeps a consistent envelope when historical transaction names differ", async () => {
       const result = await recognizeBakery({ records: [bakeryHistory(), bakeryHistory({ name: "Rolls" })] });
-      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Prairie Bakery", envelopeId: "envelope-1", categoryId: "category-1" });
       expect(result.proposals[0]!.reviewReasons).not.toContain("history_conflict");
     });
 
     it("leaves a conflicting envelope for human review even when AI chooses one", async () => {
       const result = await recognizeBakery({
-        records: [bakeryHistory({ sourceRef: "12.34 PLN\nBAKERA SP Z OO\nCARD 9876" }), bakeryHistory({ envelope: "Travel" })],
+        records: [bakeryHistory({ sourceRef: "12.34 USD\nPRAIRIE BAKERY LLC\nCARD 9876" }), bakeryHistory({ envelope: "Travel" })],
         modelEnvelope: "envelope-1",
       });
-      expect(result.proposals[0]).toMatchObject({ name: "Bread", placeName: "Bakera", envelopeId: null, categoryId: "category-1" });
+      expect(result.proposals[0]).toMatchObject({ name: "Bread", placeName: "Prairie Bakery", envelopeId: null, categoryId: "category-1" });
       expect(result.proposals[0]!.reviewReasons).toContain("history_conflict");
     });
 
@@ -781,13 +794,13 @@ describe("runImportRecognitionPipeline", () => {
 
     it("does not revive an archived envelope", async () => {
       const result = await recognizeBakery({ envelopeArchived: true });
-      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", envelopeId: null });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Prairie Bakery", envelopeId: null });
     });
 
     it.each([false, true])("does not restore an archived historical place when model failure is %s", async (modelFails) => {
        
       const result = await recognizeBakery({
-        places: [{ id: "old", name: "Bakera", archived: true }],
+        places: [{ id: "old", name: "Prairie Bakery", archived: true }],
         postingStatus: "unknown",
         modelPlace: "Bakery",
         modelFails,
@@ -805,32 +818,32 @@ describe("runImportRecognitionPipeline", () => {
     it.each([false, true])("respects historical place archived=%s on the enrichment fast path", async (archived) => {
       const result = await recognizeBakery({
         postingStatus: "posted",
-        places: [{ id: "place", name: "Bakera", archived }],
+        places: [{ id: "place", name: "Prairie Bakery", archived }],
       });
-      expect(result.proposals[0]).toMatchObject({ placeName: archived ? null : "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
+      expect(result.proposals[0]).toMatchObject({ placeName: archived ? null : "Prairie Bakery", envelopeId: "envelope-1", categoryId: "category-1" });
     });
 
     it("resolves an archived truncated historical name to an active canonical place", async () => {
       const result = await recognizeBakery({
-        records: [bakeryHistory({ place: "Bakera Gdansk..." })],
+        records: [bakeryHistory({ place: "Prairie Bakery Denver..." })],
         places: [
-          { id: "old", name: "Bakera Gdansk...", archived: true },
-          { id: "current", name: "Bakera", archived: false },
+          { id: "old", name: "Prairie Bakery Denver...", archived: true },
+          { id: "current", name: "Prairie Bakery", archived: false },
         ],
         modelFails: true,
       });
-      expect(result.proposals[0]).toMatchObject({ placeName: "Bakera", envelopeId: "envelope-1", categoryId: "category-1" });
+      expect(result.proposals[0]).toMatchObject({ placeName: "Prairie Bakery", envelopeId: "envelope-1", categoryId: "category-1" });
     });
 
     it("preserves an active historical name even when the place catalog contains duplicates", async () => {
       const result = await recognizeBakery({
         postingStatus: "posted",
         places: [
-          { id: "first", name: "Bakera", archived: false },
-          { id: "second", name: "BAKERA", archived: false },
+          { id: "first", name: "Prairie Bakery", archived: false },
+          { id: "second", name: "PRAIRIE BAKERY", archived: false },
         ],
       });
-      expect(result.proposals[0]!.placeName).toBe("Bakera");
+      expect(result.proposals[0]!.placeName).toBe("Prairie Bakery");
     });
 
     it("does not hide a conflicting sixth pattern behind the five-candidate prompt limit", async () => {
@@ -885,14 +898,14 @@ describe("runImportRecognitionPipeline", () => {
     expect(sysOf(requests[1]!.messages)).toContain("recognizable brands and business types");
     expect(sysOf(requests[1]!.messages)).toContain("Matching transaction history is NOT required");
     expect(context.entities.envelopes).toContainEqual({ id: "envelope-1", name: "Food" });
-    expect(result.rows[0]).toMatchObject({ amount: 6500, date: "2026-08-07", currency: "PLN", direction: "debit", postingStatus });
+    expect(result.rows[0]).toMatchObject({ amount: 6500, date: "2026-08-07", currency: "USD", direction: "debit", postingStatus });
     expect(result.proposals[0]).toMatchObject({
       name: "Coffee and cake",
       placeName: "Northstar Cafe",
       envelopeId: "envelope-1",
       amount: 6500,
       date: "2026-08-07",
-      currency: "PLN",
+      currency: "USD",
       type: "expense",
       isRefund: false,
       selected: true,
@@ -979,7 +992,7 @@ describe("runImportRecognitionPipeline", () => {
       categoryId: "groceries",
       amount: 1234,
       date: "2026-08-07",
-      currency: "PLN",
+      currency: "USD",
       type: "expense",
       isRefund: false,
     });
@@ -1409,7 +1422,7 @@ describe("runImportRecognitionPipeline", () => {
           rows: [
             {
               rowId: "r1",
-              name: "Zakupy",
+              name: "Shopping",
               place: "Linden Market",
               envelopeId: "envelope-1",
               categoryId: null,
@@ -1569,10 +1582,10 @@ describe("runImportRecognitionPipeline", () => {
                 rowId: "fx",
                 imageIndex: 0,
                 visualOrder: 0,
-                rawTextLines: ["100 EUR", "430 PLN"],
+                rawTextLines: ["100 EUR", "125 USD"],
                 date: "2026-08-07",
-                amount: 43000,
-                currency: "PLN",
+                amount: 12500,
+                currency: "USD",
                 direction: "debit",
                 postingStatus: "posted",
                 rowRole: "supporting_detail",
@@ -1758,7 +1771,7 @@ describe("reasoningEffort — fast responses for suggest", () => {
     expect(agentReq.reasoningEffort).toBe("low");
     const sugReq = buildSuggestPrompt({ basis, ledger, month: "2026-07", profile: "cautious", locale: "pl" });
     expect(sugReq.reasoningEffort).toBe("low");
-    const impReq = buildImportExtractPrompt([], { envelopes: [], categories: [] }, "2026-07-11", "pl", "PLN");
+    const impReq = buildImportExtractPrompt([], { envelopes: [], categories: [] }, "2026-07-11", "pl", "USD");
     expect(impReq.reasoningEffort).toBeUndefined();
   });
   it("supportsReasoningEffort: gpt-5*/o* yes, others no", () => {

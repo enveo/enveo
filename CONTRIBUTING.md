@@ -25,9 +25,19 @@ make dev-web    # Vite on :5173
 
 After opening the app in your browser, create your account in the login screen.
 
-**Optional demo data:** once your account is registered, run `bun run db:seed` (repo
-root, using the env already sourced above) — the demo dataset attaches to the first
-registered user, so your account sees it after a reload.
+**Optional demo data:** use a separate, migrated PostgreSQL database whose name ends
+in `_dev`, with the application configured to use that same database. Run:
+
+```bash
+NODE_ENV=development ENVEO_SEED_ACK=throwaway bun run db:seed
+```
+
+An explicit `DATABASE_URL` without URL options is required; the default application
+database is refused. Sign in as `demo@example.test` with password
+`Example-Demo-2026!`. The seed creates four synthetic accounts, envelopes and five
+USD transactions (expenses, payroll and a transfer). Re-running resets only this
+demo user's budget and password and ends its sessions; other users stay untouched.
+Never use this command on a database containing real data.
 
 ## Ground rules
 

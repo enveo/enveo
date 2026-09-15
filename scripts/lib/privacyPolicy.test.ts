@@ -48,6 +48,19 @@ describe("checkPrivacy", () => {
     expect(checkPrivacy("fixture.json", `{"page":"data:text/plain;base64,${encoded}"}`).map((item) => item.rule)).toEqual(["iban"]);
   });
 
+  it("checks encoded JSON and SVG data URLs without exposing their contents", () => {
+    const token = ["github", "pat", "synthetic".repeat(5)].join("_");
+    for (const [mime, value] of [
+      ["application/json", JSON.stringify({ token })],
+      ["image/svg+xml", `<svg><text>${token}</text></svg>`],
+    ]) {
+      const encoded = Buffer.from(value!).toString("base64");
+      const result = checkPrivacy("fixture.txt", `data:${mime};base64,${encoded}`);
+      expect(result.map((item) => item.rule)).toEqual(["secret"]);
+      expect(formatPrivacyViolations(result)).not.toContain(token);
+    }
+  });
+
   it("matches an owner corpus without exposing its values", () => {
     const privateValue = "owner-only-known-value";
     const result = checkPrivacy("fixture.txt", `prefix ${privateValue.toUpperCase()} suffix`, [privateValue]);

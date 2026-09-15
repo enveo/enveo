@@ -52,6 +52,25 @@ export const env = {
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? "",
 };
 
+/** Destructive demo seeding requires a deliberately named development database and explicit intent. */
+export function assertSeedEnv(databaseUrl = env.DATABASE_URL): void {
+  let developmentDatabase = false;
+  try {
+    const url = new URL(databaseUrl);
+    developmentDatabase =
+      ["postgres:", "postgresql:"].includes(url.protocol) &&
+      !!url.hostname &&
+      /^[A-Za-z0-9_]+_dev$/.test(decodeURIComponent(url.pathname.slice(1))) &&
+      !url.search &&
+      !url.hash;
+  } catch {
+     
+  }
+  if (process.env.NODE_ENV !== "development" || process.env.ENVEO_SEED_ACK !== "throwaway" || !developmentDatabase) {
+    throw new Error("db:seed requires NODE_ENV=development, ENVEO_SEED_ACK=throwaway and an explicit *_dev PostgreSQL database without URL options.");
+  }
+}
+
  
 export function assertAuthEnv(): void {
   if (env.BETTER_AUTH_SECRET.length < 32) {

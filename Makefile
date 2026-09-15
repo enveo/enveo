@@ -29,8 +29,8 @@ rebuild: ## Rebuild from scratch and start
 migrate: ## Run migrations inside the app container
 	docker compose exec app bun packages/api/src/db/migrate.ts
 
-seed: ## Force a re-seed (WARNING: wipes data)
-	docker compose exec app bun packages/api/src/db/seed.ts
+seed: ## Reset synthetic demo data in an explicitly acknowledged *_dev database
+	bun run db:seed
 
 reset: ## Drop the database (volume) and recreate from scratch
 	docker compose down -v && docker compose up -d --build

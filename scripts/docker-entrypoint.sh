@@ -12,7 +12,7 @@
 # event, not something to paper over.
 set -eu
 
-# Escape hatch for maintenance commands (`docker run --rm <image> bun packages/api/src/db/seed.ts`).
+# Escape hatch for maintenance commands (`docker run --rm <image> bun --version`).
 # Compose's `app` service passes no command, so the normal path below is what production runs.
 if [ "$#" -gt 0 ]; then
   exec "$@"

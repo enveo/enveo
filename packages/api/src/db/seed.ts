@@ -1,21 +1,10 @@
-/**
- * Seed with independently invented USD sample data (a dev tool, not prod).
- * Idempotent: wipes all budgets and recreates the demo budget from scratch.
- * Users and auth rows survive: the demo attaches to the FIRST-REGISTERED user
- * (dev/E2E flow: register → seed → the account sees the demo data); a stub
- * owner is created only on an empty database.
- * Run: bun run db:seed
- *
- * SERIALIZED against lazy initial-budget creation (backlog §0b): this is the SECOND path that
- * turns "zero budgets" into the owner's first budget, and the documented dev flow runs it while
- * the stack is up — an open tab's sync cycle can ensure an empty budget in the exact window
- * between the wipe and the demo insert, leaving TWO budgets whose `ORDER BY id` winner is a
- * coin flip ("the seed didn't take"). Wipe + rebuild therefore run inside ONE transaction
- * holding the owner's `budget.ensure-initial` lock, exactly as the operation-lock module
- * demands of every first/default-budget path. (The wipe still clears OTHER users' budgets too —
- * unchanged dev-tool behavior; the lock is per-user and cannot serialize those.)
- */
-import { asc } from "drizzle-orm";
+
+
+
+
+
+import { and, eq } from "drizzle-orm";
+import { assertSeedEnv } from "../env";
 import { type DbTransaction, db, sql } from "./client";
 import { OPERATION_LOCK, operationLockKey, withOperationLock } from "./operationLock";
 import * as s from "./schema";
@@ -54,29 +43,33 @@ const CATEGORIES = ["Shopping", "Home", "Car"];
 const PLACES = ["Example Market", "Example Fuel", "Example Corner Store"];
 
 export async function seed() {
-  console.log("Wiping budgets and seeding the database…");
+  assertSeedEnv();
+  const { auth } = await import("../auth");
+  const ctx = await auth.$context;
+  const password = await ctx.password.hash("Example-Demo-2026!");
+   
+  await db.insert(s.users).values({ email: "demo@example.test", name: "Demo User" }).onConflictDoNothing();
+  const [owner] = await db.select({ id: s.users.id }).from(s.users).where(eq(s.users.email, "demo@example.test"));
+  if (!owner) throw new Error("Could not create the demo account.");
 
-  // Ordered by REGISTRATION TIME, not by id: users.id is defaultRandom(), so ordering by it
-  // hands the demo data to an arbitrary account as soon as a second one exists (the owner who
-  // just registered would see an empty budget, and a stranger's account would get the demo).
-  // Resolved BEFORE the lock — the lock key is that owner's id.
-  const existing = await db
-    .select({ id: s.users.id })
-    .from(s.users)
-    .orderBy(asc(s.users.createdAt), asc(s.users.id))  
-    .limit(1);
-  const owner = existing[0] ?? (await db.insert(s.users).values({ email: "owner@example.com" }).returning())[0]!;
-
-  const { accounts, envelopes, allocations } = await withOperationLock(operationLockKey(OPERATION_LOCK.ensureInitialBudget, owner.id), (tx) =>
-    seedInto(tx, owner.id),
-  );
+  const { accounts, envelopes, allocations } = await withOperationLock(operationLockKey(OPERATION_LOCK.ensureInitialBudget, owner.id), async (tx) => {
+    const credential = and(eq(s.authAccounts.userId, owner.id), eq(s.authAccounts.providerId, "credential"));
+    const [existing] = await tx.select({ id: s.authAccounts.id }).from(s.authAccounts).where(credential).limit(1);
+    if (existing) {
+      await tx.update(s.authAccounts).set({ password, updatedAt: new Date() }).where(credential);
+    } else {
+      await tx.insert(s.authAccounts).values({ id: crypto.randomUUID(), userId: owner.id, accountId: owner.id, providerId: "credential", password });
+    }
+    await tx.delete(s.authSessions).where(eq(s.authSessions.userId, owner.id));
+    return seedInto(tx, owner.id);
+  });
 
   console.log(`✓ seed done: ${accounts} accounts, ${envelopes} envelopes, ${allocations} allocations`);
 }
 
  
 async function seedInto(tx: DbTransaction, ownerId: string): Promise<{ accounts: number; envelopes: number; allocations: number }> {
-  await tx.delete(s.budgets); // cascade removes all budget data; users/auth stay
+  await tx.delete(s.budgets).where(eq(s.budgets.userId, ownerId)); // cascade removes only demo budget data
 
   const [budget] = await tx.insert(s.budgets).values({ userId: ownerId, name: "Sample household", currency: "USD" }).returning();
   const bid = budget!.id;
@@ -135,11 +128,11 @@ async function seedInto(tx: DbTransaction, ownerId: string): Promise<{ accounts:
 
    
   const cat = async (name: string) => {
-    const rows = await tx.select().from(s.categories);
+    const rows = await tx.select().from(s.categories).where(eq(s.categories.budgetId, bid));
     return rows.find((c) => c.name === name)?.id ?? null;
   };
   const place = async (name: string) => {
-    const rows = await tx.select().from(s.places);
+    const rows = await tx.select().from(s.places).where(eq(s.places.budgetId, bid));
     return rows.find((p) => p.name === name)?.id ?? null;
   };
   const shoppingCat = await cat("Shopping");

@@ -107,7 +107,7 @@ Why each key:
   then the server; a failed migration means no server), and Railway runs the image's
   entrypoint when no start command is set. Repeating it here would only create a second copy
   to keep in sync. Leave it unset: the entrypoint treats an explicit command as a maintenance
-  escape hatch (`docker run … bun packages/api/src/db/seed.ts`) and `exec`s it INSTEAD of the
+  escape hatch (`docker run … bun --version`) and `exec`s it INSTEAD of the
   migrate→start sequence, so a start command configured here would silently skip migrations.
 - **`healthcheckPath: /api/health`** — the health route is deliberately exempt from the
   CSRF origin-guard *and* the session middleware, and it does not touch the database, so

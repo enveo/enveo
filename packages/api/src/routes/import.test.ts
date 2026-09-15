@@ -147,7 +147,7 @@ describe("import/apply — extended items", () => {
   it("treats a top-up as the transfer already recorded from the sending account", () => {
     const result = planImportDryRun({
       globalAccountId: ACC_A,
-      existing: [{ accountId: ACC_B, toAccountId: ACC_A, type: "transfer", date: "2031-04-18", amount: 72500, sourceRef: "BLIK" }],
+      existing: [{ accountId: ACC_B, toAccountId: ACC_A, type: "transfer", date: "2031-04-18", amount: 72500, sourceRef: "EXAMPLE INSTANT PAYMENT" }],
       items: [
         baseItem({ date: "2031-04-18", amount: 72500, type: "income", rawPlace: "Maple Harbor deposit" }),
         baseItem({ date: "2031-04-18", amount: 72500, type: "expense", rawPlace: "CAR" }),

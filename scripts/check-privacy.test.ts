@@ -131,10 +131,12 @@ describe("runPrivacyPolicy", () => {
     const root = repository();
     mkdirSync(join(root, "docs", "assets"), { recursive: true });
     mkdirSync(join(root, "packages", "web", "public"), { recursive: true });
-    writeFileSync(join(root, "docs", "assets", "evidence.png"), new Uint8Array([0, 1, 2, 3]));
-    writeFileSync(join(root, "packages", "web", "public", "icon.png"), new Uint8Array([0, 1, 2, 3]));
+    writeFileSync(join(root, "packages", "web", "public", "icon-192.png"), new Uint8Array([0, 1, 2, 3]));
     Bun.spawnSync(["git", "-C", root, "add", "-A"]);
+    expect(await runPrivacyPolicy(["--staged"], () => {}, root)).toBe(0);
 
+    writeFileSync(join(root, "docs", "assets", "evidence.png"), new Uint8Array([0, 1, 2, 3]));
+    Bun.spawnSync(["git", "-C", root, "add", "-A"]);
     expect(await runPrivacyPolicy(["--staged"], () => {}, root)).toBe(1);
   });
 

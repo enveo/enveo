@@ -26,7 +26,7 @@ import { prepareTxnCreate } from "./mutate";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const ledger = (): ClientLedger => ({
-  budgets: [{ id: U(1), name: "Budget", currency: "EUR", preferences: createDefaultBudgetPreferences() }],
+  budgets: [{ id: U(1), name: "Budget", currency: "USD", preferences: createDefaultBudgetPreferences() }],
   accounts: [
     {
       id: U(2),
@@ -120,7 +120,7 @@ const recognitionRow = (rowId: string, over: Partial<ImportExtractRow> = {}): Im
   rawTextLines: [`RAW ${rowId}`],
   date: "2026-08-02",
   amount: 2500,
-  currency: "EUR",
+  currency: "USD",
   direction: "debit",
   postingStatus: "posted",
   rowRole: "financial_event",
@@ -137,7 +137,7 @@ const recognitionProposal = (rowId: string, over: Partial<ImportProposal> = {}):
   disposition: "candidate",
   date: "2026-08-02",
   amount: 2500,
-  currency: "EUR",
+  currency: "USD",
   type: "expense",
   isRefund: false,
   toAccountId: null,
@@ -311,10 +311,10 @@ describe("local E2EE import planning", () => {
           rowId: "unsafe-row",
           imageIndex: 0,
           visualOrder: 0,
-          rawTextLines: ["CARD PURCHASE", "25.00 EUR"],
+          rawTextLines: ["CARD PURCHASE", "25.00 USD"],
           date: "2026-08-02",
           amount: 2500,
-          currency: "EUR",
+          currency: "USD",
           direction: "debit",
           postingStatus: "posted",
           rowRole: "financial_event",
@@ -331,7 +331,7 @@ describe("local E2EE import planning", () => {
           disposition: "candidate",
           date: "2026-08-02",
           amount: 2500,
-          currency: "EUR",
+          currency: "USD",
           type: "expense",
           isRefund: false,
           toAccountId: null,
@@ -339,7 +339,7 @@ describe("local E2EE import planning", () => {
           relation: { kind: "counterpart_of", rowId: "other-row" },
           name: "Card purchase",
           tag: "",
-          rawPlace: "CARD PURCHASE\n25.00 EUR",
+          rawPlace: "CARD PURCHASE\n25.00 USD",
           envelopeId: U(5),
           categoryId: U(6),
           placeName: null,
@@ -456,7 +456,7 @@ describe("local E2EE import planning", () => {
       images: ["data:image/png;base64,AA=="],
       locale: "en",
       today: "2026-08-02",
-      budgetCurrency: "EUR",
+      budgetCurrency: "USD",
       accountId: U(2),
       accounts: current.accounts,
       envelopes: current.envelopes,
@@ -465,7 +465,7 @@ describe("local E2EE import planning", () => {
       historyRecords: [
         {
           accountId: U(2),
-          currency: "EUR",
+          currency: "USD",
           sourceRef: "LINDEN MARKET RAW",
           tag: "LINDEN MARKET",
           place: "Linden Market",
@@ -478,7 +478,7 @@ describe("local E2EE import planning", () => {
         },
       ],
       chat: async () =>
-        JSON.stringify({ rows: [recognitionRow("new", { rawTextLines: ["25.00 EUR", "LINDEN MARKET RAW", "CARD 9876"], postingStatus: "pending" })] }),
+        JSON.stringify({ rows: [recognitionRow("new", { rawTextLines: ["25.00 USD", "LINDEN MARKET RAW", "CARD 9876"], postingStatus: "pending" })] }),
     });
     const dry = planLocalImport({ ledger: current, globalAccountId: U(2), items: recognitionCandidatesForDryRun(recognized, current), dryRun: true });
     const items = dry.results.map((row) => importReviewItem(row, null));
@@ -510,7 +510,7 @@ describe("local E2EE import planning", () => {
       placeId: U(7),
       envelopeId: mode === "unchanged" ? U(5) : mode === "cleared" ? null : U(9),
       categoryId: mode === "unchanged" ? U(6) : null,
-      sourceRef: "25.00 EUR\nLINDEN MARKET RAW\nCARD 9876",
+      sourceRef: "25.00 USD\nLINDEN MARKET RAW\nCARD 9876",
     });
     const budget = computeBudgetState(after, "2026-08");
     expect(budget.accounts[0]!.balance).toBe(-3500);
@@ -523,14 +523,14 @@ describe("local E2EE import planning", () => {
   it("reuses one existing place for different truncated branch descriptions without history", async () => {
     const current = ledger();
     current.transactions = [];
-    const descriptors = ["LINDEN MARKET Gdansk...", "LINDEN MARKET Wroclaw...", "LINDEN MARKET..."];
+    const descriptors = ["LINDEN MARKET Denver...", "LINDEN MARKET Boulder...", "LINDEN MARKET..."];
     const rows = descriptors.map((text, i) => recognitionRow(`new-${i}`, { amount: 2500 + i, rawTextLines: [text] }));
     const result = await runImportRecognitionPipeline({
       images: [],
       checkpoint: { rows, proposals: [] },
       locale: "en",
       today: "2026-08-02",
-      budgetCurrency: "EUR",
+      budgetCurrency: "USD",
       accountId: U(2),
       accounts: current.accounts,
       envelopes: current.envelopes,

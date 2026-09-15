@@ -876,19 +876,23 @@ describe("matching the selection to the bank balance", () => {
   it("reads the bank balance out of a balance line the model kept as interface chrome", () => {
     expect(
       bankBalanceHint([
-        { rowRole: "financial_event", rawTextLines: ["Sklep Syntetyczny 12,00"] },
-        { rowRole: "ui_metadata", rawTextLines: ["Historia · Konto osobiste", "Saldo 6 417,28 zł"] },
+        { rowRole: "financial_event", rawTextLines: ["Example Store $12.00"] },
+        { rowRole: "ui_metadata", rawTextLines: ["History · Checking", "Available balance: $6,417.28"] },
       ]),
     ).toBe(641_728);
     expect(bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: ["Available balance: -842.16 USD"] }])).toBe(-84_216);
      
     expect(
       bankBalanceHint([
-        { rowRole: "ui_metadata", rawTextLines: ["[account]  TOTAL INCOME  OPENING BALANCE", "PLN 2 684.19  PLN 917.42"] },
-        { rowRole: "ui_metadata", rawTextLines: ["Global IBAN: [account]  TOTAL OUTCOME  CLOSING BALANCE", "PLN -1 438.56  PLN 2 163.05"] },
+        { rowRole: "ui_metadata", rawTextLines: ["[account]  TOTAL INCOME  OPENING BALANCE", "USD 2 684.19  USD 917.42"] },
+        { rowRole: "ui_metadata", rawTextLines: ["Global IBAN: [account]  TOTAL OUTCOME  CLOSING BALANCE", "USD -1 438.56  USD 2 163.05"] },
       ]),
     ).toBe(216_305);
     expect(bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: ["28.08.2031"] }])).toBeNull();
+  });
+
+  it("reads Polish balance labels and decimal separators", () => {
+    expect(bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: ["Saldo 125,00 zł"] }])).toBe(12_500);
   });
 });
 

@@ -37,7 +37,7 @@ const modelRow = (rowId: string, imageIndex: number, over: Partial<ImportExtract
   rawTextLines: [`LINDEN MARKET ${rowId}`],
   date: "2026-08-07",
   amount: 1234,
-  currency: "PLN",
+  currency: "USD",
   direction: "debit",
   postingStatus: "posted",
   rowRole: "financial_event",
@@ -51,9 +51,9 @@ const modelRow = (rowId: string, imageIndex: number, over: Partial<ImportExtract
 const images = (count: number) => Array.from({ length: count }, (_, index) => `data:image/png;base64,${index}`);
 
 const base = {
-  locale: "pl",
+  locale: "en-US",
   today: "2026-08-16",
-  budgetCurrency: "PLN",
+  budgetCurrency: "USD",
   accountId: account.id,
   accounts: [account],
   envelopes: [],
@@ -129,12 +129,12 @@ describe("seam between windows", () => {
       
 
 
-      if (meta?.stage === "extract" && meta.chunk === 0 && imageIndex === 5) return [modelRow("last", 5, { rawTextLines: ["ŻABKA Z1234 K.1 WARSZ"] })];
-      if (meta?.stage === "extract" && meta.chunk === 1 && imageIndex === 0) return [modelRow("ctx", 0, { rawTextLines: ["ŻABKA Z1234 K.1 WARSZ"] })];
+      if (meta?.stage === "extract" && meta.chunk === 0 && imageIndex === 5) return [modelRow("last", 5, { rawTextLines: ["CLOVER MARKET C1234 DENV"] })];
+      if (meta?.stage === "extract" && meta.chunk === 1 && imageIndex === 0) return [modelRow("ctx", 0, { rawTextLines: ["CLOVER MARKET C1234 DENV"] })];
       if (meta?.stage === "extract" && meta.chunk === 1 && imageIndex === 1) {
         return [
-          modelRow("first", 1, { rawTextLines: ["ŻABKA Z1234 K.1 WARSZAWA"] }),
-          modelRow("same", 1, { visualOrder: 1, rawTextLines: ["ŻABKA Z1234 K.1 WARSZ"] }),
+          modelRow("first", 1, { rawTextLines: ["CLOVER MARKET C1234 DENVER"] }),
+          modelRow("same", 1, { visualOrder: 1, rawTextLines: ["CLOVER MARKET C1234 DENV"] }),
         ];
       }
       return [modelRow(`r${imageIndex}`, imageIndex, { amount: 500 + imageIndex + (meta?.stage === "extract" ? meta.chunk * 10 : 0) })];

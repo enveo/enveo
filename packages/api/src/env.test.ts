@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { assertDbEnv, resolveDatabaseUrl } from "./env";
+import { assertDbEnv, assertSeedEnv, resolveDatabaseUrl } from "./env";
 
 const ROOT = new URL("../../..", import.meta.url).pathname;  
 
-const KEYS = ["DATABASE_URL", "DB_HOST", "DB_PORT", "DB_USER", "DB_PASS", "DB_NAME", "NODE_ENV"] as const;
+const KEYS = ["DATABASE_URL", "DB_HOST", "DB_PORT", "DB_USER", "DB_PASS", "DB_NAME", "NODE_ENV", "ENVEO_SEED_ACK"] as const;
 const saved: Record<string, string | undefined> = {};
 for (const k of KEYS) saved[k] = process.env[k];
 afterEach(() => {
@@ -17,6 +17,34 @@ afterEach(() => {
 function clearAll() {
   for (const k of KEYS) delete process.env[k];
 }
+
+describe("assertSeedEnv", () => {
+  it("requires explicit development mode, destructive acknowledgement and a separate dev database name", () => {
+    clearAll();
+    const dev = "postgres://fixture:fixture@localhost:5495/example_dev";
+    expect(() => assertSeedEnv(dev)).toThrow("db:seed requires");
+    process.env.NODE_ENV = "development";
+    expect(() => assertSeedEnv(dev)).toThrow("db:seed requires");
+    process.env.ENVEO_SEED_ACK = "throwaway";
+    expect(() => assertSeedEnv(dev)).not.toThrow();
+    for (const url of ["postgres://fixture:fixture@localhost/enveo", "postgres://fixture:fixture@localhost/production", `${dev}?dbname=enveo`, "invalid"]) {
+      expect(() => assertSeedEnv(url)).toThrow("db:seed requires");
+    }
+    process.env.NODE_ENV = "production";
+    expect(() => assertSeedEnv(dev)).toThrow("db:seed requires");
+  });
+
+  it("db:seed refuses a non-development target before attempting a database query", () => {
+    const result = Bun.spawnSync([process.execPath, join(ROOT, "packages/api/src/db/seed.ts")], {
+      env: { ...process.env, NODE_ENV: "production", ENVEO_SEED_ACK: "throwaway", DATABASE_URL: "postgres://fixture:fixture@127.0.0.1:1/enveo" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("db:seed requires");
+    expect(result.stderr.toString()).not.toContain("ECONNREFUSED");
+  });
+});
 
 describe("resolveDatabaseUrl", () => {
   it("DATABASE_URL wins over everything", () => {

@@ -293,8 +293,8 @@ describe("screenshot import proposal validation", () => {
   });
 
   it("treats a financial exchange entry as the money movement its sign shows", () => {
-    
-
+    // A statement's "Exchange money USD -79.26" settles a foreign purchase that never appears
+    // on its own: an expense; a credit would be income.
     const result = validateImportExtraction({
       batch: {
         rows: [
@@ -355,7 +355,7 @@ describe("screenshot import proposal validation", () => {
             amount: null,
             currency: null,
             direction: "unknown",
-            rawTextLines: ["21.49 EUR < 25.73 USD", "Wymiana USD na EUR"],
+            rawTextLines: ["21.49 EUR < 25.73 USD", "Exchange USD to EUR"],
           }),
           extractRow({ rowId: "software", amount: 1786, currency: "GBP" }),
           extractRow({
