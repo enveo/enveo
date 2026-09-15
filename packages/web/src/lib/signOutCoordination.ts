@@ -285,15 +285,13 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
         // Cleanup is opportunistic: a prior remove failure must not brick a fresh generation.
         try {
           storage.removeItem(key);
-        } catch {
-           
-        }
+        } catch {}
         return null;
       }
       return marker;
     },
     activeAttempts() {
-      activePresences();  
+      activePresences();
       const result: SignOutAttemptMarker[] = [];
       for (const key of keys()) {
         if (!key.startsWith(ATTEMPT_PREFIX)) continue;
@@ -370,11 +368,6 @@ export function browserSignOutStorage(): StorageLike | null {
   }
 }
 
-
-
-
-
-
 export function browserSignOutSourceId(): string | null {
   try {
     if (typeof window === "undefined") return null;
@@ -396,7 +389,6 @@ export interface RegistryWriteGate {
   notify(): void;
 }
 
- 
 export function createRegistryWriteGate(registry: SignOutRegistry, pollMs = 25): RegistryWriteGate {
   let waiters = new Set<() => void>();
   return {
@@ -549,15 +541,11 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
       if (marker.clearCommittedAt !== undefined) existing.committed = true;
       return;
     }
-    void processRemoteStart(marker).catch(() => {
-       
-    });
+    void processRemoteStart(marker).catch(() => {});
   };
 
   const coordinator: SignOutCoordinator<Permit> = {
     install() {
-      
-
       for (const marker of options.registry.activeAttempts()) activateMarker(marker);
       options.registry.refreshPresence();
     },
@@ -724,7 +712,6 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
       pending.delete(lease.attemptId);
       options.registry.removeAttempt(lease.attemptId);
       options.gate.notify();
-      // Deliberately keep this page's barrier active. Task 5 broadcasts terminal wipe next.
     },
   };
 

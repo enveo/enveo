@@ -131,9 +131,8 @@ const editedItem = (over: Partial<EditedImportItem> = {}): EditedImportItem => (
 
 describe("screenshot import review view model", () => {
   it("names every missing import detail without discarding a deliberately selected transaction", () => {
-     
     const item = { ...editedItem({ name: "   ", envelopeId: null, categoryId: null }), tag: "bank description" };
-     
+
     expect(importMissingDetails(item, true)).toEqual(["Missing name", "Missing category", "Missing envelope"]);
     const rows = buildImportReviewRows({
       recognition: recognition([row("missing")], [proposal("missing")]),
@@ -142,14 +141,13 @@ describe("screenshot import review view model", () => {
       automaticEnvelopeId: null,
       budgetCurrency: "USD",
     });
-     
+
     expect(reviewedImportRowsForApply({ rows, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
     const completed = { ...item, name: "Groceries", envelopeId: U(10), categoryId: U(11) };
     expect(importMissingDetails(completed, true)).toEqual([]);
   });
 
   it("keeps an explicitly cleared category missing instead of recreating its suggested name", () => {
-     
     const rows = buildImportReviewRows({
       recognition: recognition([row("category")], [proposal("category")]),
       ledger: ledger(),
@@ -167,7 +165,7 @@ describe("screenshot import review view model", () => {
   it("requires only fields applicable to the transaction and its current account", () => {
     // given: transactions whose destination is not a spending envelope
     const item = editedItem({ name: "Account movement" });
-     
+
     expect(importMissingDetails({ ...item, type: "income" }, true)).toEqual([]);
     expect(importMissingDetails({ ...item, type: "transfer" }, true)).toEqual([]);
     expect(importMissingDetails({ ...item, categoryId: U(11) }, false)).toEqual([]);
@@ -175,7 +173,6 @@ describe("screenshot import review view model", () => {
   });
 
   it("keeps incomplete rows editable and unchecked, and applies a completed edit after rebuilding review", () => {
-     
     const result = recognition(
       [row("cropped", { date: null })],
       [proposal("cropped", { date: null, type: null, disposition: "unresolved", selected: true, reviewReasons: ["missing_fact", "unknown_kind"] })],
@@ -185,12 +182,12 @@ describe("screenshot import review view model", () => {
     expect(review[0]).toMatchObject({ include: false, editable: true, item: null });
     expect(reviewRowControlLabels(review[0]!, 0).edit).not.toBeNull();
     expect(reviewBadges(review[0]!, editedItem())).toEqual([]);
-     
+
     review[0]!.include = true;
     const refreshed = build();
     refreshed[0]!.include = reviewSelectionAfterRefresh(refreshed[0]!, review[0]);
     const chosen = reviewedImportRowsForApply({ rows: refreshed, edited: { 0: editedItem() }, editedAutomaticDefaults: {} });
-     
+
     expect(chosen).toHaveLength(1);
     refreshed[0]!.include = false;
     expect(balanceMatchCandidatesForReview({ rows: refreshed, edited: { 0: editedItem() }, defaultAccountId: U(2) })).toMatchObject([
@@ -247,7 +244,6 @@ describe("screenshot import review view model", () => {
   });
 
   it("lets the user apply a complete warned transaction without opening the editor", () => {
-     
     const review = buildImportReviewRows({
       recognition: recognition(
         [row("warning", { reviewReasons: ["possible_ocr_error"] })],
@@ -350,8 +346,6 @@ describe("screenshot import review view model", () => {
   });
 
   it("keeps every extracted row visible while complete new financial events start selected", () => {
-    
-
     const rows = [
       row("reward", { direction: "credit", semanticKind: "cashback_or_reward" }),
       row("income", { direction: "credit", semanticKind: "salary" }),
@@ -404,17 +398,14 @@ describe("screenshot import review view model", () => {
   });
 
   it("hides supporting evidence from review while preserving original row indexes", () => {
-     
     const rows = [
       { rowId: "first", disposition: "candidate" },
       { rowId: "heading", disposition: "supporting" },
       { rowId: "second", disposition: "unresolved" },
     ] as Pick<ReturnType<typeof buildImportReviewRows>[number], "rowId" | "disposition">[];
 
-     
     const visible = visibleImportReviewRows(rows);
 
-     
     expect(visible).toEqual([
       { row: rows[0]!, index: 0, position: 0 },
       { row: rows[2]!, index: 2, position: 1 },
@@ -422,10 +413,8 @@ describe("screenshot import review view model", () => {
   });
 
   it("leaves an explicitly unselected complete proposal unchecked", () => {
-     
     const result = recognition([row("new")], [proposal("new", { selected: false, duplicateStatus: "new" })]);
 
-     
     const review = buildImportReviewRows({
       recognition: result,
       ledger: ledger(),
@@ -434,12 +423,10 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "USD",
     });
 
-     
     expect(review[0]).toMatchObject({ duplicateStatus: "new", include: false, editable: true });
   });
 
   it("warns about an unavailable saved assignment without requiring edit confirmation", () => {
-     
     const result = recognition(
       [row("assignment")],
       [
@@ -457,15 +444,12 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "USD",
     });
 
-     
     expect(review[0]).toMatchObject({ include: true, requiresReview: true, blockingIssues: ["assignment_unavailable"] });
     expect(reviewBadges(review[0]!).map(({ label }) => label)).toContain("Saved assignment is unavailable");
     expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
   });
 
   it("keeps a reconciled exact duplicate truthful while leaving it unselectable and noneditable", () => {
-    
-
     const current = ledger();
     current.transactions.push({
       id: U(9),
@@ -513,8 +497,6 @@ describe("screenshot import review view model", () => {
   });
 
   it("treats a durably applied row as already added even without duplicate evidence", () => {
-    
-
     const review = buildImportReviewRows({
       recognition: recognition([row("blank", { rawTextLines: [] })], [proposal("blank")]),
       ledger: ledger(),
@@ -524,14 +506,12 @@ describe("screenshot import review view model", () => {
       appliedRowIds: ["blank"],
     });
 
-     
     expect(review[0]).toMatchObject({ rowId: "blank", alreadyApplied: true, duplicateStatus: "exists", include: false, editable: false, item: null });
     expect(reviewBadges(review[0]!).map((badge) => badge.label)).toContain("Already added by this import");
     expect(reviewRowControlLabels(review[0]!, 0)).toEqual({ select: null, edit: null });
   });
 
   it("restores an explicitly skipped row as unchecked while keeping it actionable", () => {
-     
     const review = buildImportReviewRows({
       recognition: recognition([row("skipped")], [proposal("skipped")]),
       ledger: ledger(),
@@ -541,7 +521,6 @@ describe("screenshot import review view model", () => {
       skippedRowIds: ["skipped"],
     });
 
-     
     expect(review[0]).toMatchObject({ rowId: "skipped", alreadyApplied: false, duplicateStatus: "new", include: false, editable: true });
     expect(reviewRowControlLabels(review[0]!, 0)).toEqual({
       select: { message: "Select recognized row {n}", values: { n: 1 } },
@@ -550,8 +529,6 @@ describe("screenshot import review view model", () => {
   });
 
   it("promotes a recognition-time new candidate to an exact duplicate from the immediate dry run", () => {
-    
-
     const review = buildImportReviewRows({
       recognition: recognition([row("late-exact")], [proposal("late-exact", { duplicateStatus: "new" })]),
       ledger: ledger(),
@@ -588,7 +565,7 @@ describe("screenshot import review view model", () => {
     // A new history hit must not inherit the automatic check from when this row was new.
     const previouslyNew = { ...review[0]!, duplicateStatus: "new" as const, include: true };
     expect(reviewSelectionAfterRefresh(review[0]!, previouslyNew)).toBe(false);
-     
+
     expect(reviewSelectionAfterRefresh(review[0]!, { ...review[0]!, include: true })).toBe(true);
     expect(reviewSelectionAfterRefresh(review[0]!, { ...review[0]!, include: false })).toBe(false);
     review[0]!.include = true;
@@ -596,7 +573,6 @@ describe("screenshot import review view model", () => {
   });
 
   it("leaves a cropped probable duplicate unchecked even when its saved proposal was selected", () => {
-     
     const review = buildImportReviewRows({
       recognition: recognition(
         [row("cropped", { amount: 6100, rawTextLines: ["61.00 EUR"], semanticKind: "unknown" })],
@@ -617,7 +593,6 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "USD",
     });
 
-     
     expect(review[0]).toMatchObject({ duplicateStatus: "probable", include: false, item: null, sourceRef: "61.00 EUR" });
     expect(reviewBadges(review[0]!).map((badge) => badge.label)).toEqual(["Unresolved — needs review", "Probable duplicate", "Unknown transaction type"]);
     expect(reviewRowControlLabels(review[0]!, 0).select).not.toBeNull();
@@ -667,7 +642,6 @@ describe("screenshot import review view model", () => {
   });
 
   it("allows apply only for explicitly included complete candidate rows", () => {
-     
     const result = recognition(
       [row("candidate"), row("pending"), row("missing", { amount: null })],
       [
@@ -737,7 +711,6 @@ describe("screenshot import review view model", () => {
   });
 
   it("has concise copy for every shared reason and a safe fallback for a newer reason", () => {
-     
     expect(IMPORT_REVIEW_REASONS.map(importReviewReasonMessage).every((message) => message.length > 0)).toBe(true);
     expect(importReviewReasonMessage("future_reason")).toBe("Needs review");
   });
@@ -760,7 +733,6 @@ describe("balance after import", () => {
   });
 
   it("nets expenses, refunds, income and both legs of a transfer per touched account, source first", () => {
-     
     const effect = importBalanceEffect({
       items: [
         item({ amount: 2_500 }),
@@ -773,7 +745,6 @@ describe("balance after import", () => {
       accounts: [accounts[1]!, accounts[0]!, accounts[2]!],
     });
 
-     
     expect(effect).toEqual([
       { accountId: "acc-main", name: "Main", before: 100_000, after: 88_500, delta: -11_500 },
       { accountId: "acc-savings", name: "Savings", before: 500_000, after: 519_700, delta: 19_700 },
@@ -870,7 +841,7 @@ describe("matching the selection to the bank balance", () => {
 
     expect(applied.rows.map((row) => row.include)).toEqual([false, true, true]);
     expect(applied.edited[2]).toMatchObject({ type: "expense", amount: 700, accountId: "acc-main", isRefund: false, date: "2031-08-02" });
-    expect(rows[0]!.include).toBe(true);  
+    expect(rows[0]!.include).toBe(true);
   });
 
   it("reads the bank balance out of a balance line the model kept as interface chrome", () => {
@@ -881,7 +852,7 @@ describe("matching the selection to the bank balance", () => {
       ]),
     ).toBe(641_728);
     expect(bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: ["Available balance: -842.16 USD"] }])).toBe(-84_216);
-     
+
     expect(
       bankBalanceHint([
         { rowRole: "ui_metadata", rawTextLines: ["[account]  TOTAL INCOME  OPENING BALANCE", "USD 2 684.19  USD 917.42"] },

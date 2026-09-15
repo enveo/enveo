@@ -1,4 +1,3 @@
- 
 import type { Dict } from "../index";
 
 export const es: Dict = {
@@ -650,7 +649,6 @@ export const es: Dict = {
       many: "¿Combinar {n} entradas en una llamada «{name}»? Todas sus transacciones se moverán.",
       other: "¿Combinar {n} entradas en una llamada «{name}»? Todas sus transacciones se moverán.",
     },
-  
 
   "Needs attention": "Necesita atención",
   "Recent activity": "Actividad reciente",
@@ -690,13 +688,12 @@ export const es: Dict = {
   "No spending this month.": "Sin gastos este mes.",
   "Not enough history yet — trends appear after two months of spending.":
     "Aún no hay suficiente historial — las tendencias aparecen después de dos meses de gasto.",
-   
+
   "Add widget": "Añadir widget",
   "Every widget is already on the grid.": "Todos los widgets ya están en la cuadrícula.",
   "Widget settings": "Ajustes del widget",
   "latest transactions": "últimas transacciones",
 
-   
   "+ {n} more | + {n} more": { one: "+ {n} más", many: "+ {n} más", other: "+ {n} más" },
   "A local copy means the app opens instantly and keeps working on a plane.":
     "Una copia local significa que la app se abre al instante y sigue funcionando incluso en un avión.",

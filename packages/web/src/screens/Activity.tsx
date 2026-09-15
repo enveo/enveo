@@ -66,9 +66,7 @@ export async function retryActivityImport(id: string, retry: (id: string) => Pro
     const message = apiErrorMessage(cause);
     try {
       await refresh();
-    } catch {
-       
-    }
+    } catch {}
     return message;
   }
 }

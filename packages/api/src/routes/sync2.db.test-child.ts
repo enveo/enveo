@@ -41,8 +41,7 @@ import { assertThrowawayDb, emitChildResult } from "../api.test-support";
 export const SENTINEL = "__SYNC2_DB_V2__";
 
 export type Sync2DbOutput = {
-   
-  enableStaleEpochStatus: number;  
+  enableStaleEpochStatus: number;
   enableStatus: number;
   enabledRow: { tier: string; cipherVersion: number; epoch: number; wrappedDek: string | null } | null;
   enableSnapshotUptoSeq: number | null;
@@ -52,7 +51,7 @@ export type Sync2DbOutput = {
   enableImportRevocation: { cancelled: number; detailsCleared: number; leasesCleared: number; errorsCleared: number; imagesDeleted: number };
   rekeyCredentialPreserved: boolean;
   rekeyEpochUnchanged: boolean;
-   
+
   pushStatus: number;
   pulledOpIds: string[];
   pulledCiphertexts: string[];
@@ -60,9 +59,9 @@ export type Sync2DbOutput = {
   /* 3 — legacy budget: every normal route refuses */
   legacyStatuses: Record<string, { status: number; error: string | null; budgetId: string | null; epoch: number | null; cipherVersion: number | null }>;
   legacyJournalIntactAfterRefusals: boolean;
-   
+
   v1PushStatus: number;
-   
+
   upgradeStatus: number;
   upgradeBody: { budgetId: string; epoch: number; cipherVersion: number; uptoSeq: number } | null;
   upgradedRow: { tier: string; cipherVersion: number; epoch: number; wrappedDek: string | null; kdfParams: string | null } | null;
@@ -73,32 +72,32 @@ export type Sync2DbOutput = {
   retryStatus: number; // idempotent same-attempt retry
   retryEpoch: number | null;
   epochAfterRetry: number | null; // still expectedEpoch+1 — never two bumps
-  staleAttemptStatus: number;  
+  staleAttemptStatus: number;
   staleAttemptEpochInBody: number | null;
-  staleAttemptCipherVersionInBody: number | null;  
+  staleAttemptCipherVersionInBody: number | null;
   rowAfterStaleAttempt: { epoch: number; wrappedDek: string | null } | null;
-   
+
   forcedFailureStatus: number;
   rowAfterForcedFailure: { cipherVersion: number; epoch: number; wrappedDek: string | null } | null;
   journalIntactAfterForcedFailure: boolean;
   forcedFailurePreferencesPreserved: boolean;
-   
-  concurrentStatuses: number[];  
-  concurrentEpoch: number | null;  
-  concurrentEnvelopeIsAWinner: boolean;  
+
+  concurrentStatuses: number[];
+  concurrentEpoch: number | null;
+  concurrentEnvelopeIsAWinner: boolean;
   /* 9 — tenant assertions */
   cookieSwapStatus: number;
   cookieSwapError: string | null;
   cookieSwapWroteNothing: boolean;
   foreignBudgetIdStatus: number;
   foreignBudgetIdError: string | null;
-   
+
   disableStatus: number;
   disabledRow: { tier: string; wrappedDek: string | null } | null;
   disableCipherStateCleared: boolean;
   disablePlaintextRestored: boolean;
   disablePreferencesRestored: boolean;
-   
+
   credentialBlock: { status: number; error: string | null; tier: string | null; credentialIntact: boolean; plaintextIntact: boolean };
   credentialMove: {
     status: number;
@@ -134,7 +133,7 @@ export type Sync2DbOutput = {
 
 async function main(): Promise<void> {
   const { env } = await import("../env");
-   
+
   assertThrowawayDb(env.DATABASE_URL);
 
   const { eq } = await import("drizzle-orm");
@@ -149,14 +148,12 @@ async function main(): Promise<void> {
   const { createCredentialRepository } = await import("../aiCredentials/repository");
   const { ZodError } = await import("zod");
 
-   
   const migrClient = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
   await migrate(drizzle(migrClient), { migrationsFolder: new URL("../../drizzle", import.meta.url).pathname });
   await migrClient.end();
 
   const raw = postgres(env.DATABASE_URL, { max: 2, onnotice: () => {} });
 
-   
   let sessionUser = "";
   const app = new Hono<{ Variables: { userId?: string } }>();
   app.use("*", async (c, next) => {
@@ -222,8 +219,6 @@ async function main(): Promise<void> {
     const rows = await db.select({ seq: s.e2eeOps.seq }).from(s.e2eeOps).where(eq(s.e2eeOps.budgetId, id));
     return rows.length;
   };
-
-   
 
   const userA = await mkUser("a");
   sessionUser = userA;
@@ -293,7 +288,7 @@ async function main(): Promise<void> {
   const enableStale = await call("POST", "/budget/e2ee/enable", {
     userId: userA,
     budgetId: budgetA,
-    nextEpoch: 2,  
+    nextEpoch: 2,
     wrappedDek: "v2.wrapAAAA",
     kdfParams: "{}",
     snapshotBlob: "v2.snapAAAA",
@@ -345,8 +340,6 @@ async function main(): Promise<void> {
   });
   const rekeyBudget = await budgetRow(budgetA);
   const [rekeyCredential] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetA));
-
-   
 
   const op1 = uuid();
   const op2 = uuid();
@@ -473,14 +466,9 @@ async function main(): Promise<void> {
     // …and B's own budget was not touched either (no stray epoch bump / envelope swap)
     rowBAfterSwap?.epoch === 1 &&
     rowBAfterSwap.wrappedDek === "v2.wrapB";
-   
+
   const foreignBudgetId = await call("POST", "/budget/e2ee/upgrade-v2", { ...upgradeBodyOf("v2.newWrapFOREIGN"), budgetId: budgetA });
   const foreignBudgetIdBody = await jsonOf(foreignBudgetId);
-
-   
-
-  
-
 
   await raw`
     CREATE OR REPLACE FUNCTION test_fail_snapshot() RETURNS trigger AS $$
@@ -501,8 +489,6 @@ async function main(): Promise<void> {
     credentialAfterForcedFailure?.ciphertext === "v1.legacyCredential" &&
     credentialAfterForcedFailure.recordVersion === 1;
 
-   
-
   const upgradeRes = await call("POST", "/budget/e2ee/upgrade-v2", upgradeBodyOf("v2.newWrapWINNER"));
   const upgradeBody = (await jsonOf(upgradeRes)) as unknown as Sync2DbOutput["upgradeBody"];
   const upgradedRow = await budgetRow(budgetL);
@@ -521,8 +507,6 @@ async function main(): Promise<void> {
   const staleRes = await call("POST", "/budget/e2ee/upgrade-v2", upgradeBodyOf("v2.newWrapLOSER"));
   const staleBody = await jsonOf(staleRes);
   const rowAfterStale = await budgetRow(budgetL);
-
-   
 
   const userC = await mkUser("c");
   sessionUser = userC;
@@ -585,8 +569,6 @@ async function main(): Promise<void> {
   const disableOps = await journalCount(budgetL);
   const [disableSnap] = await db.select({ uptoSeq: s.e2eeSnapshots.uptoSeq }).from(s.e2eeSnapshots).where(eq(s.e2eeSnapshots.budgetId, budgetL));
   const restored = await db.select({ name: s.accounts.name }).from(s.accounts).where(eq(s.accounts.budgetId, budgetL));
-
-   
 
   const userBlocked = await mkUser("credential-block");
   sessionUser = userBlocked;

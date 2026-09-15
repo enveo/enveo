@@ -105,22 +105,18 @@ async function runFlow(base: string): Promise<void> {
     if (DEBUG) await page.screenshot({ path: `${SHOTS}/${String(++step).padStart(2, "0")}-${name}.png` });
   };
   try {
-     
     await page.goto(base);
     await page.getByText("Create the owner account").waitFor({ timeout: 15_000 });
     await shot("login");
 
-     
     await page.getByPlaceholder("Email").fill("owner@example.com");
     await page.getByPlaceholder("Password").fill("correct-horse-battery");
     await page.getByRole("button", { name: "Create account" }).click();
 
-     
     await page.getByRole("button", { name: "Try it with sample data" }).click();
     await page.getByText("$8,000.00").first().waitFor({ timeout: 30_000 });
     await shot("dashboard");
 
-     
     await page.getByRole("button", { name: "Expense" }).first().click();
     await page.getByText("FROM ACCOUNT").waitFor();
     for (const key of ["4", "2", ".", "5", "0"]) await page.getByRole("button", { name: key, exact: true }).click();
@@ -135,7 +131,6 @@ async function runFlow(base: string): Promise<void> {
     await page.getByText("$7,957.50").first().waitFor({ timeout: 30_000 });
     await shot("after-reload");
 
-     
     const fresh = await context.browser()!.newContext({ viewport: { width: 390, height: 844 }, locale: "en-US" });
     const page2 = await fresh.newPage();
     page2.on("pageerror", (e) => pageErrors.push(String(e)));

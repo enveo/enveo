@@ -34,7 +34,6 @@ import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow, Helper } 
 
 /* ── Data: backup (export/import) + E2E encryption + account ────────── */
 
- 
 const IC = {
   download: ["M12 3v12m0 0l-4-4m4 4l4-4", "M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"],
   upload: ["M12 21V9m0 0l-4 4m4-4l4 4", "M4 7V5a2 2 0 012-2h12a2 2 0 012 2v2"],
@@ -74,13 +73,6 @@ export function LogoutSection() {
   return <LogoutRow />;
 }
 
-/**
- * The explicit-sign-out state machine — shared by the phone row (`LogoutRow` below) and the wide
- * Settings Account section's bordered card (design parity wave E task 3,
- * `components/wide/WideSettings.tsx`): presentation differs per surface, the underlying handler
- * (`completeExplicitSignOut`/`ExplicitSignOutPendingError`, `lib/signOut.ts` — the SAME one the
- * rail popover's `LogoutMenuRow` already calls, design parity wave A task A3) does not.
- */
 export function useLogoutFlow() {
   const [session, setSession] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -109,7 +101,6 @@ export function useLogoutFlow() {
   return { session, busy, error, pending, finish };
 }
 
- 
 function LogoutRow() {
   const { t } = useT();
   const { session, busy, error, pending, finish } = useLogoutFlow();
@@ -156,7 +147,6 @@ function LogoutRow() {
   );
 }
 
- 
 function DataBackup() {
   const C = useTheme();
   const { t } = useT();
@@ -178,7 +168,7 @@ function DataBackup() {
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = "";  
+    e.target.value = "";
     if (!file) return;
     if (!window.confirm(t("This will replace all current data. Continue?"))) return;
     setBusy(true);
@@ -242,7 +232,6 @@ export function prepareLedgerForE2eeEnable(ledger: ClientLedger): ClientLedger {
   };
 }
 
- 
 function passStrength(p: string): 0 | 1 | 2 | 3 {
   if (p.length < 10) return 0;
   const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/].filter((r) => r.test(p)).length;
@@ -271,8 +260,6 @@ function StrengthMeter({ pass }: { pass: string }) {
 }
 
 function E2eeSection() {
-  
-
   useLedgerVersion();
   const { t } = useT();
   return (
@@ -389,12 +376,8 @@ function E2eeEnableWizard() {
           throw err;
         }
       }
-      
-
 
       store.replace(ledger, 0, store.getBudgetId() ?? "");
-      
-
 
       if (currentLedger.budgets[0]?.preferences.aiProvider === "enveo") {
         local.updateBudgetPreferences(budgetId, { aiProvider: "rules" });
@@ -404,10 +387,10 @@ function E2eeEnableWizard() {
       e2ee.setCipherVersion(2);
       e2ee.resetOpsCounter();
       void persist.persistLedger(store.snapshotForPersist());
-      void broadcastKeysChanged();  
-      void syncNow("e2ee-enable");  
+      void broadcastKeysChanged();
+      void syncNow("e2ee-enable");
       setOpenAIKey("");
-      setSheet(false);  
+      setSheet(false);
     } catch (e) {
       setError(`${t("Enabling failed — nothing was changed, your data stays as it was.")} ${apiErrorMessage(e)}`);
     } finally {
@@ -452,7 +435,7 @@ function E2eeEnableWizard() {
             <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 6 }}>{t("Enable end-to-end encryption")}</div>
             {step === 1 ? (
               <>
-                { }
+                {}
                 <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 12 }}>
                   {t(
                     "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.",
@@ -510,7 +493,7 @@ function E2eeEnableWizard() {
               </>
             ) : (
               <>
-                { }
+                {}
                 <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 12 }}>
                   {t("Losing the password means losing your data — the server cannot reset it or decrypt your budget.")}
                 </div>
@@ -629,8 +612,7 @@ function E2eeUpgradeRow() {
         {(SC) => (
           <div>
             <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 6 }}>{t("Upgrade encryption")}</div>
-            {
-}
+            {}
             <E2eeUpgradePanel onDone={() => setSheet(false)} onServerNowV2={() => setSheet(false)} />
           </div>
         )}
@@ -639,7 +621,6 @@ function E2eeUpgradeRow() {
   );
 }
 
- 
 function E2eeChangePass() {
   const { t } = useT();
   const [sheet, setSheet] = useState(false);
@@ -680,7 +661,7 @@ function E2eeChangePass() {
       try {
         const kp = JSON.parse(snap.kdfParams) as KdfParams;
         const kek = await deriveKek(oldPass, fromB64(kp.saltB64), kp);
-        dek = await unwrapDek(snap.wrappedDek, kek, envelopeCtx);  
+        dek = await unwrapDek(snap.wrappedDek, kek, envelopeCtx);
       } catch {
         setError(t("Wrong encryption password."));
         return;
@@ -692,7 +673,7 @@ function E2eeChangePass() {
       // generation (a stale rewrap would brick every future unlock under the v2 AAD).
       await api.e2eeRekey({ wrappedDek, kdfParams: freshKdfParams(salt), userId, expectedEpoch: snap.epoch });
       e2ee.setDek(dek, snap.epoch); // same key, same epoch — the unwrap above validated it
-      void broadcastKeysChanged();  
+      void broadcastKeysChanged();
       setDone(true);
       setOldPass("");
       setPass("");
@@ -790,7 +771,6 @@ function E2eeChangePass() {
   );
 }
 
- 
 function E2eePairCode() {
   const { t } = useT();
   const [sheet, setSheet] = useState(false);
@@ -801,7 +781,7 @@ function E2eePairCode() {
 
   const open = () => {
     const dek = e2ee.getDek();
-     
+
     const budgetId = store.getBudgetId() || store.getLedger()?.budgets?.[0]?.id || "";
     // A pairing code EXPORTS the raw key — only a key VALIDATED for the budget's current epoch
     // may leave the device (round 3, R3): in the stale-key window after an epoch adoption the
@@ -838,9 +818,7 @@ function E2eePairCode() {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
-    } catch {
-       
-    }
+    } catch {}
   };
 
   return (
@@ -860,7 +838,7 @@ function E2eePairCode() {
             </div>
             {code && qrSvg ? (
               <>
-                { }
+                {}
                 <div style={{ background: "#fff", padding: 12, borderRadius: 12, maxWidth: 220, margin: "0 auto 14px" }}>{qrSvg}</div>
                 <div
                   style={{
@@ -954,13 +932,13 @@ function E2eeDisable() {
         expectedEpoch: tierMeta.epoch,
         credentialAction,
       });
-       
+
       e2ee.clearDek();
-      void broadcastKeysChanged();  
+      void broadcastKeysChanged();
       e2ee.setTierMeta({ tier: "plain", epoch });
       e2ee.resetOpsCounter();
       setSheet(false);
-      void fullResync();  
+      void fullResync();
     } catch (e) {
       setError(apiErrorMessage(e));
     } finally {

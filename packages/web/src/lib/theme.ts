@@ -10,7 +10,7 @@ export const CTA = "var(--cta)";
 export const INCOME = "#67b86c";
 export const TRANSFER = "#4a86c4";
 export const SAGE_BG = "#b1c98d";
- 
+
 export const font = `-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif`;
 export const P = 14;
 
@@ -27,19 +27,19 @@ export interface Theme {
   sheet: string;
   key: string;
   keybg: string;
-   
+
   pos: string;
-   
+
   warn: string;
-   
+
   neg: string;
-   
+
   chip: string;
-   
+
   headerStyle: "plain" | "band";
   headerBg: string;
   headerInk: string;
-   
+
   headerMute: string;
   headerPos: string;
   headerNeg: string;
@@ -61,7 +61,6 @@ export interface Theme {
   railActive: string;
   accentSoft: string;
   selBg: string;
-  
 
   bandMute: string;
   /**
@@ -97,19 +96,8 @@ export interface Theme {
    * always coral regardless of theme).
    */
   logo: string;
-  
-
-
-
-
-
 
   bandLine2: string;
-  
-
-
-
-
 
   negBandInk: string;
 }
@@ -148,7 +136,6 @@ export const light: Theme = {
   bandMute: "#a6a59c",
   railOn: "#6f6e67",
   railMute: "#a6a59c",
-  
 
   railRuler: "#e2e0d8",
   railBorder: "#ece9e2",
@@ -187,8 +174,6 @@ export const dark: Theme = {
   headerMute: "#7f868f",
   headerPos: "#7fc9a2",
   headerNeg: "#f5a297",
-  
-
 
   railBg: "#343a44",
   railCard: "#404650",
@@ -200,17 +185,13 @@ export const dark: Theme = {
   bandMute: "#7f868f",
   railOn: "#a8aeb6",
   railMute: "#7f868f",
-  
 
   railRuler: "#4b515b",
   railBorder: "#4b515b",
-  
 
   logo: "#77c4a2",
-  
 
   bandLine2: "#4b515b",
-  
 
   negBandInk: "#f5a297",
 };
@@ -218,11 +199,6 @@ export const dark: Theme = {
 export const ENV_PALETTE = ["#f3c45f", "#7ca968", "#cc4a4a", "#3a3a52", "#4a5a5e", "#8f84a8", "#f1dca0", "#ccd9b6", "#f0c84f", "#aed6ea", "#f0a8c4", "#a8dce0"];
 
 export const ACCOUNT_COLORS = ["#4f86bd", "#7ca968", "#cc4a4a", "#a86b40", "#3a3a52", "#d4506e", "#54c6bd"];
-
-
-
-
-
 
 export const EXT_PALETTE = [
   "#f6d365",
@@ -281,47 +257,40 @@ export const EXT_PALETTE = [
   "#3a3a52",
 ];
 
- 
-
 export type AccentTheme = "teal" | "koral" | "atrament" | "duet";
 
 interface NavTokens {
-   
   bg: string;
-   
+
   on: string;
-   
+
   mute: string;
-   
+
   ind: string;
 }
 
 interface ThemeDef {
-   
   accent: string;
   accentDark: string;
   danger: string;
   dangerDark: string;
-   
+
   cta?: string;
   ctaDark?: string;
-   
+
   focusRing?: string;
   focusRingDark?: string;
-   
+
   nav?: NavTokens;
   navDark?: NavTokens;
-   
+
   overrides?: Partial<Theme>;
   overridesDark?: Partial<Theme>;
 }
 
 export const THEMES: Record<AccentTheme, ThemeDef> = {
-   
   teal: {
     accent: "#4fa583",
-    
-
 
     accentDark: "#77c4a2",
     danger: "#c22e3d",
@@ -360,7 +329,6 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
     dangerDark: "#ef4b58",
     cta: "#f0685c",
     ctaDark: "#ff8d7d",
-    
 
     focusRing: "#4a86c4",
     focusRingDark: "#ff8d7d",
@@ -397,14 +365,9 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
       bandMute: "#8fa2cc",
       railOn: "#c9d2e4",
       railMute: "#8fa2cc",
-      
-
 
       railRuler: "rgba(255,255,255,0.16)",
       railBorder: "transparent",
-      
-
-
 
       logo: "#ff8d7d",
       bandLine2: "rgba(237,239,245,0.28)",
@@ -428,7 +391,6 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
       keybg: "#131b2e",
       inset: "#243356",
       band: "#1a2440",
-      
 
       railBg: "#1d2a47",
       railCard: "rgba(255,255,255,0.07)",
@@ -440,7 +402,6 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
       railMute: "#8fa2cc",
       railRuler: "rgba(255,255,255,0.16)",
       railBorder: "transparent",
-      
 
       logo: "#ff8d7d",
       bandLine2: "rgba(237,239,245,0.28)",
@@ -449,13 +410,8 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
   },
 };
 
-
-
-
-
 const ALPHA_SUFFIXES = ["14", "18", "1a", "22", "40", "44", "55", "66"] as const;
 
- 
 function hexAlpha(hex: string, suffix: string): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -464,7 +420,6 @@ function hexAlpha(hex: string, suffix: string): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 
- 
 export function tint(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -490,11 +445,8 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
   if (t !== "duet") {
     palette = { ...palette, railActive: tint(accent, 0.18), accentSoft: tint(accent, 0.12), selBg: tint(accent, 0.1), logo: accent };
   }
-  
 
   const nav = (isDark ? def.navDark : def.nav) ?? { bg: palette.bg, on: palette.text, mute: palette.mute, ind: accent };
-  
-
 
   const focusRing = (isDark ? def.focusRingDark : def.focusRing) ?? accent;
   const vars: Record<string, string> = {

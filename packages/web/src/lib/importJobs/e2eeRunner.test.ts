@@ -115,13 +115,11 @@ afterEach(() => {
 
 describe("device-local E2EE import runner", () => {
   it("completes locally with counts and removes encrypted detail without any server boundary", async () => {
-     
     const { runner, activity } = setup();
     await runner.create(createInput());
     await runner.resume();
     expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "ready", resultCiphertext: expect.stringMatching(/^v2\./) });
 
-     
     await runner.complete(ID, { appliedCount: 1, skippedCount: 2 });
 
     // then: only the encrypted local record changes and retained activity contains counts, not result detail
@@ -410,7 +408,6 @@ describe("device-local E2EE import runner", () => {
   });
 
   it("expires ciphertext and apply progress before provider resume and evicts absent activity in every tab", async () => {
-     
     let currentTime = new Date("2026-08-24T10:00:00.000Z");
     let providerRuns = 0;
     const first = setup({
@@ -427,12 +424,10 @@ describe("device-local E2EE import runner", () => {
     expect(first.activity.get(ID)).toBeDefined();
     expect(peer.activity.get(ID)).toBeDefined();
 
-     
     currentTime = new Date("2026-08-31T10:00:00.000Z");
     await first.runner.resume();
     await peer.runner.list();
 
-     
     expect(providerRuns).toBe(0);
     expect(await importJobStorage.getJob(SCOPE, ID)).toBeUndefined();
     expect(await importJobStorage.getApplyProgress(SCOPE, ID)).toEqual({ appliedRowIds: [], appliedCount: 0, skippedRowIds: [], skippedCount: 0 });
@@ -629,17 +624,15 @@ describe("device-local E2EE import runner — screenshot windows", () => {
     JSON.parse(await decryptPayload(ciphertext, key, importJobAadContext(BUDGET, 3, id, part)));
 
   it("hands both windows to recognition and releases each window's screenshots as it is checkpointed", async () => {
-     
     let seen: DurableInput | null = null;
     const fixture = setup({
       provider: () =>
         provider(async (input) => {
-           
           seen = { ...input, images: [...input.images] };
           await input.lifecycle.saveChunkExtraction?.(0, { rows: [] });
           const stored = (await importJobStorage.getJob(SCOPE, ID))!;
           expect(stored.screenshots).toEqual({ total: 7, read: 6, failed: 0 });
-           
+
           expect((await decryptField(fixture.key, ID, "input", stored.inputCiphertext!)).images).toEqual([
             null,
             null,
@@ -657,10 +650,8 @@ describe("device-local E2EE import runner — screenshot windows", () => {
     });
     await fixture.runner.create(windowsInput());
 
-     
     await fixture.runner.resume();
 
-     
     expect(seen!.images).toEqual(sevenImages);
     expect(seen!.chunks).toEqual([
       { index: 0, start: 0, end: 6, extraction: null, permanentlyFailed: false },

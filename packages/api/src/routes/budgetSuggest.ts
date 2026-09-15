@@ -33,13 +33,13 @@ const requestSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   profile: z.enum(["cautious", "historical", "investor", "custom"]),
   customPrompt: z.string().max(2000).optional(),
-   
+
   locale: aiLocaleSchema.optional(),
   /* OPTIONAL since v1.24.3: without a ledger the server loads the ledger from
      its OWN database (loadClientLedger — same source as snapshot). Sending the
      replica (~MB for a large ledger) stays for backwards compatibility. */
   ledger: clientLedgerSchema.optional(),
-  useAi: z.boolean().optional(),  
+  useAi: z.boolean().optional(),
 });
 export type BudgetSuggestInput = z.infer<typeof requestSchema>;
 
@@ -79,9 +79,6 @@ export async function generateSuggestion(
       "rules",
     );
   }
-
-  
-
 
   if (input.profile === "custom") {
     const empty = (warnings: string[]): NormalizedBudgetSuggestion => ({
@@ -130,9 +127,6 @@ export async function generateSuggestion(
   }
 }
 
-
-
-
 async function openaiChat(req: ChatRequest, userId: string | undefined): Promise<string> {
   const out = await meteredOperatorChat({ userId, payload: operatorChatPayload(req) });
   if (out.kind === "denied") throw new SpendDenied(out.retryAfterSeconds);
@@ -140,9 +134,6 @@ async function openaiChat(req: ChatRequest, userId: string | undefined): Promise
   if (out.kind === "invalid_body") throw new Error("openai: unreadable 2xx body");
   return out.content || "{}";
 }
-
-
-
 
 export const openAiAskModelFor =
   (userId: string | undefined): AskModel =>
@@ -192,8 +183,6 @@ const aiChatSchema = z.object({
   reasoningEffort: z.enum(["low", "medium", "high"]).optional(),
 });
 
-
-
 const openAiWireSchema = z.object({
   model: z.string().optional(),
   messages: z
@@ -205,9 +194,6 @@ const openAiWireSchema = z.object({
 });
 
 export const budgetSuggestRoutes = new Hono();
-
-
-
 
 budgetSuggestRoutes.post("/ai/v1/chat/completions", async (c) => {
   if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
@@ -225,19 +211,16 @@ budgetSuggestRoutes.post("/ai/v1/chat/completions", async (c) => {
       },
     });
   } catch (e) {
-    
-
     const failure = transportFailureJson(e);
     if (failure) return c.json(failure.body, failure.status);
-    throw e;  
+    throw e;
   }
   if (out.kind === "denied") return c.json(aiBudgetExhaustedBody(out.retryAfterSeconds), 429, { "Retry-After": String(out.retryAfterSeconds) });
   if (out.kind === "upstream_error") return c.json({ error: "upstream", status: out.status }, 502);
   if (out.kind === "invalid_body") return c.json({ error: "upstream", status: 502 }, 502);
-  return c.json(out.json);  
+  return c.json(out.json);
 });
 
- 
 budgetSuggestRoutes.post("/ai/chat", async (c) => {
   if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
   await requireTier(c, "plain");
@@ -246,12 +229,11 @@ budgetSuggestRoutes.post("/ai/chat", async (c) => {
     return c.json({ content: await openaiChat(req as ChatRequest, sessionUserId(c)) });
   } catch (e) {
     if (e instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(e.retryAfterSeconds), 429, { "Retry-After": String(e.retryAfterSeconds) });
-    
 
     const failure = transportFailureJson(e);
     if (failure) return c.json(failure.body, failure.status);
     if (e instanceof UpstreamHttpError) return c.json({ error: "upstream", status: e.status }, 502);
-    return c.json({ error: "upstream", status: 504 }, 502);  
+    return c.json({ error: "upstream", status: 504 }, 502);
   }
 });
 

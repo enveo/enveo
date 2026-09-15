@@ -18,9 +18,6 @@ import { Numpad } from "./pickers";
  * (existing write paths: setDisplayedAllocation/setItems/setEdited/…).
  */
 
-
-
-
 export type AmountPadTarget = {
   label: string;
   initial: number;
@@ -28,7 +25,6 @@ export type AmountPadTarget = {
   onCommit: (minor: number) => void;
 };
 
- 
 export function AmountPadHost({ target, onClose }: { target: AmountPadTarget | null; onClose: () => void }) {
   return (
     <AmountPadSheet
@@ -52,7 +48,7 @@ export function AmountPadSheet({
 }: {
   show: boolean;
   label: string;
-   
+
   initial: number;
   /** Account balances/onboarding may be negative; allocations/goal/split may not. */
   allowNegative?: boolean;
@@ -64,7 +60,6 @@ export function AmountPadSheet({
   const [state, setState] = useState<PadState>({ expr: "", fresh: true });
   const [error, setError] = useState(false);
 
-   
   useEffect(() => {
     if (show) {
       setState({ expr: fmtSignedTrim(initial), fresh: true });
@@ -73,7 +68,7 @@ export function AmountPadSheet({
   }, [show, initial]);
 
   const preview = padPreview(state.expr);
-   
+
   const hasOp = /[+−×-]/.test(state.expr.slice(1));
 
   const onKey = (k: string) => {
@@ -85,7 +80,7 @@ export function AmountPadSheet({
     const minor = padPreview(state.expr);
     if (minor === null || (minor < 0 && !allowNegative)) {
       setError(true);
-      return;  
+      return;
     }
     onCommit(minor);
     onClose();
@@ -118,8 +113,7 @@ export function AmountPadSheet({
           <div style={{ minHeight: 20, textAlign: "right", fontSize: 14, color: C.mute, fontVariantNumeric: "tabular-nums", margin: "6px 2px 10px" }}>
             {hasOp && preview !== null ? t("= {amount}", { amount: M(preview) }) : ""}
           </div>
-          {
-}
+          {}
           <div style={{ margin: "0 -20px calc(-28px - env(safe-area-inset-bottom))" }}>
             <Numpad onKey={onKey} onOk={onOk} />
           </div>

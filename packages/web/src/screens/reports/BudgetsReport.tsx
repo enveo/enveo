@@ -33,7 +33,7 @@ interface PendingUndo {
   name: string;
   /** The month the write targeted — always the VIEWED month at press time, never re-derived later. */
   month: string;
-   
+
   deltas: CoverDelta[];
 }
 
@@ -155,7 +155,7 @@ export function BudgetsReport({
   const [ignored, setIgnored] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState(false);
   const [pendingUndos, setPendingUndos] = useState<PendingUndo[]>([]);
-   
+
   const [coverStep, setCoverStep] = useState<BudgetStep | null>(null);
   const undoTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -168,13 +168,6 @@ export function BudgetsReport({
     setPendingUndos((prev) => prev.filter((u) => u.id !== id));
   };
 
-  
-
-
-
-
-
-
   useEffect(() => {
     return () => {
       for (const timer of undoTimers.current.values()) clearTimeout(timer);
@@ -184,10 +177,6 @@ export function BudgetsReport({
     };
   }, [state.month]);
 
-  
-
-
-
   const onCovered = (step: BudgetStep, result: { moved: number; deltas: CoverDelta[] }) => {
     const id = crypto.randomUUID();
     const timer = setTimeout(() => dismissUndo(id), UNDO_TIMEOUT_MS);
@@ -196,9 +185,6 @@ export function BudgetsReport({
   };
 
   const undoStep = (u: PendingUndo) => {
-    
-
-
     const ledger = store.getLedger();
     const live = ledger ? computeStateResponse(ledger, u.month) : null;
     if (live) {
@@ -298,14 +284,9 @@ export function BudgetsReport({
         sub={overRows.length > 0 ? t("in {n} of {total} envelopes", { n: overRows.length, total: rows.length }) : undefined}
         bandChart={
           rows.length > 0 ? (
-            
-
-
-
-
             <div style={{ display: "flex", gap: 6, marginTop: inWide ? 0 : 12, flexWrap: "wrap" }}>
               {pill(tp("{n} over | {n} over", overRows.length), hc(C.headerNeg, C.neg), "over")}
-              { }
+              {}
               {pill(t("{n} near limit", { n: nearRows.length }), C.warn, "near")}
               {pill(t("{n} OK", { n: okRows.length }), hc(C.headerPos, C.pos), "ok")}
             </div>
@@ -316,7 +297,7 @@ export function BudgetsReport({
 
         {rows.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            { }
+            {}
             <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
               <span
                 style={{
@@ -367,7 +348,7 @@ export function BudgetsReport({
               </div>
             </div>
 
-            { }
+            {}
             {openSteps.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column" }}>
                 {openSteps.map((step, i) => {
@@ -412,9 +393,7 @@ export function BudgetsReport({
                           <span style={{ fontSize: 12.5, color: C.text }}>{title}</span>
                           <span style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{sub}</span>
                           <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            {
-
-}
+                            {}
                             <button
                               onClick={() => setCoverStep(step)}
                               disabled={!coverable(step)}
@@ -460,7 +439,7 @@ export function BudgetsReport({
               </div>
             )}
 
-            { }
+            {}
             <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden" }}>
               <button
                 onClick={() => setExpanded((v) => !v)}

@@ -12,9 +12,6 @@ import { discardLocalReplica, recheckReplicaOwner, syncNow } from "../../lib/syn
 import { CORAL } from "../../lib/theme";
 import { ActionButton, ActionGroup, ActionIcon, ActionRow, Eyebrow } from "./ui";
 
- 
-
- 
 const IC = {
   refresh: ["M23 4v6h-6", "M20.49 15a9 9 0 11-2.12-9.36L23 10"],
   redownload: ["M8 17l4 4 4-4", "M12 12v9", "M20.88 18.09A5 5 0 0018 9h-1.26A8 8 0 103 16.29"],
@@ -84,7 +81,7 @@ function UnverifiedReplicaNotice() {
   const doExport = () => {
     setError(null);
     try {
-      exportBackup();  
+      exportBackup();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -94,7 +91,7 @@ function UnverifiedReplicaNotice() {
     setBusy(true);
     setError(null);
     try {
-      await discardLocalReplica();  
+      await discardLocalReplica();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -187,7 +184,6 @@ function UnverifiedReplicaNotice() {
   );
 }
 
- 
 const OP_LABEL: Record<OpKind, Message> = {
   "txn.create": msg("New transaction"),
   "txn.update": msg("Transaction change"),
@@ -214,7 +210,6 @@ const OP_LABEL: Record<OpKind, Message> = {
   "budget.preferences.update": msg("Budget settings change"),
 };
 
- 
 function opDetail(op: SyncOp, currency: string, lang: Lang): string {
   const p = op.payload as Record<string, unknown>;
   const parts: string[] = [];
@@ -228,7 +223,6 @@ function opDetail(op: SyncOp, currency: string, lang: Lang): string {
   return parts.join(" · ");
 }
 
- 
 function SyncActions() {
   const C = useTheme();
   const { t, tp, lang } = useT();
@@ -237,7 +231,6 @@ function SyncActions() {
   const [blocked, setBlocked] = useState<Extract<RepairResult, { kind: "blocked" }>["reason"] | null>(null);
   const [repairError, setRepairError] = useState<string | null>(null);
 
-   
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 30_000);
@@ -328,7 +321,6 @@ function SyncActions() {
   );
 }
 
- 
 function DeadLetters() {
   const C = useTheme();
   const { t, lang } = useT();
@@ -355,10 +347,7 @@ function DeadLetters() {
           }}
         >
           <div style={{ minWidth: 0 }}>
-            {
-
-
-}
+            {}
             <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{t(OP_LABEL[dl.op.kind] ?? msg("Change"))}</div>
             {opDetail(dl.op, currency, lang) && <div style={{ fontSize: 11, color: C.soft, marginTop: 1 }}>{opDetail(dl.op, currency, lang)}</div>}
             <div style={{ fontSize: 11, color: CORAL, marginTop: 2, lineHeight: 1.4, wordBreak: "break-word" }}>{dl.error}</div>

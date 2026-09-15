@@ -81,7 +81,7 @@ export function AddHeader({
                 flexShrink: 0,
               }}
             >
-              { }
+              {}
               <Ico
                 d="M4 7h16M9 7V5a1 1 0 011-1h6a1 1 0 011 1v2m3 0l-.9 12.1A2 2 0 0115.1 21H8.9a2 2 0 01-2-1.9L6 7m4 4v6m4-6v6"
                 size={17}
@@ -105,7 +105,7 @@ export function AddHeader({
                   justifyContent: "center",
                 }}
               >
-                { }
+                {}
                 <svg width="17" height="17" viewBox="0 0 24 24" fill={hc(C.headerInk, C.text)}>
                   <circle cx="12" cy="5" r="2" />
                   <circle cx="12" cy="12" r="2" />

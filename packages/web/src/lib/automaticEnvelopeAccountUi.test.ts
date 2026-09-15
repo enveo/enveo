@@ -30,35 +30,27 @@ describe("automatic-envelope account configuration", () => {
     const onBudget = account("checking", "Checking", null);
     const offBudget = account("brokerage", "Brokerage", null, { onBudget: false });
 
-     
     expect(canConfigureAutomaticEnvelope(onBudget)).toBe(true);
     expect(canConfigureAutomaticEnvelope(offBudget)).toBe(false);
   });
 
   it("offers every active envelope, including wealth envelopes, but never archived envelopes", () => {
-     
     const envelopes = [envelope("food", "Food"), envelope("investing", "Investing", { isSavings: true }), envelope("old", "Old plan", { archived: true })];
 
-     
     const choices = selectableAutomaticEnvelopes(envelopes);
 
-     
     expect(choices.map(({ id }) => id)).toEqual(["food", "investing"]);
   });
 
   it("allows several accounts to link to the same envelope", () => {
-     
     const accounts = [account("checking", "Checking", "travel"), account("card", "Credit card", "travel")];
 
-     
     const names = linkedAccountNames(accounts, "travel");
 
-     
     expect(names).toEqual(["Checking", "Credit card"]);
   });
 
   it("keeps an account link visible while the account is archived and after it is restored", () => {
-     
     const envelopes = [envelope("travel", "Travel")];
     const archived = account("checking", "Checking", "travel", { archived: true });
     const restored = account("checking", "Checking", "travel", { archived: false });
@@ -80,22 +72,18 @@ describe("automatic-envelope account configuration", () => {
     };
     delete (legacy as { automaticEnvelopeId?: string | null }).automaticEnvelopeId;
 
-     
     expect(visibleAutomaticEnvelopeName(legacy, [{ id: "e1", name: "Fuel", archived: false, isSavings: false }])).toBeNull();
   });
 
   it("does not show a stale label for a missing or archived linked envelope", () => {
-     
     const linked = account("checking", "Checking", "missing");
     const archivedTarget = [envelope("missing", "Old plan", { archived: true })];
 
-     
     expect(visibleAutomaticEnvelopeName(linked, [])).toBeNull();
     expect(visibleAutomaticEnvelopeName(linked, archivedTarget)).toBeNull();
   });
 
   it("builds one account payload for a non-zero starting balance and automatic envelope", () => {
-     
     const form = {
       name: "Checking",
       color: "#123456",
@@ -106,10 +94,8 @@ describe("automatic-envelope account configuration", () => {
       sort: 2,
     };
 
-     
     const payload = accountFormPayload(form);
 
-     
     expect(payload).toEqual({
       name: "Checking",
       color: "#123456",
@@ -122,7 +108,6 @@ describe("automatic-envelope account configuration", () => {
   });
 
   it("clears the link in the same payload when an account becomes off-budget", () => {
-     
     const form = {
       name: "Brokerage",
       color: "#123456",
@@ -132,10 +117,8 @@ describe("automatic-envelope account configuration", () => {
       archived: false,
     };
 
-     
     const payload = accountFormPayload(form);
 
-     
     expect(payload).toEqual({
       name: "Brokerage",
       color: "#123456",

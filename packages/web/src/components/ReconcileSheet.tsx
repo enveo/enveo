@@ -21,38 +21,6 @@ import { AmountField } from "./AmountField";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Surface } from "./chrome";
 
-/**
- * PR6b Task 6 — account balance reconciliation, extracted verbatim out of eager `widgets.tsx`
- * (where it was owned by the phone Start `AccountsWidget`'s per-account action sheet) into its
- * own lazily-imported module: the whole body (~180 dense lines) leaves the eager closure — the
- * bundle buy this task exists for (pr6b-context.md ground truth #10 / D3). `widgets.tsx` now
- * `lazy()`s this module behind `useOpenedOnce`, the exact `EnvActionsSheet` idiom; `AccountPanel`
- * (wide) reaches it too, so both callers share one implementation instead of two.
- *
- * `Sheet` → `Surface` is the only hosting change: on phone (and any un-hosted mount) `Surface` IS
- * `Sheet`, byte-identical. The "Actual balance (from your bank)" field is Task 5's `AmountField`
- * (the CONTROLLER RULING scopes the desktop-input fork to exactly this field and acctForm's
- * starting balance) — it owns the pad-vs-real-input fork, but NOT the pad's hosting here: this
- * module keeps its own local `pad` state (via `AmountField`'s `externalPad` escape hatch, review
- * fix) and renders `AmountPadHost` itself as a SIBLING of `<Surface>`, per the brief. Nesting the
- * pad inside the Surface's own body — as the field's self-contained default would — puts the
- * pad's `Sheet` inside the (phone) outer Sheet's always-transformed content div, breaking its
- * `position:fixed` backdrop+numpad against that small sheet instead of the viewport (the
- * ancestor-transform pitfall, CLAUDE.md; Accounts.tsx's "Starting balance" hoists the same way,
- * and `AmountField.test.ts`'s source scan fails the suite on any regression); the
- * currency-symbol span next to the old raw `<input>` is still gone with the move to `AmountField`
- * (no currency glyph on Accounts.tsx's field either). `real`/`diff` and everything downstream (the
- * difference line, the automatic-envelope preview, the envelope row) still derive from the SAME
- * canonical `fmtSignedTrim` string via `parseAmount` — no new math, integer minor units end to
- * end; only the widget rendering the string changed, so the padKey scars (⌫ deletes exactly one
- * char, `−` starts a negative only on an empty/"0" line) stay exactly as pinned in `amount.test.ts`
- * on fold/phone, and desktop gets a real `<input>` instead.
- *
- * Callers pass a GLOBAL `AccountView` (from `computeStateResponse(ledger, currentMonth())`) —
- * `AccountsWidget` already does; `AccountPanel`'s Reconcile action does too — so "Balance in the
- * app" is current by construction regardless of which month the shell is viewing (the 3.6.2 rule
- * this cluster exists to make reachable on wide).
- */
 export function ReconcileSheet({
   account,
   envelopes,
@@ -64,7 +32,7 @@ export function ReconcileSheet({
   envelopes: StateResponse["envelopes"];
   groups: StateResponse["groups"];
   onClose: () => void;
-   
+
   initialValue?: string;
 }) {
   const M = useMask();
@@ -72,7 +40,6 @@ export function ReconcileSheet({
   const [val, setVal] = useState(initialValue);
   const [envelopeSelection, setEnvelopeSelection] = useState<ReconciliationEnvelopeSelection | null>(null);
   const [showEnvelopePicker, setShowEnvelopePicker] = useState(false);
-  
 
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
   const actualBalanceSource = useRef<{ id: string; balance: number } | null>(null);
@@ -85,7 +52,7 @@ export function ReconcileSheet({
     }
     const previousBalanceSource = actualBalanceSource.current;
     actualBalanceSource.current = { id: account.id, balance: account.balance };
-     
+
     setVal((current) =>
       previousBalanceSource === null && initialValue ? initialValue : reconciliationActualValueAfterAccountRefresh(current, previousBalanceSource, account),
     );
@@ -108,7 +75,7 @@ export function ReconcileSheet({
         difference: diff,
         date: new Date().toISOString().slice(0, 10),
         envelopeId,
-         
+
         note: t("Balance adjustment"),
       }),
     );

@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import type { ClientLedger } from "@enveo/shared";
 
 let cache: { version: number; byEnv: Map<string, Map<string, number>> } | null = null;
@@ -26,13 +20,11 @@ function build(ledger: ClientLedger): Map<string, Map<string, number>> {
   return byEnv;
 }
 
- 
 export function categoryCountsFor(ledger: ClientLedger, version: number, envelopeId: string | null): Map<string, number> {
   if (!cache || cache.version !== version) cache = { version, byEnv: build(ledger) };
   return (envelopeId && cache.byEnv.get(envelopeId)) || new Map();
 }
 
- 
 export function rankCategories<T extends { id: string; name: string }>(cats: T[], counts: Map<string, number>): T[] {
   return [...cats].sort((a, b) => {
     const ca = counts.get(a.id) ?? 0;

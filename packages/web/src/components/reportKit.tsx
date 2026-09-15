@@ -14,23 +14,6 @@ import { Header } from "./chrome";
 import { useBand } from "./kit";
 import { polylineCoords } from "./sparkline";
 
-/**
- * Report component kit — the shared visual language for every report subscreen (Tasks 8–12):
- * a `ReportShell` band header (hero number + optional chart on `C.headerBg` when the theme is
- * Duet), plus small primitives (`Bar`, `SegBar`, `DeltaTag`, `CalendarHeatmap`, `TrendSpark`,
- * `UndoBar`) that read tokens off `useTheme()`/`useBand()` instead of hardcoding colors. Every
- * SVG color goes through `style` — `var(--accent)` etc. do not resolve in presentation
- * attributes. Status colors (pos/warn/neg) never carry meaning alone; callers supply the label.
- *
- * `Sparkline` (the one export a truly EAGER caller needs — `components/widgets.tsx`'s Net-worth
- * widget) moved out to its own `./sparkline` module (design parity wave D task 1): this whole
- * file is reachable ONLY through the lazy `Reports` chunk otherwise, and importing one named
- * export from a single-file module does not stop Rollup from duplicating the WHOLE compiled
- * module into an eager chunk that reaches it — see that module's own header comment for the
- * measured evidence. `TrendSpark` below still shares `polylineCoords`' math, imported from there.
- */
-
- 
 type ReportShellCommon = {
   month: string;
   onPrev: () => void;
@@ -42,28 +25,12 @@ type ReportShellCommon = {
   children: ReactNode;
 };
 
-/** Discriminated on `variant` so each caller's shape is checked at compile time — a subscreen
- *  MUST pass `title`/`onBack` (and cannot pass `onMenu`/`onHeroClick`); a hub caller MUST pass
- *  `onMenu` (and cannot pass `title`/`onBack`). `variant` defaults to `"subscreen"` (optional
- *  literal in that member) so all seven existing subscreen call sites are unaffected. Before
- *  this union, `title`/`onBack` were merely optional on one flat prop type, which would have let
- *  a future subscreen call site compile while omitting `onBack` — a dead back-chevron button at
- *  runtime, with nothing catching it (Task 4 fix round 1). */
 type ReportShellProps = ReportShellCommon &
   (
     | { variant?: "subscreen"; title: string; onBack: () => void; onMenu?: never; onHeroClick?: never }
     | { variant: "hub"; onMenu: () => void; onHeroClick?: () => void; title?: never; onBack?: never }
   );
 
-/** "last {n} months · {start}–{end}" — the date span a net-worth series covers (design parity
- *  wave D task 2, `v3:3195`'s `nwChart.range`, e.g. "last 12 months · Aug 2025 – Jul 2026").
- *  Shared by the reports hub hero and the Wealth report's own caption so the two never drift —
- *  each glues this onto its OTHER half (the hub's own delta/pct line; the Wealth report's
- *  existing "range {min}–{max}" line) with a decorative middle dot, the same already-translated-
- *  pieces idiom `ReportShell`'s own `{title} · {monthLabel}` panel eyebrow already uses just
- *  below. `computeNetWorthSeries` always back-fills to exactly the requested window (even before
- *  the ledger existed), so `n` is effectively always the caller's fixed window size in practice —
- *  `tp()` still carries the plural correctly for whatever a caller actually passes. */
 export function netWorthRangeLabel(
   netWorth: { month: string; total: number }[],
   lang: Lang,
@@ -75,24 +42,6 @@ export function netWorthRangeLabel(
   return tp("last {n} month · {range} | last {n} months · {range}", netWorth.length, { range: `${start} – ${end}` });
 }
 
-/** Report band: shared by every subscreen AND the hub (Task 4 — the two previously-forked
- *  copies of this grammar are now one). Top row is `variant`-dependent (back+title+month-nav
- *  for a subscreen, the app-chrome `Header` for the hub); everything below — eyebrow/hero/sub,
- *  the optional `bandChart` slot, `hc()` for on-band ink — is identical between variants and
- *  moved verbatim from the inline block in Reports.tsx / the hub's hand-rolled copy. The hub
- *  additionally makes the eyebrow/hero/sub block a full-width button (`onHeroClick`) that opens
- *  the Assets report — same button reset the hub always used. Body `children` render below in a
- *  `className="fi rpt-body"` div — opacity-only animation, never `fu`/transform (a transformed
- *  ancestor breaks `position:fixed` sheets). The body's `paddingTop` matches the band's own
- *  `paddingBottom` above it (14 for a subscreen, matching that variant's top-row bottom padding
- *  of 10 plus the eyebrow block's own spacing; 10 for the hub, matching `Header`'s tighter bottom
- *  padding of 6) so the band→content gap is consistent whichever variant renders — previously a
- *  subscreen's body div had NO top padding at all, so only some subscreens' own baked-in top
- *  margins gave any breathing room, and Goals/Trends sat flush under the band (reported bug).
- *  The `rpt-body` class pairs with a global `!important` rule (chrome.tsx's injected stylesheet)
- *  that zeroes whichever element ends up as the body's actual first DOM child — simpler and more
- *  robust than hand-editing every subscreen's first element (Budgets' first section alone varies
- *  by data: Overspent/Near/Within budget each carry a different top margin). */
 export function ReportShell(props: ReportShellProps) {
   const { month, onPrev, onNext, eyebrow, hero, sub, bandChart, children } = props;
   const C = useTheme();
@@ -101,21 +50,6 @@ export function ReportShell(props: ReportShellProps) {
   const wideHost = useWideHost();
   const inWide = wideHost !== null;
 
-  // Design parity wave D task 1 (owner rule 2): inside a WIDE PANEL, `PanelHost`'s own slim
-  // header (label + ✕, already rendered one level up) is the ONLY chrome above this content — no
-  // back chevron, no panel-local month-nav, no second band. The subscreen's own bespoke `eyebrow`
-  // (e.g. "Total spending") is replaced here by the shared "{title} · {month}" grammar — that
-  // string stays composed from already-translated pieces (`props.title` is `t(TITLES[view])` at
-  // every call site; `monthLabel` is Intl-formatted) rather than a new message key, since there is
-  // no English wording here to translate, only two values and a decorative middle dot (the same
-  // idiom `netWorthRangeLabel` below and its two callers use to glue their own two already-
-  // translated halves together). The seven per-report
-  // `eyebrow` strings stay exactly as they are for PHONE, rendered by the branch below — nothing
-  // is orphaned. Month navigation on wide is the band's global nav only: both `ReportsScreen`
-  // instances (primary hub + this panel subscreen) already share App's one `month`/`onPrev`/
-  // `onNext` axis, so there was never a second axis for a local nav to drift from — only the
-  // now-removed CONTROL was local, not the data. `hero`/`sub` render as given by the caller
-  // (still each report's own content) — this branch only replaces the OUTER band chrome.
   if (props.variant !== "hub" && wideHost?.host === "panel") {
     return (
       <>
@@ -134,9 +68,7 @@ export function ReportShell(props: ReportShellProps) {
           </div>
           {bandChart}
         </div>
-        {
-
-}
+        {}
         <div className="fi rpt-body" style={{ padding: "13px 16px 0" }}>
           {children}
         </div>
@@ -150,13 +82,6 @@ export function ReportShell(props: ReportShellProps) {
   const heroEl = <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{hero}</div>;
   const subEl = sub != null ? <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>{sub}</div> : null;
 
-  // Design parity wave D task 2 (v3:624-655): at the wide DESKTOP bucket only (`L.heroDir:"row"`
-  // — fold and phone keep the plain stacked column below, `L.heroDir:"column"`), the hub's own
-  // hero splits into a fixed `216px` info column (eyebrow/value/sub, `gap:16px` from the chart)
-  // and the chart filling the rest — never the hub's own hand-rolled markup duplicated a second
-  // time, just this one shared branch, gated to the ONE variant (`hub`) and ONE bucket (`desktop`)
-  // that need it; every other caller (every subscreen, hub-on-fold, hub-on-phone) renders the
-  // exact same flat fragment as before this task, byte-for-byte.
   const hubDesktopRow = props.variant === "hub" && wideHost?.mode === "desktop";
   const heroBlock = hubDesktopRow ? (
     <div style={{ display: "flex", flexDirection: "row", gap: 16 }}>
@@ -219,10 +144,7 @@ export function ReportShell(props: ReportShellProps) {
               {props.title}
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
-              {
-
-
-}
+              {}
               <button
                 aria-label={t("Previous month")}
                 onClick={onPrev}
@@ -301,23 +223,6 @@ export function ReportShell(props: ReportShellProps) {
   );
 }
 
-/**
- * `useBand()` (kit.tsx), scoped to a report SUBSCREEN's own band-dependent colors (design parity
- * wave D task 1). Every one of the six subscreen `*Report.tsx` files bakes its hero/sub/pill
- * colors into a ReactNode BEFORE handing it to `ReportShell` as a prop — `ReportShell` cannot
- * correct a color already baked into an element it did not create, so each of those six needs its
- * OWN band-vs-plain verdict rather than the generic one. Identical shape to `useBand()`; `band` is
- * forced `false` while this subscreen renders inside a WIDE PANEL (same `host === "panel"` check
- * `ReportShell` makes above), because that branch paints no colored strip for an on-band color to
- * sit on. `useBand()` itself stays theme-only, correctly — the actual GLOBAL header band these
- * same screens' primary-pane siblings (Start/Budget/Transactions/Settings) still paint on wide is
- * a different, still-real band this hook has no business touching.
- *
- * Confirmed as a real regression, not a theoretical one: measured live on Duet LIGHT after the
- * subscreen top-row/band removal above — `BudgetsReport`'s overspend hero used `headerNeg`
- * (`#f28b7d`, calibrated for Duet's navy `headerBg`) and rendered as near-invisible light coral on
- * the panel's plain cream `card` background once the colored strip was gone.
- */
 export function useReportBand(): { band: boolean; hc: (onBand: string, plain: string) => string } {
   const { band } = useBand();
   const inPanel = useWideHost()?.host === "panel";
@@ -325,7 +230,6 @@ export function useReportBand(): { band: boolean; hc: (onBand: string, plain: st
   return { band: effectiveBand, hc: (onBand, plain) => (effectiveBand ? onBand : plain) };
 }
 
- 
 export function Bar({ pct, color, height = 8 }: { pct: number; color: string; height?: number }) {
   const C = useTheme();
   const clamped = Math.min(100, Math.max(0, pct));
@@ -341,7 +245,6 @@ export function Bar({ pct, color, height = 8 }: { pct: number; color: string; he
 export function SegBar({ segments, height = 8 }: { segments: Array<{ weight: number; color: string }>; height?: number }) {
   const C = useTheme();
   const visible = segments.filter((s) => s.weight > 0);
-  
 
   return (
     <div style={{ display: "flex", gap: 2, height, flexShrink: 0, borderRadius: height / 2, overflow: "hidden", background: C.line }}>
@@ -351,10 +254,6 @@ export function SegBar({ segments, height = 8 }: { segments: Array<{ weight: num
     </div>
   );
 }
-
-
-
-
 
 export function DeltaTag({ pct, downIsGood = true }: { pct: number | null; downIsGood?: boolean }) {
   const C = useTheme();
@@ -383,23 +282,6 @@ export interface UndoToast {
   message: string;
 }
 
-/**
- * Stacking undo toast, rendered via `createPortal(document.body)`: a CSS `transform` on an
- * ancestor (a screen's `fi` entrance, sheet animations elsewhere) breaks `position: fixed`
- * descendants (known pitfall) — the portal sidesteps that entirely.
- *
- * Stacks rather than replacing or queuing one at a time: firing two undoable actions in quick
- * succession must not silently lose either captured undo value or risk applying one to the wrong
- * target, and a queue would delay the second toast behind the first — exactly the fast multi-fire
- * flow these actions exist to speed up. Newest goes on top; each entry dismisses independently.
- *
- * Anchoring reads `InWideShell` because this renders from panel-hosted reports, not just the
- * phone screen (pr4-task-7-brief.md §UndoBar wide anchoring): the phone geometry below —
- * `left/right:12` + `maxWidth: PHONE_COL` + `margin: 0 auto` — centers on the VIEWPORT, which on
- * wide is the primary pane while the action that raised the toast happened in the PANEL; `bottom:
- * 78px` is BottomNav clearance, which doesn't exist on wide either. On wide the toast instead
- * hugs the bottom-right corner, sized to the panel rather than the phone column.
- */
 export function UndoBar<T extends UndoToast>({ pending, onUndo, onDismiss }: { pending: T[]; onUndo: (item: T) => void; onDismiss: (id: string) => void }) {
   const { t } = useT();
   const inWide = useContext(InWideShell);
@@ -450,10 +332,7 @@ export function UndoBar<T extends UndoToast>({ pending, onUndo, onDismiss }: { p
           }}
         >
           <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{u.message}</span>
-          {
-
-
-}
+          {}
           <button
             onClick={() => onUndo(u)}
             style={{
@@ -497,14 +376,6 @@ export function UndoBar<T extends UndoToast>({ pending, onUndo, onDismiss }: { p
   );
 }
 
-
-
-
-
-
-
-
-
 export function dimNullLabel(name: string, dim: SpendingDimension, t: (m: Message) => string): string {
   if (name !== NULL_LABEL[dim]) return name;
   switch (dim) {
@@ -523,11 +394,9 @@ export function dimNullLabel(name: string, dim: SpendingDimension, t: (m: Messag
  *  parsed via `Date.UTC`, never the local-time `Date` constructor). */
 function mondayIndex(iso: string): number {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
-  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();  
-  return (dow + 6) % 7;  
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return (dow + 6) % 7;
 }
-
-
 
 const visuallyHidden: CSSProperties = {
   position: "absolute",
@@ -556,16 +425,10 @@ export function heatColor(total: number, max: number, C: Theme): string {
   return "var(--accent)";
 }
 
-
-
 export interface HeatCell {
   date: string;
   total: Money;
 }
-
-
-
-
 
 export function heatWeeks(days: DailySpendingPoint[]): (HeatCell | null)[][] {
   if (days.length === 0) return [];
@@ -607,12 +470,11 @@ export function CalendarHeatmap({
   days: DailySpendingPoint[];
   lang: string;
   mask: (n: number) => string;
-   
+
   selected?: string | null;
-  
 
   onSelectDay?: (date: string) => void;
-   
+
   panel?: ReactNode;
 }) {
   const C = useTheme();
@@ -620,14 +482,14 @@ export function CalendarHeatmap({
   if (days.length === 0) return null;
   const max = Math.max(...days.map((d) => d.total), 1);
   const weeks = heatWeeks(days);
-  const monday = new Date(Date.UTC(2020, 0, 6));  
+  const monday = new Date(Date.UTC(2020, 0, 6));
   const weekdays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
     d.setUTCDate(monday.getUTCDate() + i);
     return new Intl.DateTimeFormat(lang, { weekday: "narrow", timeZone: "UTC" }).format(d);
   });
   const monthName = monthLabel(days[0]!.date.slice(0, 7), lang as Parameters<typeof monthLabel>[1]);
-  const GAP = 3;  
+  const GAP = 3;
   return (
     <div>
       <span style={visuallyHidden}>{t("Daily spending in {month}", { month: monthName })}</span>
@@ -712,29 +574,6 @@ export function CalendarHeatmap({
   );
 }
 
-/** Bare polyline sparkline over a plain `number[]` — same shape as `Sparkline` but color is a
- *  prop (stroke via `style`, never an attribute) so callers can use it for series other than
- *  net worth (e.g. per-envelope trend rows). Its width is intentionally caller-supplied (`w` prop)
- *  because it renders inside fixed-width row slots beside text, where the size is a layout
- *  decision the caller owns; measuring would be incorrect here.
- *
- *  `median`/`medianColor` (Task 1, Trends redesign): an optional flat reference line at a given
- *  data value, drawn UNDER the polyline, spanning the full width edge-to-edge (unlike the
- *  polyline itself, which is inset by `pad`) so it reads as a background reference rather than
- *  part of the series. `medianColor` is a caller-supplied color for the SAME reason `color` is —
- *  this component stays theme-agnostic; the caller already has `useTheme()`. Omitting `median`
- *  draws no line at all (both existing call sites do this today and must keep doing it). The
- *  y-position mirrors `polylineCoords`'s own value→y scaling exactly, including its flat-series
- *  special case (`max === min` maps to `h/2` rather than the general formula), so the median line
- *  always lines up with where that same value would fall on the polyline itself.
- *
- *  `dot` (Task 1): an optional filled circle at the LAST point, in the polyline's own `color` —
- *  every caller paints line and dot with the same single `trendColor()` verdict. A separate
- *  `dotColor` (plus caller-tunable `strokeWidth`/`medianStrokeWidth`/`dotRadius`) existed briefly
- *  for owner round 3 item 17's wide trends tile, which stroked the line in the ENVELOPE's colour
- *  and reserved the verdict colour for the dot; owner round 7 item 29 superseded that grammar
- *  (the tile now renders `TrendRow`, the report's own row), leaving those four props with no
- *  caller at all, so they are gone rather than kept as an API nobody exercises. */
 export function TrendSpark({
   series,
   color,
@@ -794,47 +633,6 @@ export function signedDelta(M: (minor: number) => string, delta: number): string
   return `${delta >= 0 ? "+" : "−"}${M(Math.abs(delta))}`;
 }
 
-/**
- * One "Envelope trends" row, in the Trends REPORT's grammar — extracted out of `TrendsReport`
- * (owner round 7 item 29, his side-by-side of the wide home tile against the report) so the report
- * subscreen and the wide board tile render the SAME component and can never drift again.
- *
- * Layout, left to right: the envelope's own colour dot + its name over a `"{now} · median
- * {median}"` sub-line, the 6-month `TrendSpark` with its median reference line, then a right
- * column pairing the signed delta (`last − baseline`) with `DeltaTag` + "vs median".
- *
- * NO derivation happens here. `last`/`baseline`/`deltaPct`/`series`/`color` all come from shared
- * `computeEnvelopeTrends`; the sign verdict is `trendColor` (the same one `ReportsHub`'s mini uses,
- * so stroke and arrow always agree); the arrow glyph, its ↑/↓/→ threshold and its good/bad colour
- * rule are `DeltaTag`'s, spending-semantics (`downIsGood`) included. This component only lays them
- * out. `M` is the host's mask, so discreet mode covers every amount here — the sub-line's two
- * figures as well as the delta.
- *
- * `tr.last`/`tr.baseline` are never null, so both left-hand lines always render, including a
- * dormant envelope whose median is 0 ("… · median $0.00" is honest information, not an error).
- * When `deltaPct` is null there is nothing to compare the delta against, so only the second
- * right-hand line drops out — never the whole row.
- *
- * `onClick` differs by host on purpose: the report opens the envelope, the board tile deep-links
- * into the report. `last` drops the trailing hairline so a list ends flush.
- *
- * THE NAME ELLIPSIZES, THE SUB-LINE WRAPS — deliberately opposite rules, because one is a label and
- * the other is two amounts. An envelope name is unbounded and its dot already carries identity, so
- * clipping it costs nothing; the sub-line is short but WIDE (in Polish, "1087,10 € · mediana 420,00
- * €" measures 159px), and truncating it eats the median digit by digit until the figure the owner
- * asked for is gone entirely — measured on the wide board's DEFAULT 2×2 trends tile at 1440 with
- * the panel open, where the name column is 120–143px: four of five Polish rows rendered "· mediana
- * 4…" or lost the median outright. No amount of shaving the row's furniture buys that back (dot 8 +
- * three 10px gaps + a 72px spark + a ~110px right column is 190px of the 336px the tile has), so
- * the sub-line is allowed a second line instead. Amounts stay atomic while wrapping because Intl
- * puts a NO-BREAK space before the currency symbol, so a break can only land on the message's own
- * "·" or before "median" — never inside a number; `text-wrap: balance` picks the "·" over the
- * orphan-number break ("1087,10 € ·" / "mediana 420,00 €" rather than "… · mediana" / "420,00 €"),
- * and degrades to plain wrapping where it is unsupported. This costs a line only where a line was
- * genuinely needed — measured, any four-figure amount takes the second line (English as much as
- * Polish; at 390px roughly half the report's rows do), and the row grows to 61px there instead of
- * truncating the way it silently did before.
- */
 export function TrendRow({ tr, M, onClick, last = false }: { tr: EnvelopeTrend; M: (minor: number) => string; onClick: () => void; last?: boolean }) {
   const C = useTheme();
   const { t } = useT();

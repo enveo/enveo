@@ -39,10 +39,7 @@ export type { StoreName } from "./storageBackend";
 const DB_NAME = "enveo";
 const DB_VERSION = 2;
 
-
 const LEGACY_DB_NAME = ["4gros", "ze"].join("");
-
- 
 
 function requestToPromise<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -87,21 +84,16 @@ function deleteDb(): Promise<void> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.deleteDatabase(DB_NAME);
     req.onsuccess = () => resolve();
-     
+
     req.onblocked = () => resolve();
     req.onerror = () => reject(req.error ?? new Error("IndexedDB: deleteDatabase failed"));
   });
 }
 
-
-
-
 function deleteLegacyDb(): void {
   try {
     indexedDB.deleteDatabase(LEGACY_DB_NAME);
-  } catch {
-     
-  }
+  } catch {}
 }
 
 class IdbBackend implements StorageBackend {
@@ -113,7 +105,6 @@ class IdbBackend implements StorageBackend {
     return this.fellBack;
   }
 
-   
   private open(): Promise<IDBDatabase | null> {
     if (!this.dbPromise) {
       this.dbPromise = runAccountStorageWrite(async () => {
@@ -126,7 +117,6 @@ class IdbBackend implements StorageBackend {
         try {
           return await openRaw();
         } catch (first) {
-           
           console.warn("IndexedDB: open failed, deleting the database and retrying", first);
           try {
             await deleteDb();
@@ -418,8 +408,6 @@ class IdbBackend implements StorageBackend {
   }
 }
 
- 
-
 let backend: StorageBackend | null = null;
 let forcedMemory = false;
 
@@ -451,18 +439,14 @@ export function storageMode(): StorageMode {
   return b instanceof IdbBackend && b.usingFallback() ? "memory-fallback" : "idb";
 }
 
- 
 export function __resetStorageForTests(): void {
   backend = null;
   forcedMemory = false;
 }
 
- 
 export function __newIdbBackendForTests(): StorageBackend {
   return new IdbBackend();
 }
-
- 
 
 export async function idbGet<T>(store: StoreName, key: IDBValidKey): Promise<T | undefined> {
   return (await activeBackend().get(store, key)) as T | undefined;
@@ -481,7 +465,6 @@ export function idbImportTransactionProof(scope: ImportRecordScope, transactionI
   return activeBackend().importTransactionProof(scope, transactionId);
 }
 
- 
 export function idbPut(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
   return runAccountStorageWrite(() => activeBackend().put(store, value, key));
 }
@@ -496,7 +479,6 @@ export function idbPutImportJobIfRevision(value: unknown, expectedRevision: numb
   return runAccountStorageWrite(() => activeBackend().putImportJobIfRevision(value, expectedRevision));
 }
 
- 
 export function idbPutImportJobForScope(value: unknown, scope: ImportRecordScope): Promise<boolean> {
   return runAccountStorageWrite(() => activeBackend().putImportJobForScope(value, scope));
 }
@@ -533,7 +515,6 @@ export function idbDeleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt
   return runAccountStorageWrite(() => activeBackend().deleteExpiredImportDrafts(scope, expiresAt));
 }
 
- 
 export function idbAdd(store: StoreName, value: unknown): Promise<IDBValidKey> {
   return runAccountStorageWrite(() => activeBackend().add(store, value));
 }
@@ -551,7 +532,6 @@ export function idbClear(store: StoreName): Promise<void> {
   return runAccountStorageWrite(() => activeBackend().clear(store));
 }
 
- 
 export function clearLocalData(): Promise<void> {
   return runAccountStorageWrite(() => activeBackend().clearAll());
 }

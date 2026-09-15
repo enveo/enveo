@@ -33,14 +33,6 @@ describe("goalProgress", () => {
   });
 });
 
-
-
-
-
-
-
-
-
 const envelope = (over: Partial<EnvelopeView>): EnvelopeView => ({
   id: "e1",
   groupId: "g1",

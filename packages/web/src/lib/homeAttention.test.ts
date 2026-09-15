@@ -1,8 +1,3 @@
-
-
-
-
-
 import { describe, expect, test } from "bun:test";
 import type { AccountView, EnvelopeView, StateResponse } from "@enveo/shared";
 import { attentionRows } from "./homeAttention";
@@ -68,16 +63,12 @@ function state(over: Partial<StateResponse> = {}): StateResponse {
 
 describe("attentionRows", () => {
   test("an empty state produces no rows", () => {
-    
-
     expect(attentionRows(state(), 0.5)).toEqual([]);
   });
 
   test("a zero-budget overspent envelope appears as an 'over' row — left < 0, never pct > 100", () => {
-     
     const rent = envelope({ name: "Rent", allocated: 0, carryIn: 0, spent: 12000 });
 
-     
     const rows = attentionRows(state({ envelopes: [rent] }), 0.5);
 
     // then: the zero-budget denominator never masks the overspend behind a percentage check
@@ -94,16 +85,13 @@ describe("attentionRows", () => {
   });
 
   test("a risk row carries the SAME projected value budgetPace itself computes for that envelope", () => {
-     
     const groceries = envelope({ name: "Groceries", allocated: 100_00, carryIn: 0, spent: 40_00 });
     const progress = 0.2;
 
-     
     const rows = attentionRows(state({ envelopes: [groceries] }), progress);
 
-     
     const expectedProjected = budgetPace(groceries, progress).projected;
-    expect(expectedProjected).toBeGreaterThan(groceries.allocated);  
+    expect(expectedProjected).toBeGreaterThan(groceries.allocated);
     expect(rows).toEqual([{ kind: "risk", name: "Groceries", projected: expectedProjected, envelopeId: groceries.id }]);
   });
 
@@ -136,9 +124,9 @@ describe("attentionRows", () => {
   });
 
   test("envelopes short of their monthly goal aggregate into one 'goals' row", () => {
-    const a = envelope({ monthlyTarget: 10000, allocated: 4000 });  
-    const b = envelope({ monthlyTarget: 5000, allocated: 5000 });  
-    const c = envelope({ monthlyTarget: null, allocated: 0 });  
+    const a = envelope({ monthlyTarget: 10000, allocated: 4000 });
+    const b = envelope({ monthlyTarget: 5000, allocated: 5000 });
+    const c = envelope({ monthlyTarget: null, allocated: 0 });
 
     const rows = attentionRows(state({ envelopes: [a, b, c] }), 0.5);
 

@@ -152,7 +152,7 @@ type ProcessorRepository = {
 
 export interface ImportRecognitionRunInput {
   checkpoint: ImportRecognitionResult | null;
-   
+
   chunks: ImportChunkState[] | undefined;
   beforeUpstream: () => Promise<void>;
   afterUpstream: () => Promise<void>;
@@ -236,9 +236,6 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
       throw new ImportJobLeaseExpired();
     }
   };
-
-  
-
 
   const chunkFailures = new Map<number, ImportChunkFailure>();
   let extractionCompletedThisClaim = false;
@@ -324,8 +321,6 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
     await leaseRenewal?.stop();
   }
 }
-
-
 
 function chunkStageDisposition(error: unknown, failures: Map<number, ImportChunkFailure>, job: ClaimedImportJob): ImportJobFailureDisposition | null {
   if (error instanceof ImportChunksPendingError) {

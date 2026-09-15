@@ -3,11 +3,8 @@ import { activeAllocationDecoration, INPUT_FOCUS_CLASS, INPUT_FOCUS_CSS, NAME_UN
 
 describe("input focus presentation", () => {
   test("moves the focus indicator from the rectangular input to its rounded shell", () => {
-     
     const inputRule = `.${INPUT_FOCUS_CLASS}>input:focus-visible{outline:none}`;
     const shellRule = `.${INPUT_FOCUS_CLASS}:has(>input:focus-visible){outline:2px solid var(--input-underline);outline-offset:2px}`;
-
-    
 
     expect(INPUT_FOCUS_CSS).toBe(`@supports selector(:has(*)){${inputRule}${shellRule}}`);
     expect(INPUT_FOCUS_CSS).not.toContain(":focus-within");
@@ -19,10 +16,8 @@ describe("input focus presentation", () => {
   });
 
   test("keeps the budget allocation chip rounded while drawing its active underline inside", () => {
-     
     const accent = "var(--accent)";
 
-     
     const decoration = activeAllocationDecoration(accent);
 
     // then: it cannot square the bottom corners or change the chip's measured height

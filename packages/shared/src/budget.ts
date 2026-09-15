@@ -16,19 +16,16 @@ import type { Account, Allocation, BudgetState, EnvelopeState, Ledger, Money, Tr
 
 export const monthOf = (date: string): string => date.slice(0, 7);
 
- 
 export function nextMonth(month: string): string {
   const [y, m] = month.split("-").map(Number) as [number, number];
   return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
 }
 
- 
 export function prevMonth(month: string): string {
   const [y, m] = month.split("-").map(Number) as [number, number];
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
 }
 
- 
 function accountDeltas(t: Transaction): Array<[string, Money]> {
   switch (t.type) {
     case "expense":
@@ -45,13 +42,6 @@ function accountDeltas(t: Transaction): Array<[string, Money]> {
   }
 }
 
-
-
-
-
-
-
-
 function envelopeSpentDeltas(t: Transaction, isOnBudget: (accountId: string) => boolean): Array<[string, Money]> {
   if (t.type === "transfer") return [];
   if (!isOnBudget(t.accountId)) return [];
@@ -60,7 +50,6 @@ function envelopeSpentDeltas(t: Transaction, isOnBudget: (accountId: string) => 
     return t.envelopeId ? [[t.envelopeId, -t.amount]] : [];
   }
 
-   
   const sign = t.isRefund ? -1 : 1;
   if (t.items.length > 0) {
     return t.items.map((it) => [it.envelopeId, sign * it.amount] as [string, Money]);
@@ -68,13 +57,11 @@ function envelopeSpentDeltas(t: Transaction, isOnBudget: (accountId: string) => 
   return t.envelopeId ? [[t.envelopeId, sign * t.amount]] : [];
 }
 
- 
 function onBudgetSet(accounts: Account[]): (id: string) => boolean {
   const set = new Set(accounts.filter((a) => a.onBudget).map((a) => a.id));
   return (id: string) => set.has(id);
 }
 
- 
 function unassignedMoney(
   accounts: readonly Account[],
   allocations: readonly Allocation[],
@@ -89,7 +76,6 @@ function unassignedMoney(
     if (transaction.type === "income" && isOnBudget(transaction.accountId) && !transaction.envelopeId) {
       total += transaction.amount;
     }
-    
 
     if (transaction.type === "expense" && isOnBudget(transaction.accountId) && !transaction.envelopeId && transaction.items.length === 0) {
       total += transaction.isRefund ? transaction.amount : -transaction.amount;
@@ -104,18 +90,12 @@ function unassignedMoney(
   return total;
 }
 
-
-
-
-
 export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
   const { accounts, envelopes, groups, allocations } = ledger;
   const isOnBudget = onBudgetSet(accounts);
 
-   
   const txns = ledger.transactions.filter((t) => monthOf(t.date) <= month);
 
-   
   const balance = new Map<string, Money>();
   for (const a of accounts) {
     balance.set(a.id, a.initialBalance);
@@ -131,15 +111,13 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
     return { account, balance: bal };
   });
 
-  
-
-  const manualAllocCum = new Map<string, Money>();  
-  const manualAllocThis = new Map<string, Money>();  
+  const manualAllocCum = new Map<string, Money>();
+  const manualAllocThis = new Map<string, Money>();
   for (const a of allocations) {
     if (a.month <= month) manualAllocCum.set(a.envelopeId, (manualAllocCum.get(a.envelopeId) ?? 0) + a.amount);
     if (a.month === month) manualAllocThis.set(a.envelopeId, (manualAllocThis.get(a.envelopeId) ?? 0) + a.amount);
   }
-   
+
   const automaticAllocCum = new Map<string, Money>();
   const automaticAllocThis = new Map<string, Money>();
   for (const t of txns) {
@@ -149,7 +127,7 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
       if (isThis) automaticAllocThis.set(envId, (automaticAllocThis.get(envId) ?? 0) + d);
     }
   }
-   
+
   const spentCum = new Map<string, Money>();
   const spentThis = new Map<string, Money>();
   for (const t of txns) {
@@ -165,8 +143,8 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
     const at = (manualAllocThis.get(envelope.id) ?? 0) + (automaticAllocThis.get(envelope.id) ?? 0);
     const sc = spentCum.get(envelope.id) ?? 0;
     const st = spentThis.get(envelope.id) ?? 0;
-    const available = ac - sc;  
-    const carryIn = available - (at - st);  
+    const available = ac - sc;
+    const carryIn = available - (at - st);
     return { envelope, carryIn, allocated: at, spent: st, available };
   });
 
@@ -187,7 +165,6 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
   // looks at allocations/txns ≤ that month).
   const readyToAssign = unassignedMoney(accounts, allocations, ledger.transactions, isOnBudget);
 
-   
   let monthIncome: Money = 0;
   let monthExpense: Money = 0;
   for (const t of txns) {

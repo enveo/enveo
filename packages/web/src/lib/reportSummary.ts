@@ -1,26 +1,9 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import type { EnvelopeTrend } from "@enveo/shared";
 
 export interface BudgetsSummary {
-  over: number;  
-  near: number;  
-  ok: number;  
+  over: number;
+  near: number;
+  ok: number;
 }
 
 export type BudgetStatus = "over" | "near" | "ok";
@@ -51,7 +34,6 @@ export interface BudgetUsageRow extends BudgetUsage {
   name: string;
 }
 
- 
 export function budgetUsage(envelope: BudgetEnvelope): BudgetUsage {
   const rawBudget = envelope.allocated + envelope.carryIn;
   const spent = envelope.spent;
@@ -71,7 +53,6 @@ export function budgetRowPresentation(usage: BudgetUsage): BudgetRowPresentation
   };
 }
 
- 
 export function compareBudgetUsageRows(left: BudgetUsageRow, right: BudgetUsageRow, compareNames: (left: string, right: string) => number): number {
   if (left.pct === null && right.pct !== null) return -1;
   if (left.pct !== null && right.pct === null) return 1;
@@ -81,7 +62,6 @@ export function compareBudgetUsageRows(left: BudgetUsageRow, right: BudgetUsageR
   return -right.left - -left.left || compareNames(left.name, right.name);
 }
 
- 
 export function budgetsSummary(envelopes: BudgetEnvelope[]): BudgetsSummary {
   const out: BudgetsSummary = { over: 0, near: 0, ok: 0 };
   for (const e of envelopes) {
@@ -91,8 +71,6 @@ export function budgetsSummary(envelopes: BudgetEnvelope[]): BudgetsSummary {
   }
   return out;
 }
-
-
 
 export function budgetsOverAmount(envelopes: BudgetEnvelope[]): number {
   let total = 0;
@@ -140,12 +118,10 @@ export function monthProgress(month: string, today: string): number {
 export type BudgetPaceBucket = "over" | "risk" | "near" | "usedUp" | "ok";
 
 export interface BudgetPace {
-   
   projected: number;
   bucket: BudgetPaceBucket;
 }
 
- 
 export function budgetPace(envelope: BudgetEnvelope, progress: number): BudgetPace {
   const usage = budgetUsage(envelope);
   const spent = Math.max(0, usage.spent);
@@ -155,7 +131,7 @@ export function budgetPace(envelope: BudgetEnvelope, progress: number): BudgetPa
 
   if (usage.status === "over") return { projected, bucket: "over" };
   if (usage.status === "near") return { projected, bucket: "near" };
-   
+
   if (usage.pct !== null && usage.pct >= 100) return { projected, bucket: "usedUp" };
   if (usage.rawBudget > 0 && spent > 0 && projected > usage.rawBudget) return { projected, bucket: "risk" };
   return { projected, bucket: "ok" };
@@ -169,9 +145,9 @@ export interface BudgetStep {
   envelopeId: string;
   name: string;
   kind: BudgetStepKind;
-   
+
   amount: number;
-   
+
   ignored: boolean;
 }
 
@@ -245,12 +221,6 @@ export function budgetSteps(envelopes: BudgetStepInput[], progress: number, opti
   }
   return steps.sort((a, b) => STEP_ORDER[a.kind] - STEP_ORDER[b.kind] || b.amount - a.amount);
 }
-
-
-
-
-
-
 
 /** Minimum |deltaPct| for the Trends screen's biggest-mover banner — deliberately looser than the
  *  report's own rising/falling HERO threshold (±10%, unrelated and unchanged, still inline in

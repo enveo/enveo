@@ -31,7 +31,6 @@ export interface AutomaticEnvelopeEffectData {
   noEnvelopeChange: string;
 }
 
- 
 export function expenseEnvelopeSelection(automaticEnvelopeId: string | null | undefined, preset?: { envelopeId: string | null }): ExpenseEnvelopeSelection {
   return preset ? { envelopeId: preset.envelopeId, provenance: "explicit" } : { envelopeId: automaticEnvelopeId ?? null, provenance: "automatic" };
 }
@@ -49,12 +48,10 @@ export function expenseEnvelopeAfterAccountChange(
   return current.provenance === "automatic" && !split ? expenseEnvelopeSelection(automaticEnvelopeId) : current;
 }
 
- 
 export function expenseEnvelopeAfterSplitCancel(current: ExpenseEnvelopeSelection, automaticEnvelopeId: string | null | undefined): ExpenseEnvelopeSelection {
   return current.provenance === "automatic" ? expenseEnvelopeSelection(automaticEnvelopeId) : current;
 }
 
- 
 export function expenseEnvelopeSelectionForImport(
   type: Transaction["type"],
   envelopeId: string | null,
@@ -63,12 +60,10 @@ export function expenseEnvelopeSelectionForImport(
   return type === "expense" && envelopeId === null ? expenseEnvelopeSelection(automaticEnvelopeId) : explicitExpenseEnvelopeSelection(envelopeId);
 }
 
- 
 export function currentReconciliationAccount<T extends { id: string }>(accountsNow: readonly T[], accountId: string | null): T | null {
   return accountId ? (accountsNow.find((account) => account.id === accountId) ?? null) : null;
 }
 
- 
 export function reconciliationActualValueAfterAccountRefresh(
   current: string,
   previous: { id: string; balance: Money } | null,
@@ -77,7 +72,6 @@ export function reconciliationActualValueAfterAccountRefresh(
   return previous?.id === account.id && previous.balance === account.balance ? current : (account.balance / 100).toFixed(2).replace(".", ",");
 }
 
- 
 export function reconciliationEnvelopeAfterAccountRefresh(
   current: ReconciliationEnvelopeSelection | null,
   accountId: string,
@@ -92,7 +86,6 @@ export function reconciliationEnvelopeAfterAccountRefresh(
     : { ...current, automaticEnvelopeId };
 }
 
- 
 export function formatAutomaticEnvelopeEffect(
   preview: AutomaticEnvelopePreview,
   formatMoney: (amount: Money) => string,
@@ -112,7 +105,6 @@ export function formatAutomaticEnvelopeEffect(
   };
 }
 
- 
 export function reconciliationTxnPayload(input: { accountId: string; difference: Money; envelopeId: string | null; date: string; note: string }): TxnPayload {
   const expense = input.difference < 0;
   return {
@@ -128,10 +120,6 @@ export function reconciliationTxnPayload(input: { accountId: string; difference:
     allocationToEnvelopeId: null,
   };
 }
-
-
-
-
 
 export function automaticEnvelopePreview(
   state: { accounts: readonly Account[]; envelopes: readonly Envelope[] },

@@ -10,12 +10,6 @@ export interface ChipOption {
   name: string;
 }
 
-
-
-
-
-
-
 export function ChipPicker({
   label,
   chips,
@@ -36,17 +30,14 @@ export function ChipPicker({
 }: {
   label: string;
   chips: ChipOption[];
-   
+
   matches: ChipOption[];
   selectedId: string | null;
   open: boolean;
   query: string;
   searchPlaceholder: string;
-   
+
   createLabel: string | null;
-  
-
-
 
   restoreLabel: string | null;
   onRestore: () => void;
@@ -86,9 +77,6 @@ export function ChipPicker({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onFocus={onFieldFocus}
-            
-
-
             onKeyDown={(e) => {
               if (e.key !== "Enter" || !query.trim()) return;
               e.preventDefault();

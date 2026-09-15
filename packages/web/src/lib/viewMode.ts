@@ -19,28 +19,19 @@ import { useEffect, useState } from "react";
 
 export type ViewMode = "phone" | "fold" | "desktop";
 
- 
 export const PHONE_COL = 420;
 
- 
 export const FOLD_MIN = 900;
 
- 
 export const DESKTOP_MIN = 1280;
 
- 
 export const MIN_WIDE_HEIGHT = 500;
 
- 
 export const RAIL_W = { fold: 68, desktop: 236 } as const;
 
 /** Right detail-pane width per wide mode. On the fold it is deliberately WIDER than the
  *  primary pane (484px) — on that device the detail is the thing being worked on. */
 export const PANE_W = { fold: 552, desktop: 400 } as const;
-
-
-
-
 
 export function viewModeFor(width: number, height: number): ViewMode {
   if (!Number.isFinite(width) || !Number.isFinite(height)) return "phone";

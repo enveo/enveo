@@ -1,4 +1,3 @@
- 
 import {
   ACCENT_THEMES,
   LANGS,
@@ -98,7 +97,6 @@ export function legacyCredentialMigration(tier: "plain" | "e2ee" = "plain"): Cre
   return key && key.trim().length > 0 ? (tier === "e2ee" ? "pending-stage-4" : "pending-vault") : null;
 }
 
- 
 export function persistSettings(_settings: unknown): void {}
 
 /** Removes exactly the object the migration inspected. A concurrent/new value
@@ -114,11 +112,8 @@ export function removeLegacySettingsIfUnchanged(expectedRaw: string): boolean {
   }
 }
 
- 
 export function clearPersistedSettings(): void {
   try {
     localStorage.removeItem(SETTINGS_KEY);
-  } catch {
-     
-  }
+  } catch {}
 }

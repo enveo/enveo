@@ -38,17 +38,10 @@ export interface EnvelopeSummary {
 }
 
 export interface EnvelopeSummaryOpts {
-   
   categoryMonths?: 1 | 3 | 6 | 12;
 }
 
-
-
-
-
-
 export function computeEnvelopeSummary(ledger: ClientLedger, envId: string, month: string, opts?: EnvelopeSummaryOpts): EnvelopeSummary {
-   
   const spentOf = (t: (typeof ledger.transactions)[number]): number => {
     if (t.type === "transfer") return 0;
     const sign = t.isRefund ? -1 : 1;
@@ -59,7 +52,6 @@ export function computeEnvelopeSummary(ledger: ClientLedger, envId: string, mont
     return t.envelopeId === envId ? sign * t.amount : 0;
   };
 
-   
   const monthsBack: string[] = [month];
   for (let i = 0; i < 5; i++) monthsBack.unshift(prevMonth(monthsBack[0]!));
   const series = monthsBack.map((m) => ({
@@ -67,7 +59,6 @@ export function computeEnvelopeSummary(ledger: ClientLedger, envId: string, mont
     spent: ledger.transactions.filter((t) => monthOf(t.date) === m).reduce((x, t) => x + spentOf(t), 0),
   }));
 
-   
   const n = opts?.categoryMonths ?? 1;
   const monthsWindow: string[] = [month];
   for (let i = 1; i < n; i++) monthsWindow.unshift(prevMonth(monthsWindow[0]!));
@@ -91,8 +82,6 @@ export function computeEnvelopeSummary(ledger: ClientLedger, envId: string, mont
 
   const state = computeBudgetState(ledger, month);
   const env = state.envelopes.find((e) => e.envelope.id === envId);
-
-  
 
   const prevState = computeBudgetState(ledger, prevMonth(month));
   const carryIn = prevState.envelopes.find((e) => e.envelope.id === envId)?.available ?? 0;

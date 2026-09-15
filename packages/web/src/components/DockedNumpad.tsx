@@ -22,14 +22,13 @@ import { Numpad } from "./pickers";
  * via `onInvalid` (red cell highlight in the row — a flag in the caller's state).
  */
 export type DockedNumpadTarget = {
-   
   label: string;
   icon?: string;
-   
+
   color?: string;
   onCommit: (minor: number) => void;
   onCancel: () => void;
-   
+
   onInvalid: () => void;
 };
 
@@ -37,18 +36,13 @@ export function DockedNumpad({ target, state, onState }: { target: DockedNumpadT
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
-  // Wide anchor (PR6 Task 3): on fold/desktop the pad anchors to the primary pane's MEASURED
-  // rect (WideShell's ResizeObserver, via InWideShell), not the viewport — otherwise it would
-  // span under the rail and the open panel. `null` on phone, same fixed centering as always.
+
   const pane = useWideHost();
   const anchor = pane?.rects.primary ?? null;
   if (!target || !state) return null;
 
-   
   const open = hasOpenOp(state.expr);
   const preview = open ? padPreview(state.expr) : null;
-
-  
 
   const onKey = (k: string) => onState(padKey(state, k === "DEL" ? "⌫" : k, { allowNegative: true }));
   const onOk = () => {
@@ -71,7 +65,7 @@ export function DockedNumpad({ target, state, onState }: { target: DockedNumpadT
         ...(anchor ? { left: anchor.left, width: anchor.width } : { left: 0, right: 0, maxWidth: PHONE_COL, margin: "0 auto" }),
       }}
     >
-      { }
+      {}
       <div style={{ height: 40, display: "flex", alignItems: "center", gap: 8, padding: `0 ${P}px`, borderBottom: `1px solid ${C.line}` }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
           {target.icon && target.color && (

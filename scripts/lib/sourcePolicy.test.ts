@@ -1,12 +1,3 @@
-
-
-
-
-
-
-
-
-
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -68,8 +59,6 @@ describe("checkSelfHostImageRefs", () => {
   });
 
   it("does not stop at the package name — a SIBLING package with a numeric tag is still caught", () => {
-    
-
     const found = checkSelfHostImageRefs("docs/hosting.md", "image: ghcr.io/enveo/enveo-web:3.6.2\n");
     expect(found).toHaveLength(1);
     expect(found[0]!.rule).toBe("image-tag");
@@ -148,7 +137,6 @@ describe("the real repository", () => {
   });
 
   it("actually covers the files the policy claims to cover", () => {
-     
     for (const file of [...SELF_HOST_DOCS, DEPLOY_SCRIPT]) expect(read(file).length).toBeGreaterThan(0);
   });
 });

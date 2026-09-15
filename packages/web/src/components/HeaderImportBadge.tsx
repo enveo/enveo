@@ -4,7 +4,6 @@ import { LazyChunk } from "./lazy";
 
 export const ImportBadge = lazy(() => import("./ImportActivityBadge").then((module) => ({ default: module.ImportActivityBadge })));
 
- 
 export function HeaderImportBadge() {
   const onOpen = useContext(OpenImportActivity);
   if (!onOpen) return null;

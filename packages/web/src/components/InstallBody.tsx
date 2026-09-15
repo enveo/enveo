@@ -9,10 +9,6 @@ const SHARE = "M12 4v11 M8.5 7.5L12 4l3.5 3.5 M6 11v7a2 2 0 002 2h8a2 2 0 002-2v
 const PLUS_BOX = "M12 8.5v7 M8.5 12h7 M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z";
 const MARK = "\u0000";
 
-
-
-
-
 export function InstallBody({ onDone }: { onDone?: () => void }) {
   const C = useTheme();
   const { t } = useT();
@@ -94,7 +90,6 @@ export function InstallBody({ onDone }: { onDone?: () => void }) {
     );
   }
 
-   
   return (
     <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.45 }}>
       {/* the host, not the brand domain: selfhost is the default profile, so "open enveo.app"

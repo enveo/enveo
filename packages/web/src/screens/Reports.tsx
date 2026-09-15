@@ -60,17 +60,12 @@ export function ReportsScreen({
   onPrev: () => void;
   onNext: () => void;
   onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string; date?: string }) => void;
-  
-
-
-
-
 
   selected?: ReportTab;
 }) {
   const M = useMask();
   const version = useLedgerVersion();
-   
+
   const [dim, setDim] = useState<SpendingDimension>("envelope");
   const [range, setRange] = useState(1);
 
@@ -80,15 +75,12 @@ export function ReportsScreen({
     return m;
   }, [month, range]);
 
-   
   const netWorth = useMemo(() => {
     if (view !== "assets" && view !== "overview") return [];
     const l = store.getLedger();
     return l ? computeNetWorthSeries(l, month, 12) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
-  
-
 
   const cashflow = useMemo(() => {
     if (view !== "cashflow" && view !== "overview" && view !== "spending" && view !== "month") return [];
@@ -102,14 +94,13 @@ export function ReportsScreen({
     return l ? computeSpendingByDimension(l, fromMonth, month, dim) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, fromMonth, month, dim, view]);
-   
+
   const spBaseline = useMemo(() => {
     if (view !== "spending") return new Map<string | null, number>();
     const l = store.getLedger();
     return l ? spendingBaseline(l, month, dim, 3) : new Map<string | null, number>();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, dim, view]);
-  
 
   const spendDetailFor = useMemo(() => {
     return (key: string | null): SpendingDetail | null => {
@@ -119,21 +110,20 @@ export function ReportsScreen({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, fromMonth, month, dim, view]);
-   
+
   const hubSpending = useMemo(() => {
     if (view !== "overview") return [];
     const l = store.getLedger();
     return l ? computeSpendingByDimension(l, month, month, "envelope") : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
-   
+
   const dailySpending = useMemo(() => {
     if (view !== "overview" && view !== "month") return [];
     const l = store.getLedger();
     return l ? computeDailySpending(l, month) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
-  
 
   const envelopeTrends = useMemo(() => {
     if (view !== "overview" && view !== "trends") return [];
@@ -141,7 +131,6 @@ export function ReportsScreen({
     return l ? computeEnvelopeTrends(l, month, 6) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
-  
 
   const monthPlaces = useMemo(() => {
     if (view !== "month") return [];
@@ -155,8 +144,6 @@ export function ReportsScreen({
     return l ? largestExpenses(l, month, 5) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
-  
-
 
   const dayDetail = useMemo((): DaySpending | null => {
     if (view !== "month" || !monthDay) return null;
@@ -165,7 +152,6 @@ export function ReportsScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, monthDay, view]);
 
-   
   if (view === "overview") {
     return (
       <ReportsHub
@@ -184,11 +170,6 @@ export function ReportsScreen({
       />
     );
   }
-
-  
-
-
-
 
   const back = () => onView("overview");
   return (

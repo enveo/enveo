@@ -23,7 +23,6 @@ import { AiConsentSheet } from "./AiConsentSheet";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Sheet, Surface } from "./chrome";
 
- 
 const PROFILES: Array<{ id: BudgetSuggestProfile; labelKey: Message; descKey: Message }> = [
   {
     id: "cautious",
@@ -41,10 +40,8 @@ type CustomProfile = Settings["customProfiles"][number];
 
 type Phase = "setup" | "loading" | "review";
 
- 
 type DetStrategy = "topUp" | "prevMonth";
 
- 
 const prevMonthOf = (month: string): string => {
   const [y, m] = month.split("-").map(Number) as [number, number];
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
@@ -79,19 +76,19 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   });
   const [phase, setPhase] = useState<Phase>("setup");
   const [profile, setProfile] = useState<BudgetSuggestProfile>("cautious");
-   
+
   const [selCustom, setSelCustom] = useState<string | null>(null);
-   
+
   const [det, setDet] = useState<DetStrategy | null>(null);
   const [resp, setResp] = useState<BudgetSuggestResponse | null>(null);
-  const [edited, setEdited] = useState<Record<string, string>>({});  
-  const [checked, setChecked] = useState<Record<string, boolean>>({});  
+  const [edited, setEdited] = useState<Record<string, string>>({});
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [showManage, setShowManage] = useState(false);
-   
+
   const [showConsent, setShowConsent] = useState(false);
   const [pendingGen, setPendingGen] = useState(false);
-   
+
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
 
   const envById = new Map(state.envelopes.map((e) => [e.id, e]));
@@ -99,7 +96,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   const effectivePrompt = selProfile?.prompt;
   const customDisabled = !providerStatus || suggestionExecution(providerStatus, "custom") === "unavailable";
 
-   
   useEffect(() => {
     if (profile === "custom" && !selProfile) {
       setProfile("cautious");
@@ -145,7 +141,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
     }
   };
 
-   
   const doDetGenerate = (kind: DetStrategy) => {
     const ledger = store.getLedger();
     if (!ledger) {
@@ -167,8 +162,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
       warnings: norm.warnings,
     });
   };
-
-  
 
   useEffect(() => {
     if (!pendingGen) return;
@@ -206,14 +199,14 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
 
   const apply = () => {
     if (!resp) return;
-     
+
     const ledger = store.getLedger();
     const live = ledger ? computeStateResponse(ledger, month) : null;
     if (!live || live.toBeBudgeted !== resp.amountToDistribute) {
       setError(t("The budget has changed since this was generated — generate a new suggestion."));
       return;
     }
-     
+
     const chosen = resp.items.filter((it) => checked[it.envelopeId] && deltaOf(it) > 0);
     for (const it of chosen) {
       const liveEnv = live.envelopes.find((e) => e.id === it.envelopeId);
@@ -228,7 +221,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
     close();
   };
 
-   
   const sections = resp
     ? (() => {
         const itemsById = new Map(resp.items.map((it) => [it.envelopeId, it]));
@@ -399,7 +391,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                 {sections.map((s) => {
                   const anyOn = s.rows.some((it) => checked[it.envelopeId]);
                   const allOn = s.rows.every((it) => checked[it.envelopeId]);
-                   
+
                   const groupSum = s.rows.reduce((x, it) => x + (!anyOn || checked[it.envelopeId] ? deltaOf(it) : 0), 0);
                   return (
                     <div key={s.key}>
@@ -519,7 +511,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                               >
                                 <span style={{ fontSize: 11, color: C.soft }}>+</span>
                                 <input
-                                   
                                   value={localizePadExpression(edited[it.envelopeId] ?? "", lang)}
                                   readOnly
                                   tabIndex={on ? 0 : -1}
@@ -633,7 +624,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   );
 }
 
- 
 function prevAllocations(ledger: ClientLedger, month: string): Map<string, number> {
   const prev = prevMonthOf(month);
   const map = new Map<string, number>();
@@ -643,7 +633,6 @@ function prevAllocations(ledger: ClientLedger, month: string): Map<string, numbe
   return map;
 }
 
- 
 function CheckBox({ on, C }: { on: boolean; C: Theme }) {
   return (
     <span
@@ -670,7 +659,6 @@ function CheckBox({ on, C }: { on: boolean; C: Theme }) {
   );
 }
 
- 
 function StrategyOption({
   C,
   name,
@@ -754,10 +742,6 @@ function StrategyOption({
     </button>
   );
 }
-
-
-
-
 
 function ProfileManageSheet({ show, onClose }: { show: boolean; onClose: () => void }) {
   const { t } = useT();

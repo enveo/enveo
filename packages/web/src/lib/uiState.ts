@@ -1,13 +1,7 @@
-
-
-
-
-
 import { daysInMonth } from "./reportSummary";
 
 export type SpendMeter = { fill: number; state: "ok" | "warn" | "over"; total: number };
 
- 
 export function spendMeter(e: { spent: number; available: number }): SpendMeter | null {
   if (e.available < 0) return { fill: 1, state: "over", total: Math.max(0, e.spent) };
   const spent = Math.max(0, e.spent);

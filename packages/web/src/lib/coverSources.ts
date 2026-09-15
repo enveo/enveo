@@ -18,7 +18,7 @@ export const POOL_SOURCE_ID = "pool";
 export type CoverDonorLike = {
   id: string;
   name: string;
-   
+
   available: number;
   archived: boolean;
   /** Optional on purpose: a replica row written before the flag existed carries NO key (CLAUDE.md
@@ -26,7 +26,6 @@ export type CoverDonorLike = {
   isSavings?: boolean;
 };
 
- 
 export type CoverPlan = Record<string, number>;
 
 /**
@@ -100,11 +99,10 @@ export function proposeCoverSources(amount: number, readyToAssign: number, donor
 }
 
 export interface CoverPlanStatus {
-   
   sum: number;
-   
+
   overdrawn: Set<string>;
-   
+
   valid: boolean;
 }
 
@@ -121,13 +119,6 @@ export function coverPlanStatus(plan: CoverPlan, sources: ReadonlyArray<{ id: st
   }
   return { sum, overdrawn, valid: sum > 0 && overdrawn.size === 0 };
 }
-
-
-
-
-
-
-
 
 export function clampCoverPlan(
   plan: CoverPlan,

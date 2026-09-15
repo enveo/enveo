@@ -41,7 +41,6 @@ function git(...argv: readonly string[]): Run {
   };
 }
 
- 
 function fail(message: string): number {
   console.error(`::error::release-validate: ${message}`);
   return EXIT_REJECTED;
@@ -67,7 +66,6 @@ function main(argv: readonly string[]): number {
   }
   const mainRef = flag("main-ref") ?? "origin/main";
 
-   
   const verdict = parseReleaseTag(tag);
   if (!verdict.ok) return fail(verdict.reason);
   const release = verdict.release;
@@ -99,7 +97,6 @@ function main(argv: readonly string[]): number {
     return fail(`${release.tag} (${sha}) is NOT an ancestor of ${mainRef} (${mainSha.stdout}) — only ` + `commits that reached main may be released`);
   }
 
-   
   const versionFile = git("show", `${sha}:${APP_VERSION_FILE}`);
   if (versionFile.code !== 0) {
     return fail(`cannot read ${APP_VERSION_FILE} at ${sha}: ${versionFile.stderr}`);

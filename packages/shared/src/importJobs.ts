@@ -101,10 +101,8 @@ const importProposalSchema = z
   })
   .strict();
 
- 
 export const importExtractBatchSchema: z.ZodType<ImportExtractBatch> = z.object({ rows: z.array(importExtractRowSchema) }).strict();
 
- 
 const importSeamOutcomeSchema = z
   .object({ unresolved: z.array(z.object({ earlierRowId: z.string().min(1), laterRowId: z.string().min(1) }).strict()) })
   .strict();
@@ -118,7 +116,6 @@ export const importJobResultSchema: z.ZodType<ImportRecognitionResult> = z
   })
   .strict();
 
- 
 export interface ImportJobScreenshotProgress {
   total: number;
   read: number;
@@ -142,7 +139,7 @@ export const importJobPartialFailureSchema: z.ZodType<ImportJobPartialFailure> =
 export interface ImportJobProgress {
   status: ImportJobStatus;
   phase: ImportJobPhase;
-   
+
   resumePhase: ImportJobActivePhase | null;
   cancelRequested: boolean;
   attempt: number;

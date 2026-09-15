@@ -7,14 +7,6 @@ import { CORAL, TEAL } from "../lib/theme";
 import { AmountField } from "./AmountField";
 import type { AmountPadTarget } from "./AmountPadSheet";
 
-
-
-
-
-
-
-
-
 export type ImportBalanceMatchState =
   | { kind: "idle" }
   | { kind: "searching" }
@@ -41,15 +33,14 @@ export function ImportBalanceReceipt({
   onApplyNearest,
   onDismiss,
 }: {
-   
   source: ImportBalanceEffect | null;
-   
+
   others: ImportBalanceEffect[];
   money: (minor: number) => string;
   bankValue: string;
   onBankValue: (value: string) => void;
   pad: readonly [AmountPadTarget | null, (target: AmountPadTarget | null) => void];
-   
+
   difference: number | null;
   /** Why nothing fits, computed only when the search came back empty. */
   diagnosis: ImportBalanceDiagnosis | null;
@@ -60,7 +51,7 @@ export function ImportBalanceReceipt({
   onReconcileAfter: (value: boolean) => void;
   onMatch: () => void;
   onApply: () => void;
-   
+
   onApplyNearest: () => void;
   onDismiss: () => void;
 }) {

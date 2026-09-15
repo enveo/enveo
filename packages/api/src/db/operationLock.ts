@@ -76,18 +76,11 @@ function assertValidKey(key: OperationLockKey): void {
   }
 }
 
- 
 export function operationLockKey(operation: OperationLockName, id: string): OperationLockKey {
   const key: OperationLockKey = { operation, id };
   assertValidKey(key);
   return key;
 }
-
-
-
-
-
-
 
 async function acquire(tx: DbTransaction, key: OperationLockKey): Promise<void> {
   assertValidKey(key);

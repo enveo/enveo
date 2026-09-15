@@ -5,7 +5,6 @@ import { createImportManagerBootstrap } from "./bootstrap";
 
 describe("import manager bootstrap status", () => {
   it("publishes an accessible retryable error and reaches ready after a successful retry", async () => {
-     
     let attempts = 0;
     let starts = 0;
     let resumes = 0;
@@ -22,12 +21,10 @@ describe("import manager bootstrap status", () => {
     const states: string[] = [];
     const unsubscribe = bootstrap.subscribe(() => states.push(bootstrap.getSnapshot()));
 
-     
     await bootstrap.start();
     expect(bootstrap.getSnapshot()).toBe("error");
     await bootstrap.start();
 
-     
     expect(bootstrap.getSnapshot()).toBe("ready");
     expect(states).toEqual(["loading", "error", "loading", "ready"]);
     expect({ attempts, starts, resumes }).toEqual({ attempts: 2, starts: 1, resumes: 1 });

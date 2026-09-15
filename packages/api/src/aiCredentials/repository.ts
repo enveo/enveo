@@ -247,8 +247,6 @@ export function createCredentialRepository(masterKeys: VaultMasterKeyProvider | 
       }
     },
 
-    
-
     async withServerCredentialForWorker<T>(database: DB, owner: CredentialOwner, budgetId: string, use: (credential: string) => Promise<T>): Promise<T> {
       let opened: Awaited<ReturnType<typeof openServerCredential>> | undefined;
       try {

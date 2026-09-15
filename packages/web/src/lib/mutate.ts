@@ -83,8 +83,6 @@ function ledger() {
 
 const findByName = <T extends { name: string }>(rows: T[], name: string): T | undefined => rows.find((r) => r.name.toLowerCase() === name.toLowerCase());
 
- 
-
 function withPreparedAllocationFlow(payload: TxnPayload, flow: Pick<Transaction, "allocationFromEnvelopeId" | "allocationToEnvelopeId">): TxnPayload {
   // An automatic income credit replaces the legacy direct envelope credit.
   return { ...payload, ...flow, envelopeId: payload.type === "income" && flow.allocationToEnvelopeId ? null : payload.envelopeId };
@@ -109,13 +107,11 @@ export interface TxnFlowOptions {
 
 const NO_FLOW = { allocationFromEnvelopeId: null, allocationToEnvelopeId: null } as const;
 
- 
 export function prepareTxnCreate(ledger: ClientLedger, payload: TxnPayload, options?: TxnFlowOptions): TxnPayload {
   const flow = options?.skipAutomaticAllocation ? NO_FLOW : captureAllocationFlow(ledger.accounts, payload);
   return withPreparedAllocationFlow(payload, flow);
 }
 
- 
 export function prepareTxnUpdate(ledger: ClientLedger, id: string, payload: TxnPayload, options?: TxnFlowOptions): TxnPayload {
   const previous = ledger.transactions.find((transaction) => transaction.id === id);
   if (!previous) throw new Error(`local.updateTxn: transaction ${id} not found`);
@@ -129,7 +125,6 @@ export function prepareTxnUpdate(ledger: ClientLedger, id: string, payload: TxnP
 }
 
 function createTxnWithId(id: string, payload: TxnPayload, options?: TxnFlowOptions): string {
-   
   enqueue("txn.create", { ...prepareTxnCreate(ledger(), payload, options), id, createdAt: new Date().toISOString() });
   return id;
 }
@@ -145,12 +140,6 @@ function updateTxn(id: string, payload: TxnPayload, options?: TxnFlowOptions): v
 function deleteTxn(id: string): void {
   enqueue("txn.delete", { id });
 }
-
-
-
-
-
-
 
 export function txnToPayload(t: Transaction): TxnPayload {
   return {
@@ -195,15 +184,12 @@ export function txnToDuplicatePayload(t: Transaction, today: string): TxnPayload
   };
   const itemsSum = t.items.reduce((s, i) => s + i.amount, 0);
   if (t.items.length > 0 && itemsSum === t.amount) {
-    
-
     return { ...base, envelopeId: null, categoryId: null };
   }
   if (t.items.length > 0) {
-     
     return { ...base, envelopeId: null, categoryId: null, items: undefined };
   }
-   
+
   return { ...base, envelopeId: t.envelopeId, categoryId: t.categoryId };
 }
 
@@ -211,9 +197,6 @@ function duplicateTxn(t: Transaction): string {
   return createTxn(txnToDuplicatePayload(t, new Date().toISOString().slice(0, 10)));
 }
 
- 
-
- 
 export function prepareDisplayedAllocation(ledger: ClientLedger, payload: AllocPayload): AllocPayload {
   return { ...payload, amount: manualAllocationForDisplayedTotal(ledger.transactions, payload.envelopeId, payload.month, payload.amount) };
 }
@@ -221,8 +204,6 @@ export function prepareDisplayedAllocation(ledger: ClientLedger, payload: AllocP
 function setDisplayedAllocation(payload: AllocPayload): void {
   enqueue("alloc.set", prepareDisplayedAllocation(ledger(), payload));
 }
-
- 
 
 function createAccount(fields: AccountPayload): Account {
   const id = newId();
@@ -266,8 +247,6 @@ function deleteEnvelope(id: string): void {
   enqueue("envelope.delete", { id });
 }
 
- 
-
 function createCategory(name: string): Category {
   const existing = findByName(ledger().categories, name);
   if (existing) return existing;
@@ -283,12 +262,6 @@ function createPlace(name: string): Place {
   enqueue("place.create", { id, name });
   return ledger().places.find((p) => p.id === id)!;
 }
-
-
-
-
-
-
 
 function setCategoryArchived(id: string, archived: boolean): void {
   enqueue("category.update", { id, archived });
@@ -323,8 +296,6 @@ function deleteCategory(id: string): void {
 function deletePlace(id: string): void {
   enqueue("place.delete", { id });
 }
-
- 
 
 function updateBudget(id: string, currency: string): void {
   enqueue("budget.update", { id, currency });
@@ -365,7 +336,6 @@ export const local = {
   updateBudgetPreferences,
 };
 
- 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).__mutate = local;
 }

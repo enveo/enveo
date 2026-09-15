@@ -171,7 +171,6 @@ afterEach(() => {
 
 describe("import job manager", () => {
   it("retains exact applied and skipped identities across a manager reload and clears them only after completion", async () => {
-     
     const state = new FakeState();
     state.status = "ready";
     const manager = new ImportJobManager({
@@ -192,13 +191,11 @@ describe("import job manager", () => {
     const receipt = { completedAt: null, currency: "EUR", balances: [{ accountId: ACCOUNT, name: "Checking", before: 10000, after: null }], rows: [] };
     await manager.receiptDraft(ID, receipt);
 
-     
     await manager.applyRow(ID, "row-one", async () => {});
     await manager.applyRow(ID, "row-one", async () => {});
     await manager.applyRow(ID, "row-two", async () => {});
     await manager.recordSkipped(ID, ["row-three"]);
 
-     
     manager.stop();
     const restarted = new ImportJobManager({
       state,
@@ -225,7 +222,6 @@ describe("import job manager", () => {
     expect(raw).not.toContain("row-one");
     expect(raw).not.toContain("row-three");
 
-     
     await restarted.complete(ID, { appliedCount: 2, skippedCount: 1 });
     expect(await importJobStorage.getReceiptDraft({ ownerId: "user-a", budgetId: BUDGET }, ID)).toBeUndefined();
     expect(await restarted.appliedProgress(ID, ["row-one", "row-two", "row-three"])).toEqual({
@@ -244,7 +240,6 @@ describe("import job manager", () => {
   });
 
   it("routes completion counts to the job's owning plain or encrypted adapter", async () => {
-     
     for (const tier of ["plain", "e2ee"] as const) {
       const state = new FakeState();
       state.status = "ready";
@@ -262,10 +257,8 @@ describe("import job manager", () => {
       manager.start();
       await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
 
-       
       await manager.complete(ID, { appliedCount: 1, skippedCount: 2 });
 
-       
       expect(calls).toContain(`${tier}.complete`);
       expect(calls).not.toContain(`${tier === "plain" ? "e2ee" : "plain"}.complete`);
       manager.stop();
@@ -365,7 +358,6 @@ describe("import job manager", () => {
   });
 
   it("recovers the transaction/progress interruption boundary by durable transaction identity", async () => {
-     
     const state = new FakeState();
     state.status = "ready";
     const ids = [ID, TXN_ID];
@@ -389,7 +381,6 @@ describe("import job manager", () => {
       leaseUntil: 1,
     });
 
-     
     state.currentLedger!.transactions.push({
       id: TXN_ID,
       type: "expense",
@@ -427,13 +418,11 @@ describe("import job manager", () => {
     restarted.start();
     await restarted.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
 
-     
     expect(await restarted.appliedProgress(ID, ["blank-row"])).toMatchObject({ appliedRowIds: ["blank-row"], appliedCount: 1 });
     restarted.stop();
   });
 
   it("does not promote an optimistic transaction when outbox persistence failed after claim metadata succeeded", async () => {
-     
     const state = new FakeState();
     state.status = "ready";
     const adapters = ports([]);
@@ -455,7 +444,6 @@ describe("import job manager", () => {
     await idbPut("meta", BUDGET, "budgetId");
     await idbPut("meta", { ...state.currentLedger, transactions: [] }, "ledger");
 
-     
     await expect(
       manager.applyRow(ID, "Coffee Shop 12.34 EUR", async (transactionId) => {
         state.currentLedger!.transactions.push({
@@ -490,7 +478,6 @@ describe("import job manager", () => {
     ).rejects.toThrow("local_persistence_failed");
     expect(persist.isDurableBroken()).toBe(true);
 
-     
     expect(await manager.appliedProgress(ID, ["Coffee Shop 12.34 EUR"])).toEqual({
       appliedRowIds: [],
       appliedCount: 0,
@@ -501,7 +488,6 @@ describe("import job manager", () => {
   });
 
   it("allows only one tab to cross the category, place, transaction, and outbox boundary", async () => {
-     
     const state = new FakeState();
     state.status = "ready";
     const adapters = ports([]);
@@ -532,7 +518,6 @@ describe("import job manager", () => {
     await first.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
     await second.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
 
-     
     const firstApply = first.applyRow(ID, "row-one", async () => {
       mutationBoundaries++;
       categoryCreates++;
@@ -554,7 +539,6 @@ describe("import job manager", () => {
       outboxWrites++;
     });
 
-     
     await expect(secondApply).rejects.toThrow("import_row_busy");
     releaseFirst.resolve();
     await firstApply;
@@ -590,12 +574,10 @@ describe("import job manager", () => {
     await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
     let mutations = 0;
 
-     
     const apply = manager.applyRow(ID, "merchant-like row", async () => {
       mutations++;
     });
 
-     
     await expect(apply).rejects.toThrow("import_web_locks_unavailable");
     expect(mutations).toBe(0);
     expect(await manager.appliedProgress(ID, ["merchant-like row"])).toMatchObject({ appliedCount: 0 });
@@ -633,7 +615,6 @@ describe("import job manager", () => {
   });
 
   it("fences a stale callback after another tab reclaims and durably writes the row", async () => {
-     
     const state = new FakeState();
     state.status = "ready";
     const adapters = ports([]);
@@ -687,7 +668,6 @@ describe("import job manager", () => {
     });
     await aEnteredMutation.promise;
 
-     
     now = 31_000;
     await second.applyRow(ID, "row-one", async (_transactionId, assertCurrent) => {
       await assertCurrent();
@@ -695,7 +675,6 @@ describe("import job manager", () => {
     });
     resumeA.resolve();
 
-     
     await expect(firstApply).rejects.toThrow("import_row_lease_lost");
     expect({ mutations, categoryCreates, placeCreates, transactionCreates, outboxWrites, deadletters }).toEqual({
       mutations: 1,
@@ -710,7 +689,6 @@ describe("import job manager", () => {
   });
 
   it("persists only an opaque token for an E2EE merchant-like model row id", async () => {
-     
     const state = new FakeState();
     state.status = "ready";
     const adapters = ports([]);
@@ -728,7 +706,6 @@ describe("import job manager", () => {
     manager.start();
     await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
 
-     
     await manager.recordSkipped(ID, [sensitive]);
 
     // then: public progress maps back to the row, while persisted metadata never contains it

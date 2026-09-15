@@ -6,12 +6,6 @@ import { Glyph } from "../lib/icons";
 import { CTA } from "../lib/theme";
 import { Sheet } from "./chrome";
 
-
-
-
-
-
-
 export function EnvActionsSheet({
   env,
   onClose,

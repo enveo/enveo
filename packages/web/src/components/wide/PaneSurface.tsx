@@ -5,26 +5,12 @@ import { useT } from "../../lib/i18n";
 import { InWideShell, type PaneSurfaceHost, useWideHost } from "../../lib/shellContext";
 import type { Theme } from "../../lib/theme";
 
-
-
-
-
-
-
-
-
-
-
 export function PaneSurface({ host, onClose, children }: { host: PaneSurfaceHost; onClose: () => void; children: ReactNode | ((C: Theme) => ReactNode) }) {
   const C = useTheme();
   const { t } = useT();
-  const ctx = useWideHost();  
+  const ctx = useWideHost();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
-
-  
-
-
 
   useEffect(() => host.register({ close: () => closeRef.current() }), [host]);
 
@@ -70,15 +56,7 @@ export function PaneSurface({ host, onClose, children }: { host: PaneSurfaceHost
           ✕
         </button>
       </div>
-      {/* LOAD-BEARING re-provision: portals move DOM, not React context. Without `host: "panel"`
-          here, a surface opened from the PRIMARY pane would keep `host: "primary"` from its
-          caller's provider, and every nested `Sheet` it renders (acctForm's
-          `EnvelopePickerSheet`, reconcile's amount pad) would take `Sheet`'s primary/phone
-          branch — `position: fixed` INSIDE the panel's always-on transform, clipped to the
-          column (the exact house pitfall PR6 Task 5's `Sheet` fix exists for). With this
-          re-provision, a nested `Sheet` reads `host === "panel"` and takes `Sheet`'s existing
-          panel branch instead: portal to `document.body` + `data-wide-panel-portal` marker,
-          which `WideShell.panelContains` already honours. */}
+      {}
       <InWideShell.Provider value={{ ...ctx, host: "panel" }}>
         <div className="gs" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 20px calc(20px + env(safe-area-inset-bottom))" }}>
           {typeof children === "function" ? children(C) : children}

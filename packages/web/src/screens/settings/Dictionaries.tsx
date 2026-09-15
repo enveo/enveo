@@ -9,7 +9,6 @@ import { store } from "../../lib/store";
 import { font } from "../../lib/theme";
 import { Helper } from "./ui";
 
- 
 export interface DictionaryEntry {
   id: string;
   name: string;
@@ -17,7 +16,6 @@ export interface DictionaryEntry {
   uses: number;
 }
 
- 
 export function dictionaryEntries(ledger: {
   categories: readonly { id: string; name: string; archived: boolean }[];
   places: readonly { id: string; name: string; archived: boolean }[];
@@ -55,7 +53,6 @@ export function normalizeDictionaryName(name: string): string {
     .trim();
 }
 
- 
 export function duplicateGroups(entries: DictionaryEntry[]): DictionaryEntry[][] {
   const byKey = new Map<string, DictionaryEntry[]>();
   for (const entry of entries) {
@@ -70,10 +67,9 @@ export function duplicateGroups(entries: DictionaryEntry[]): DictionaryEntry[][]
 }
 
 export interface MergePlan {
-   
   survivorId: string;
   sourceIds: string[];
-   
+
   rename: string | null;
 }
 
@@ -121,7 +117,6 @@ export function DictionariesSection() {
   const [showHidden, setShowHidden] = useState(false);
   const [sort, setSort] = useState<DictionarySort>("name");
   const [usesAscending, setUsesAscending] = useState(true);
-  
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mergeName, setMergeName] = useState("");
@@ -157,8 +152,6 @@ export function DictionariesSection() {
     setSelectedIds(group.map((e) => e.id));
     setMergeName(group[0]!.name);
   };
-
-  
 
   const runMerge = () => {
     const plan = planMerge(selectedIds, entries, mergeName);
@@ -213,8 +206,7 @@ export function DictionariesSection() {
             {entry.uses === 0 ? t("not used yet") : tp("{n} transaction | {n} transactions", entry.uses, { n: entry.uses })}
           </span>
         </span>
-        {
-}
+        {}
         {!selecting && entry.uses === 0 && entry.archived && (
           <button
             onClick={(e) => {
@@ -261,10 +253,7 @@ export function DictionariesSection() {
     );
   };
 
-  
-
   const group = showHidden ? hidden : visible;
-  
 
   const suggestions = !selecting && !showHidden && !query ? duplicateGroups(visible) : [];
   const matched = sortDictionary(
@@ -312,8 +301,7 @@ export function DictionariesSection() {
             </button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {
-}
+            {}
             <input
               value={mergeName}
               onChange={(e) => setMergeName(e.target.value)}
@@ -363,8 +351,7 @@ export function DictionariesSection() {
             const keep = entries[0]!;
             return (
               <div key={keep.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
-                {
-}
+                {}
                 <span
                   style={{
                     flex: 1,

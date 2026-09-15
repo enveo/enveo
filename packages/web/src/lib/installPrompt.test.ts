@@ -66,12 +66,6 @@ describe("isInstallable", () => {
   });
 });
 
-
-
-
-
-
-
 describe("single install-sheet host", () => {
   it("App.tsx is the only file rendering an InstallSheet element", () => {
     const SRC = join(import.meta.dir, "..");
@@ -146,7 +140,7 @@ describe("promptInstall", () => {
       userChoice: Promise.resolve({ outcome: "dismissed" as const }),
     });
     expect(await promptInstall()).toBe("dismissed");
-    expect(await promptInstall()).toBe("unavailable");  
+    expect(await promptInstall()).toBe("unavailable");
     expect(prompts).toBe(1);
   });
 
@@ -168,7 +162,7 @@ describe("promptInstall", () => {
   it("a rejecting userChoice is absorbed the same way", async () => {
     let prompts = 0;
     const userChoice = Promise.reject(new Error("gone"));
-    userChoice.catch(() => {});  
+    userChoice.catch(() => {});
     fire({
       preventDefault: () => {},
       prompt: async () => void prompts++,
@@ -180,7 +174,6 @@ describe("promptInstall", () => {
     expect(prompts).toBe(1);
   });
 
-   
   it("getInstallState reads the live snapshot without a hook", async () => {
     expect(getInstallState()).toBe("unavailable");
     fire({
@@ -190,6 +183,6 @@ describe("promptInstall", () => {
     });
     expect(getInstallState()).toBe("promptable");
     await promptInstall();
-    expect(getInstallState()).toBe("unavailable");  
+    expect(getInstallState()).toBe("unavailable");
   });
 });

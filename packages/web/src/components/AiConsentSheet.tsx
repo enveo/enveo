@@ -10,18 +10,6 @@ import { store } from "../lib/store";
 import { TEAL } from "../lib/theme";
 import { Sheet } from "./chrome";
 
-
-
-
-
-
-
-
-
-
-
-
-
 export type AiFeature = "suggest" | "import";
 
 const PAYLOAD_KEY: Record<AiFeature, Message> = {

@@ -47,7 +47,7 @@ describe("generateSuggestion — rules path", () => {
 
   it("returns an empty proposal with a warning when toBeBudgeted <= 0", async () => {
     const ledger = fixture();
-    ledger.accounts[0]!.initialBalance = 0;  
+    ledger.accounts[0]!.initialBalance = 0;
     const r = await generateSuggestion({ month: "2026-07", profile: "historical", ledger });
     expect(r.amountToDistribute).toBe(0);
     expect(r.items).toEqual([]);
@@ -103,7 +103,7 @@ describe("generateSuggestion — agent path (profile=custom, single prompt)", ()
 
   it("scales ONLY within envelopes chosen by the agent (never tops up skipped ones)", async () => {
     const r = await generateSuggestion(custom(), async () => [{ envelopeId: "E1", proposedDelta: 60_00 }]);
-    expect(r.source).toBe("ai_repaired");  
+    expect(r.source).toBe("ai_repaired");
     expect(r.items.map((i) => i.envelopeId)).toEqual(["E1"]);
     expect(r.items[0]!.proposedDelta).toBe(1000_00);
   });
@@ -127,8 +127,6 @@ describe("generateSuggestion — agent path (profile=custom, single prompt)", ()
 import { SpendDenied } from "../aiSpend/transport";
 import { openAiAskModelFor } from "./budgetSuggest";
 
-
-
 const openAiAskModel = openAiAskModelFor(undefined);
 
 describe("openAiAskModel — custom = single prompt with two months (globalThis.fetch stub)", () => {
@@ -146,15 +144,15 @@ describe("openAiAskModel — custom = single prompt with two months (globalThis.
     try {
       const r = await generateSuggestion({ month: "2026-07", profile: "custom", customPrompt: "pomiń Obligacje", ledger: fixture() }, openAiAskModel);
 
-      expect(bodies.length).toBe(1);  
+      expect(bodies.length).toBe(1);
       const msgs = bodies[0]!.messages as Array<{ role: string; content: string }>;
       const user = JSON.parse(msgs.find((m) => m.role === "user")!.content) as Record<string, any>;
       expect(user.currentMonth.month).toBe("2026-07");
       expect(user.previousMonth.month).toBe("2026-06");
       expect(user.previousMonth.note).toContain("reference");
       expect(user.directive).toBe("pomiń Obligacje");
-      expect(bodies[0]!.tools).toBeUndefined();  
-      expect(bodies[0]!.reasoning_effort).toBe("low");  
+      expect(bodies[0]!.tools).toBeUndefined();
+      expect(bodies[0]!.reasoning_effort).toBe("low");
 
       expect(r.source).toBe("ai");
       expect(r.items.map((i) => i.envelopeId).sort()).toEqual(["E1", "E2"]);
@@ -179,7 +177,7 @@ describe("openAiAskModel — custom = single prompt with two months (globalThis.
 
 it("response carries target fields and undistributedRemainder", async () => {
   const ledger = fixture();
-  ledger.envelopes[0]!.monthlyTarget = 100_00;  
+  ledger.envelopes[0]!.monthlyTarget = 100_00;
   const r = await generateSuggestion({ month: "2026-07", profile: "historical", ledger });
   const item = r.items.find((i) => i.envelopeId === "E1")!;
   expect(item.monthlyTarget).toBe(100_00);
@@ -200,7 +198,7 @@ describe("POST /ai/chat — deprecated operator-key proxy", () => {
         body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
       }),
     );
-     
+
     if (!process.env.OPENAI_API_KEY) expect(res.status).toBe(503);
   });
 });

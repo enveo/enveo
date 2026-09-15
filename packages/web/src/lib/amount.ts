@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { evalExpression, fmtTrim } from "./format";
 
 const OPERATORS = ["+", "−", "×", "÷"];
@@ -25,29 +19,21 @@ export function applyAmountKey(amount: string, key: string): string {
   const seg = amount.slice(opIdx + 1);
 
   if (key === ",") {
-    if (seg.includes(",")) return amount;  
+    if (seg.includes(",")) return amount;
     return head + (seg === "" ? "0," : seg + ",");
   }
 
-   
   const commaIdx = seg.indexOf(",");
-  if (commaIdx >= 0 && seg.length - commaIdx - 1 >= 2) return amount;  
+  if (commaIdx >= 0 && seg.length - commaIdx - 1 >= 2) return amount;
   if (seg === "0") {
-    if (key === "0") return amount;  
-    return head + key;  
+    if (key === "0") return amount;
+    return head + key;
   }
   return head + seg + key;
 }
 
-
-
-
-
-
-
 export type PadState = { expr: string; fresh: boolean };
 
- 
 const PAD_OP_KEYS = ["+", "−", "×", "÷"];
 /**
  * Characters recognized as an operator INSIDE an expression — additionally ASCII "-",
@@ -63,7 +49,6 @@ function padOperatorIndex(expr: string): number {
   return -1;
 }
 
- 
 export function fmtSignedTrim(minor: number): string {
   return (minor < 0 ? "-" : "") + fmtTrim(minor);
 }
@@ -77,23 +62,15 @@ export function hasOpenOp(expr: string): boolean {
   return opIdx >= 0 && opIdx < expr.length - 1;
 }
 
-
-
-
-
-
-
 export type PadKeyOpts = { allowNegative?: boolean };
 
- 
 export function padKey(state: PadState, k: string, opts?: PadKeyOpts): PadState {
   const isOp = PAD_OP_KEYS.includes(k);
 
   if (k === "=") {
-     
     if (!hasOpenOp(state.expr)) return state;
     const minor = evalExpression(state.expr);
-    if (minor === null) return state;  
+    if (minor === null) return state;
     return { expr: fmtSignedTrim(minor), fresh: false };
   }
 
@@ -109,41 +86,28 @@ export function padKey(state: PadState, k: string, opts?: PadKeyOpts): PadState 
   }
 
   if (state.fresh) {
-     
     if (isOp) return { expr: state.expr + k, fresh: false };
-     
+
     if (k === "⌫") return { expr: applyAmountKey(state.expr, k), fresh: false };
-     
+
     return { expr: applyAmountKey("", k), fresh: false };
   }
 
   if (isOp) {
     const expr = state.expr || "0";
     const opIdx = padOperatorIndex(expr);
-    if (opIdx === expr.length - 1) return { expr: expr.slice(0, -1) + k, fresh: false };  
+    if (opIdx === expr.length - 1) return { expr: expr.slice(0, -1) + k, fresh: false };
     if (opIdx >= 0) {
-       
       const minor = evalExpression(expr);
-      if (minor === null) return state;  
+      if (minor === null) return state;
       return { expr: fmtSignedTrim(minor) + k, fresh: false };
     }
-    return { expr: expr + k, fresh: false };  
+    return { expr: expr + k, fresh: false };
   }
 
-   
   return { expr: applyAmountKey(state.expr, k), fresh: false };
 }
 
-/**
- * Physical-keyboard key (`KeyboardEvent.key`) → the canonical pad key `padKey` consumes;
- * `null` = not an amount key (the caller leaves the event alone). Owner round 5 item 26:
- * desktop amount entry routes through the SAME `padKey` state machine as the on-screen pad —
- * this is a pure key MAP, never a second parser. Both "," and "." map to the canonical comma
- * regardless of the glyph the pad shows for the UI language; the ASCII operators map to the
- * pad's − × ÷ (their Unicode forms are accepted too, for completeness). Enter/Escape/"=" are
- * deliberately NOT mapped here — they are actions (confirm/cancel/reduce), not pad keys, and
- * each caller wires them to its own existing confirm/cancel path.
- */
 export function keyboardPadKey(key: string): string | null {
   if (/^[0-9]$/.test(key)) return key;
   if (key === "," || key === ".") return ",";
@@ -155,7 +119,6 @@ export function keyboardPadKey(key: string): string | null {
   return null;
 }
 
- 
 export function padPreview(expr: string): number | null {
   if (!expr) return null;
   if (EXPR_OPS.includes(expr[expr.length - 1]!)) return null;

@@ -73,7 +73,7 @@ import { bumpStatus } from "./status";
 
 let isLeader = false;
 let channel: BroadcastChannel | null = null;
-let broadcastPending = false;  
+let broadcastPending = false;
 let applyingPeerUpdate = false;
 let signOutRegistry: SignOutRegistry | null = null;
 let signOutCoordinator: SignOutCoordinator<SignOutPermit> | null = null;
@@ -82,29 +82,25 @@ let signOutCoordinationFailedClosed = false;
 let signOutCoordinatorInstallPromise: Promise<void> | null = null;
 const SIGN_OUT_COORDINATION_ERROR = "sign_out_coordination_failed";
 
- 
 export interface CoordinatedSignOutLease {
   readonly __coordinatedSignOutLease: unique symbol;
 }
 
 const internalSignOutLeases = new WeakMap<CoordinatedSignOutLease, SignOutCoordinationLease<SignOutPermit>>();
 
- 
 export function isLeaderTab(): boolean {
   return isLeader;
 }
 
- 
 export function notePeersMayNeedUpdate(): void {
   broadcastPending = true;
 }
 
- 
 export function broadcastUpdatedIfPending(): void {
   if (isSignOutBlocking()) return;
   if (broadcastPending) {
     broadcastPending = false;
-    postMsg("updated");  
+    postMsg("updated");
   }
 }
 
@@ -128,17 +124,8 @@ export type MultiTabMessageType = "updated" | "poke" | "wipe" | "keys" | "prefer
 export function postMsg(type: MultiTabMessageType): void {
   try {
     channel?.postMessage({ type });
-  } catch {
-     
-  }
+  } catch {}
 }
-
-
-
-
-
-
-
 
 export async function wipeLocalData(): Promise<void> {
   await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
@@ -155,8 +142,8 @@ export async function wipeLocalData(): Promise<void> {
  */
 async function applyPeerUpdate(): Promise<void> {
   if (isSignOutBlocking()) return;
-  if (applyingPeerUpdate) return;  
-  if (store.getBootStatus() !== "ready") return;  
+  if (applyingPeerUpdate) return;
+  if (store.getBootStatus() !== "ready") return;
   applyingPeerUpdate = true;
   try {
     await store.rehydrateFromIdb();
@@ -169,7 +156,6 @@ async function applyPeerUpdate(): Promise<void> {
   }
 }
 
- 
 export function __resetMultiTabForTests(): void {
   channel?.close();
   channel = null;
@@ -234,7 +220,6 @@ async function installSignOutCoordinator(storageOverride?: StorageLike): Promise
         failSignOutCoordinationClosed();
         return;
       }
-      
 
       configureSignOutSharedBlocker(null);
       configureSignOutPermitValidator(null);
@@ -293,12 +278,10 @@ async function installSignOutCoordinator(storageOverride?: StorageLike): Promise
   return pending;
 }
 
- 
 export function __installSignOutCoordinatorForTests(storage: StorageLike): Promise<void> {
   return installSignOutCoordinator(storage);
 }
 
- 
 export function __installUnavailableBrowserSignOutCoordinatorForTests(): Promise<void> {
   return installSignOutCoordinator();
 }
@@ -354,7 +337,7 @@ export function installSignOutPageLifecycle(target: PageLifecycleTarget, reload:
         recoverRotatedPage(reload);
         return;
       }
-       
+
       signOutCoordinator.install();
       signOutCoordinator.maintain();
       recoverRotatedPage(reload);
@@ -369,7 +352,6 @@ function requireSignOutCoordinator(): SignOutCoordinator<SignOutPermit> {
   return signOutCoordinator;
 }
 
- 
 export function beginSignOutCoordination(): Promise<CoordinatedSignOutLease> {
   return requireSignOutCoordinator()
     .begin()
@@ -403,7 +385,6 @@ export function markSignOutLocalCleanupFailed(lease: CoordinatedSignOutLease): v
   markCleanupFailed(requireInternalLease(lease).attemptId);
 }
 
- 
 export function runCoordinatedSessionEnd<T>(lease: CoordinatedSignOutLease, endSession: () => Promise<T>): Promise<T> {
   const coordinator = requireSignOutCoordinator();
   const internalLease = requireInternalLease(lease);
@@ -467,7 +448,6 @@ export async function installMultiTab(): Promise<void> {
     };
   }
 
-   
   await installSignOutCoordinator();
   if (typeof window !== "undefined") {
     installSignOutPageLifecycle(window);
@@ -477,16 +457,14 @@ export async function installMultiTab(): Promise<void> {
     locks
       .request("enveo-sync-leader", { mode: "exclusive" }, () => {
         isLeader = true;
-        
-
 
         void syncNow("leader");
-        return new Promise<void>(() => {});  
+        return new Promise<void>(() => {});
       })
       .catch(() => {
-        isLeader = true;  
+        isLeader = true;
       });
   } else {
-    isLeader = true;  
+    isLeader = true;
   }
 }

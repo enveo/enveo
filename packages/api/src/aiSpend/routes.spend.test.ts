@@ -1,13 +1,3 @@
-
-
-
-
-
-
-
-
-
-
 import { beforeAll, describe, expect, it } from "bun:test";
 import { runChild } from "../api.test-support";
 import { SENTINEL, type SpendRoutesChildOutput } from "./routes.spend.test-child";

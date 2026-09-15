@@ -11,21 +11,19 @@
  * `bun run test` (no Docker, no network), and the CLI supplies real ones in CI.
  */
 
- 
 export type ImageFacts = Readonly<{
-   
   appFiles: readonly string[];
-   
+
   storeEntries: readonly string[];
-   
+
   configUser: string;
-   
+
   effectiveUid: number;
-   
+
   appWritable: boolean;
-   
+
   labels: Readonly<Record<string, string>>;
-   
+
   entrypoint: readonly string[];
   /** The `sha` baked into the web bundle's build stamp, or `null` if it could not be read. */
   buildStampSha: string | null;
@@ -43,12 +41,6 @@ export type ImageFacts = Readonly<{
    * `test-helpers.ts` (`import fc from "fast-check"`) whatever it had been called.
    */
   unresolvableImports: readonly string[];
-  
-
-
-
-
-
 
   bunVersion: string;
   /**
@@ -64,11 +56,10 @@ export type ImageFacts = Readonly<{
   osPackages: readonly string[];
 }>;
 
- 
 export type Expectations = Readonly<{
   /** Every `*.sql` file in `packages/api/drizzle` — the migration tree must arrive COMPLETE. */
   migrations: readonly string[];
-   
+
   sourceCommit: string | null;
   /** The contents of `.bun-version` — what the image's own `bun --version` must report. */
   bunVersion: string;
@@ -138,10 +129,6 @@ const FORBIDDEN_PACKAGES = [
 /** Packages the API imports directly — their absence would be a broken prune, not a lean image. */
 const REQUIRED_PACKAGES = ["hono", "drizzle-orm", "postgres", "better-auth", "zod"] as const;
 
-
-
-
-
 export function packageNameOfStoreEntry(storeEntry: string): string {
   const at = storeEntry.lastIndexOf("@");
   if (at <= 0) return storeEntry;
@@ -149,7 +136,6 @@ export function packageNameOfStoreEntry(storeEntry: string): string {
   return name.startsWith("@") ? name.replace("+", "/") : name;
 }
 
- 
 export function checkImage(facts: ImageFacts, expectations: Expectations): string[] {
   const violations: string[] = [];
   const files = new Set(facts.appFiles);
@@ -201,19 +187,16 @@ export function checkImage(facts: ImageFacts, expectations: Expectations): strin
     );
   }
 
-   
   for (const problem of facts.unresolvableImports) {
     violations.push(`shipped module has an import the image cannot resolve: ${problem}`);
   }
 
-   
   if (facts.bunVersion !== expectations.bunVersion) {
     violations.push(
       `image runs Bun ${facts.bunVersion}, but .bun-version pins ${expectations.bunVersion} — ` + `the base digest does not match the version it claims`,
     );
   }
 
-   
   if (facts.configUser === "" || facts.configUser === "root" || facts.configUser === "0") {
     violations.push(`image runs as root (Config.User = ${JSON.stringify(facts.configUser)})`);
   }
@@ -225,7 +208,6 @@ export function checkImage(facts: ImageFacts, expectations: Expectations): strin
     violations.push("no ENTRYPOINT — migrate→start ordering would depend on the caller");
   }
 
-   
   const revision = facts.labels["org.opencontainers.image.revision"] ?? "";
   const source = facts.labels["org.opencontainers.image.source"] ?? "";
   if (source === "") violations.push("missing OCI label org.opencontainers.image.source");

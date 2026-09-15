@@ -18,7 +18,6 @@ export const LOCALE_OF: Record<Lang, string> = {
   sv: "sv-SE",
 };
 
- 
 export function formatMoney(minor: number, currency: string, lang: Lang, opts?: { trim?: boolean }): string {
   const whole = opts?.trim && minor % 100 === 0;
   return new Intl.NumberFormat(LOCALE_OF[lang], {
@@ -29,22 +28,6 @@ export function formatMoney(minor: number, currency: string, lang: Lang, opts?: 
   }).format(minor / 100);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export function compactMoney(minor: number, currency: string, lang: Lang): string {
   return new Intl.NumberFormat(LOCALE_OF[lang], {
     style: "currency",
@@ -54,13 +37,11 @@ export function compactMoney(minor: number, currency: string, lang: Lang): strin
   }).format(minor / 100);
 }
 
- 
 export function currencySymbol(currency: string, lang: Lang): string {
   const parts = new Intl.NumberFormat(LOCALE_OF[lang], { style: "currency", currency }).formatToParts(0);
   return parts.find((p) => p.type === "currency")?.value ?? currency;
 }
 
- 
 export function fmt(minor: number): string {
   const z = Math.abs(minor) / 100;
   const a = z.toFixed(2).replace(".", ",");
@@ -68,23 +49,13 @@ export function fmt(minor: number): string {
   return i!.replace(/\B(?=(\d{3})+(?!\d))/g, " ") + "," + d;
 }
 
- 
 export function fmtSigned(minor: number): string {
   return (minor < 0 ? "-" : "") + fmt(minor);
 }
 
- 
 export function fmtTrim(minor: number): string {
   return fmt(minor).replace(/,00$/, "");
 }
-
-
-
-
-
-
-
-
 
 export function fmtTrimLocale(minor: number, lang: Lang): string {
   const whole = minor % 100 === 0;
@@ -119,7 +90,6 @@ export function localizePadExpression(expr: string, lang: Lang): string {
   return sep === "," ? expr : expr.replace(/,/g, sep);
 }
 
- 
 export function isLight(hex: string): boolean {
   const c = hex.replace("#", "");
   const r = parseInt(c.substr(0, 2), 16);
@@ -128,7 +98,6 @@ export function isLight(hex: string): boolean {
   return 0.299 * r + 0.587 * g + 0.114 * b > 150;
 }
 
- 
 export function parseAmount(raw: string): number | null {
   const cleaned = raw.replace(/\s/g, "").replace(",", ".");
   if (!cleaned) return null;
@@ -137,7 +106,6 @@ export function parseAmount(raw: string): number | null {
   return Math.round(v * 100);
 }
 
- 
 export function evalExpression(raw: string): number | null {
   if (!raw) return null;
   const norm = raw
@@ -146,7 +114,6 @@ export function evalExpression(raw: string): number | null {
     .replace(/−/g, "-")
     .replace(/,/g, ".")
     .replace(/\s/g, "")
-    
 
     .replace(/(^|[+\-*/])0+(?=\d)/g, "$1");
   if (!/^[0-9+\-*/.]+$/.test(norm)) return parseAmount(raw);
@@ -158,32 +125,23 @@ export function evalExpression(raw: string): number | null {
   return Math.round(v * 100);
 }
 
-/**
- * "Live" result of free-typed expression text (the desktop Allocated `<input>`, owner round 5
- * item 27): a hanging operator ("500+", "10*") previews the computable part (500, 10) instead of
- * blanking the preview mid-entry — the same rule `padPreviewLive` applies to the pad's canonical
- * expression, extended to the ASCII operators a keyboard types. COMMIT never uses this: an
- * unfinished expression must stay uncommittable (`evalExpression` alone → null → keep editing).
- */
 export function evalExpressionLive(raw: string): number | null {
   const t = raw.replace(/[+\-*/×÷−]\s*$/, "");
   if (!t.trim()) return null;
   return evalExpression(t);
 }
 
- 
 function evalArith(s: string): number | null {
   const tok: Array<number | "+" | "-" | "*" | "/"> = [];
   let i = 0;
   while (i < s.length) {
     const c = s[i]!;
     if (c === "+" || c === "-" || c === "*" || c === "/") {
-       
       const prev = tok[tok.length - 1];
       if ((c === "-" || c === "+") && (tok.length === 0 || prev === "+" || prev === "-" || prev === "*" || prev === "/")) {
         let j = i + 1;
         while (j < s.length && /[0-9.]/.test(s[j]!)) j++;
-        const n = Number(s.slice(i, j));  
+        const n = Number(s.slice(i, j));
         if (!Number.isFinite(n)) return null;
         tok.push(n);
         i = j;
@@ -203,7 +161,7 @@ function evalArith(s: string): number | null {
     }
   }
   if (tok.length === 0) return null;
-   
+
   const acc: Array<number | "+" | "-"> = [];
   for (let k = 0; k < tok.length; k++) {
     const t = tok[k]!;
@@ -214,7 +172,7 @@ function evalArith(s: string): number | null {
       acc.push(t === "*" ? a * b : b === 0 ? NaN : a / b);
     } else acc.push(t);
   }
-   
+
   let cur = acc[0];
   if (typeof cur !== "number") return null;
   for (let k = 1; k < acc.length; k += 2) {

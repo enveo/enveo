@@ -2,7 +2,6 @@ import type { ImportDirection, ImportProposal } from "./importRecognition";
 
 export type ImportHistoryType = "expense" | "income" | "transfer";
 
- 
 export interface ImportHistoryRecord {
   accountId: string;
   currency: string;
@@ -19,12 +18,11 @@ export interface ImportHistoryRecord {
 
 type HistoryProposal = Pick<ImportProposal, "rawPlace" | "tag" | "currency" | "type" | "isRefund" | "semanticKind" | "toAccountId">;
 
- 
 export interface ImportHistoryQuery {
   accountId: string;
   ownedAccountIds: readonly string[];
   proposal: HistoryProposal;
-   
+
   direction?: ImportDirection;
 }
 
@@ -48,7 +46,6 @@ export interface ImportHistoryCandidate {
 export interface ImportHistorySelection {
   candidates: ImportHistoryCandidate[];
   conflict: boolean;
-  
 
   metadata?: Partial<Record<"name" | "place" | "envelope" | "category", string | null>>;
 }
@@ -56,7 +53,6 @@ export interface ImportHistorySelection {
 const MIN_SIMILARITY = 0.3;
 const MAX_CANDIDATES = 5;
 
- 
 export function normalizeImportHistoryText(value: string | null | undefined): string {
   return (value ?? "")
     .replace(/[Łł]/g, "l")

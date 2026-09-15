@@ -1,11 +1,5 @@
 #!/usr/bin/env bun
 
-
-
-
-
-
-
 import { runAudit } from "../../audit";
 
 const mode = process.argv[2] ?? "clean";

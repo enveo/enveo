@@ -8,7 +8,7 @@
  * - `month` has the "YYYY-MM" format. `date` has the "YYYY-MM-DD" format.
  */
 
-export type Money = number;  
+export type Money = number;
 
 export type TxnType = "expense" | "income" | "transfer";
 
@@ -40,8 +40,8 @@ export interface Envelope {
   color: string;
   icon: string;
   note: string | null;
-  monthlyTarget: Money | null;  
-  isSavings: boolean;  
+  monthlyTarget: Money | null;
+  isSavings: boolean;
   sort: number;
   archived: boolean;
 }
@@ -49,18 +49,17 @@ export interface Envelope {
 export interface Category {
   id: string;
   name: string;
-   
+
   archived: boolean;
 }
 
 export interface Place {
   id: string;
   name: string;
-   
+
   archived: boolean;
 }
 
- 
 export interface TxnItem {
   id: string;
   envelopeId: string;
@@ -72,42 +71,39 @@ export interface Transaction {
   id: string;
   type: TxnType;
   accountId: string;
-  toAccountId: string | null;  
-  amount: Money;  
-  date: string;  
-  isRefund: boolean;  
+  toAccountId: string | null;
+  amount: Money;
+  date: string;
+  isRefund: boolean;
   envelopeId: string | null;
   placeId: string | null;
   categoryId: string | null;
-  name: string | null;  
-  note: string | null;  
+  name: string | null;
+  note: string | null;
   tag: string | null; // normalized merchant tag (import idempotency key)
-  sourceRef: string | null;  
+  sourceRef: string | null;
   allocationFromEnvelopeId: string | null;
   allocationToEnvelopeId: string | null;
   items: TxnItem[]; // [] when not a split
   createdAt: string;
 }
 
- 
 export interface Allocation {
   id: string;
   envelopeId: string;
-  month: string;  
+  month: string;
   amount: Money;
 }
 
 import type { BudgetPreferences } from "./preferences";
 
- 
 export interface Budget {
   id: string;
   name: string;
-  currency: string;  
+  currency: string;
   preferences: BudgetPreferences;
 }
 
- 
 export interface Ledger {
   accounts: Account[];
   envelopes: Envelope[];
@@ -116,26 +112,23 @@ export interface Ledger {
   allocations: Allocation[];
 }
 
- 
 export interface ClientLedger extends Ledger {
   budgets: Budget[];
   categories: Category[];
   places: Place[];
 }
 
- 
-
 export interface AccountState {
   account: Account;
-  balance: Money;  
+  balance: Money;
 }
 
 export interface EnvelopeState {
   envelope: Envelope;
-  carryIn: Money;  
-  allocated: Money;  
-  spent: Money;  
-  available: Money;  
+  carryIn: Money;
+  allocated: Money;
+  spent: Money;
+  available: Money;
 }
 
 export interface BudgetState {

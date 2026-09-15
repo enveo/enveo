@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type AccentTheme, CORAL, CTA, dark, light, TEAL, THEMES, themeTokens, tint } from "./theme";
 
- 
 const ALPHA_SUFFIXES = ["14", "18", "1a", "22", "40", "44", "55", "66"] as const;
 const ALL_THEMES: AccentTheme[] = ["teal", "koral", "atrament", "duet"];
 
@@ -135,7 +134,7 @@ describe("duet", () => {
     expect(palette.card).toBe("#1d2a47");
     expect(palette.surface).toBe("#1d2a47");
     expect(palette.line).toBe("#2b3a5e");
-     
+
     expect(palette.text).toBe(dark.text);
   });
 });
@@ -277,11 +276,6 @@ describe("theme screen tokens", () => {
   });
 });
 
-
-
-
-
-
 describe("rail chrome tokens (design parity wave A, task A2)", () => {
   test("Cisza family: railBg/railCard are the design's neutral pair in both modes", () => {
     for (const th of ["teal", "koral", "atrament"] as const) {
@@ -401,12 +395,6 @@ describe("rail chrome tokens (design parity wave A, task A2)", () => {
   });
 });
 
-
-
-
-
-
-
 describe("C3 contrast audit — dark-mode AA regression guard", () => {
   const hexToRgb = (hex: string) => ({
     r: parseInt(hex.slice(1, 3), 16),
@@ -443,7 +431,7 @@ describe("C3 contrast audit — dark-mode AA regression guard", () => {
   test("duet dark accent stays AA on its navy world (reference point, untouched by the audit)", () => {
     const { vars, palette } = themeTokens("duet", true);
     expect(ratio(vars["--accent"]!, palette.card)).toBeGreaterThanOrEqual(AA_TEXT);
-    expect(vars["--accent"]).toBe("#8fa2cc");  
+    expect(vars["--accent"]).toBe("#8fa2cc");
   });
 
   test("uses one cross-surface focus ring for both Duet search fields", () => {

@@ -20,7 +20,6 @@ export function resolveDatabaseUrl(): string {
   return "postgres://enveo:enveo@localhost:5432/enveo";
 }
 
- 
 export function assertDbEnv(): void {
   if (process.env.NODE_ENV !== "production") return;
   if (process.env.DATABASE_URL || process.env.DB_HOST) return;
@@ -32,9 +31,9 @@ export const env = {
   PORT: Number(process.env.PORT ?? 8080),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
   OPENAI_MODEL: process.env.OPENAI_MODEL ?? "gpt-5.6-luna",
-   
+
   WEB_DIST: process.env.WEB_DIST ?? "",
-   
+
   ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS ?? "",
   DEPLOYMENT: (process.env.DEPLOYMENT === "cloud" ? "cloud" : "selfhost") as "selfhost" | "cloud",
   ALLOW_SIGNUPS: process.env.ALLOW_SIGNUPS ?? "",
@@ -42,9 +41,9 @@ export const env = {
    *  (domain-separated HMAC over the user id — aiSpend/safetyIdentifier.ts). Optional: absent ⇒
    *  the field is omitted. MUST NOT reuse BETTER_AUTH_SECRET (assertAiSpendEnv fails the boot). */
   AI_SAFETY_IDENTIFIER_SECRET: process.env.AI_SAFETY_IDENTIFIER_SECRET ?? "",
-   
+
   AI_VAULT_KEY_RING_FILE: process.env.AI_VAULT_KEY_RING_FILE ?? "",
-   
+
   ENVEO_DEV_AI_VAULT_KEY_RING_JSON: process.env.ENVEO_DEV_AI_VAULT_KEY_RING_JSON ?? "",
   BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET ?? "",
   BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? "http://localhost:8080",
@@ -63,15 +62,12 @@ export function assertSeedEnv(databaseUrl = process.env.DATABASE_URL ? env.DATAB
       /^[A-Za-z0-9_]+_dev$/.test(decodeURIComponent(url.pathname.slice(1))) &&
       !url.search &&
       !url.hash;
-  } catch {
-     
-  }
+  } catch {}
   if (process.env.NODE_ENV !== "development" || process.env.ENVEO_SEED_ACK !== "throwaway" || !developmentDatabase) {
     throw new Error("db:seed requires NODE_ENV=development, ENVEO_SEED_ACK=throwaway and an explicit *_dev PostgreSQL database without URL options.");
   }
 }
 
- 
 export function assertAuthEnv(): void {
   if (env.BETTER_AUTH_SECRET.length < 32) {
     throw new Error("BETTER_AUTH_SECRET is required (min 32 chars). Generate one with: openssl rand -hex 32");

@@ -45,8 +45,6 @@ export interface LocalImportMutationPort {
 export type CurrentImportProposal = ReconciledImportProposal & { assignmentUnavailable: boolean };
 export type CurrentImportRecognitionResult = Omit<ReconciledImportRecognitionResult, "proposals"> & { proposals: CurrentImportProposal[] };
 
-
-
 export function reconcileImportJobResult(args: {
   result: ImportRecognitionResult | CurrentImportRecognitionResult;
   ledger: ClientLedger;
@@ -107,7 +105,6 @@ export function recognitionCandidatesForDryRun(result: ReconciledImportRecogniti
   });
 }
 
- 
 export function importReviewItem(result: ImportApplyResponse["results"][number], automaticEnvelopeId: string | null | undefined): LocalImportReviewItem {
   const selection =
     result.type === "expense" && result.automaticEnvelopeDefault === true
@@ -123,7 +120,6 @@ export function importReviewItem(result: ImportApplyResponse["results"][number],
   };
 }
 
- 
 export function reviewedImportItemsForApply(args: {
   items: LocalImportReviewItem[];
   edited: Record<number, EditedImportItem>;
@@ -151,7 +147,7 @@ export function reviewedImportItemsForApply(args: {
             note: edited.note,
             automaticEnvelopeDefault: args.editedAutomaticDefaults[index] ?? false,
             force: item.status === "exists", // editing a duplicate is a deliberate add
-            rawPlace: item.rawPlace,  
+            rawPlace: item.rawPlace,
           },
     );
 }
@@ -159,7 +155,6 @@ export function reviewedImportItemsForApply(args: {
 const byName = <T extends { name: string }>(rows: T[]): Map<string, T> => new Map(rows.map((row) => [row.name.trim().toLowerCase(), row]));
 const cleanName = (value: string | null | undefined): string | null => value?.trim() || null;
 
- 
 export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: string; items: ImportApplyItem[]; dryRun: boolean }): LocalImportPlan {
   const { ledger, globalAccountId, items, dryRun } = args;
   const accountById = new Map(ledger.accounts.map((row) => [row.id, row]));
@@ -301,8 +296,6 @@ export class PartialImportApplyError extends Error {
     this.name = "PartialImportApplyError";
   }
 }
-
-
 
 export async function applyLocalImportRecoverably(
   plan: LocalImportPlan,

@@ -16,7 +16,6 @@
 /** Architectures a `--platform` value can name. Deliberately broad: the point is to catch ANY. */
 const PLATFORM = /\blinux\/(?:amd64|arm64|arm|386|ppc64le|s390x|riscv64|mips64le)\b[\w/]*/g;
 
- 
 const DEFINITION = /^\s*PLATFORMS:\s*(\S.*?)\s*$/;
 
 /**
@@ -34,12 +33,6 @@ export function stripComments(yaml: string): string {
     })
     .join("\n");
 }
-
-
-
-
-
-
 
 export function findPlatformDivergence(file: string, yaml: string): string[] {
   const problems: string[] = [];

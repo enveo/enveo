@@ -82,35 +82,33 @@ const catOp = (): SyncOp =>
 const pushed = (): string[] => calls.filter((u) => u.startsWith("/api/sync/push"));
 const called = (prefix: string): boolean => calls.some((u) => u.startsWith(prefix));
 
- 
-
 let calls: string[] = [];
 let session: { user: { id: string } } | null = null;
 let reloads = 0;
- 
+
 let serverBudget = BUDGET_A;
- 
+
 let serverIsPlain = false;
- 
+
 let serverBlob: string | null = null;
- 
+
 let serverHasData = false;
- 
+
 let serverE2eeCursor = 0;
- 
+
 let offline = false;
- 
+
 let writes: Record<string, string[]> = {};
- 
+
 let onPush: (() => void) | null = null;
 /** Runs when a PULL arrives — lets a test swap the session mid-cycle with an EMPTY outbox (the
  *  steady state: the push loop is skipped entirely, so its per-request assertion never fires). */
 let onPull: (() => void) | null = null;
- 
+
 let onOverwrite: (() => void) | null = null;
- 
+
 let overwriteOwners: (string | undefined)[] = [];
- 
+
 let snapshotUploads: { userId?: string; uptoSeq: number; blob?: string }[] = [];
 /** Journal rows served by /api/sync2/pull (v2 ciphertext rows; empty = journal caught up). */
 let serverPullOps: Array<{ seq: number; opId: string; ciphertext: string }> = [];
@@ -120,12 +118,12 @@ let pushedCipherOps: Array<{ opId: string; ciphertext: string }> = [];
 let serverUpgradeRequired = false;
 /** The e2ee epoch the SESSION's budget currently sits at (the fake's tier_mismatch guard). */
 let serverEpoch = 1;
- 
+
 let upgradeCalls: string[] = [];
 let serverUpgradeCredential: string | null = null;
 /** Simulate a network failure on the upgrade endpoint (fetch never completes). */
 let upgradeNetworkFail = false;
- 
+
 let onUpgrade: (() => void) | null = null;
 let serverAccountPreferences = createDefaultAccountPreferences();
 let serverAccountPreferencesRevision = 0;
@@ -146,7 +144,6 @@ const ownerMismatch = (claimed: string | undefined): Response | null =>
   claimed !== undefined && claimed !== session?.user.id ? conflict({ error: "budget_mismatch", budgetId: serverBudget }) : null;
 const wrote = (budgetId: string): string[] => writes[budgetId] ?? [];
 
- 
 const nonEmptyLedger = (): ClientLedger => ({
   ...emptyLedger(),
   accounts: [
@@ -194,7 +191,7 @@ beforeEach(async () => {
     const url = String(input);
     calls.push(url);
     if (offline) throw new TypeError("offline"); // network failure — NOT a "signed out" answer
-    if (url.startsWith("/api/auth/get-session")) return json(session);  
+    if (url.startsWith("/api/auth/get-session")) return json(session);
     if (url.startsWith("/api/preferences/account")) {
       if (!session) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
       if (init?.method === "PATCH") {
@@ -210,8 +207,6 @@ beforeEach(async () => {
       if (serverIsPlain) return tierMismatch();
       if (serverUpgradeRequired) return upgradeRequired();
       if (url.startsWith("/api/sync2/snapshot")) {
-        
-
         if (init?.method === "POST") {
           const body = JSON.parse(String(init.body ?? "{}")) as { userId?: string; uptoSeq: number; blob?: string; epoch?: number };
           if (body.epoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch, cipherVersion: 2 });
@@ -235,11 +230,11 @@ beforeEach(async () => {
         const refused = budgetMismatch(body.budgetId);
         if (refused) return refused;
         writes[serverBudget] = [...wrote(serverBudget), ...body.ops.map((o) => o.opId)];
-        onPush?.();  
+        onPush?.();
         return json({ cursor: 1, epoch: serverEpoch });
       }
       if (url.startsWith("/api/sync2/pull")) {
-        onPull?.();  
+        onPull?.();
         const reqEpoch = Number(new URLSearchParams(url.split("?")[1] ?? "").get("epoch"));
         if (reqEpoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch, cipherVersion: 2 });
         if (serverPullOps.length > 0) {
@@ -268,14 +263,14 @@ beforeEach(async () => {
         });
       }
       const rawBody = String(init?.body ?? "{}");
-      upgradeCalls.push(rawBody);  
+      upgradeCalls.push(rawBody);
       if (upgradeNetworkFail) throw new TypeError("network failure mid-ceremony");
       const body = JSON.parse(rawBody) as { expectedEpoch: number; userId?: string };
       if (body.expectedEpoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch, cipherVersion: 2 });
       const refused = ownerMismatch(body.userId);
       if (refused) return refused;
-      onUpgrade?.();  
-      serverEpoch = body.expectedEpoch + 1;  
+      onUpgrade?.();
+      serverEpoch = body.expectedEpoch + 1;
       writes[serverBudget] = [...wrote(serverBudget), "upgrade-v2"];
       return json({ budgetId: serverBudget, epoch: serverEpoch, cipherVersion: 2, uptoSeq: 0 });
     }
@@ -288,20 +283,20 @@ beforeEach(async () => {
         budgetId: serverBudget,
         results: body.ops.map((o) => ({ opId: o.opId, status: "applied" })),
       });
-      onPush?.();  
+      onPush?.();
       return res;
     }
     if (url.startsWith("/api/sync/snapshot")) {
       return json({ budgetId: serverBudget, cursor: 0, ...(serverHasData ? nonEmptyLedger() : emptyLedger()) });
     }
     if (url.startsWith("/api/sync/pull")) {
-      onPull?.();  
+      onPull?.();
       return json({ budgetId: serverBudget, cursor: 0, resetRequired: false, changes: [] });
     }
     if (url.startsWith("/api/sync/replace")) {
       const body = JSON.parse(String(init?.body ?? "{}")) as { userId?: string };
       overwriteOwners.push(body.userId);
-      onOverwrite?.();  
+      onOverwrite?.();
       const refused = ownerMismatch(body.userId);
       if (refused) return refused;
       writes[serverBudget] = [...wrote(serverBudget), "replace"];
@@ -322,28 +317,24 @@ beforeEach(async () => {
   outbox.clearAll();
   e2ee.__resetDekForTests();
   e2ee.clearDek();
-  e2ee.resetOpsCounter();  
+  e2ee.resetOpsCounter();
   e2ee.setTierMeta({ tier: "plain", epoch: 0 });
   e2ee.setCipherVersion(2); // module state — a previous test's recorded legacy format must not leak
   await accountPreferences.clear();
-  await clearLocalData();  
-  store.replace(emptyLedger(), 0, BUDGET_A);  
+  await clearLocalData();
+  store.replace(emptyLedger(), 0, BUDGET_A);
   store.setBootStatus("ready");
-  void persist.persistLedger(store.snapshotForPersist());  
+  void persist.persistLedger(store.snapshotForPersist());
   await persist.flushed();
 });
 
 afterEach(() => {
-  __resetBackoff();  
+  __resetBackoff();
   __resetSignOutBarrierForTests();
   globalThis.fetch = realFetch;
   delete (globalThis as { location?: unknown }).location;
   delete (globalThis as { localStorage?: unknown }).localStorage;
 });
-
- 
-
- 
 
 describe("sync cycle: session guard before the push", () => {
   it("no session → Login screen, nothing pushed, the outbox is preserved", async () => {
@@ -355,24 +346,24 @@ describe("sync cycle: session guard before the push", () => {
 
     expect(called("/api/auth/get-session")).toBe(true);
     expect(called("/api/sync/push")).toBe(false);
-    expect(store.getBootStatus()).toBe("unauthed");  
-    expect(outbox.size()).toBe(1);  
+    expect(store.getBootStatus()).toBe("unauthed");
+    expect(outbox.size()).toBe(1);
   });
 
   it("a DIFFERENT account signed in → no push at all; the replica is BLOCKED, not destroyed", async () => {
-    await idbPut("meta", "user-A", "userId");  
-    outbox.add(catOp());  
-    session = { user: { id: "user-B" } };  
+    await idbPut("meta", "user-A", "userId");
+    outbox.add(catOp());
+    session = { user: { id: "user-B" } };
 
     await syncNow("test");
 
     expect(called("/api/sync/push")).toBe(false); // A's op NEVER reaches B's budget
-    expect(store.getBootStatus()).toBe("foreign");  
-    expect(reloads).toBe(0);  
+    expect(store.getBootStatus()).toBe("foreign");
+    expect(reloads).toBe(0);
     await persist.flushed();
-    expect(await idbGet("meta", "ledger")).toBeDefined();  
-    expect(await idbGet<string>("meta", "userId")).toBe("user-A");  
-    expect(outbox.size()).toBe(1);  
+    expect(await idbGet("meta", "ledger")).toBeDefined();
+    expect(await idbGet<string>("meta", "userId")).toBe("user-A");
+    expect(outbox.size()).toBe(1);
   });
 
   it("the previous owner can sign back in after the protected foreign-session exit", async () => {
@@ -384,17 +375,17 @@ describe("sync cycle: session guard before the push", () => {
     await expect(assertOwnReplica()).rejects.toThrow();
     expect(store.getBootStatus()).toBe("foreign");
 
-    session = null;  
+    session = null;
     enterLoginPreservingReplica();
 
-    expect(store.getBootStatus()).toBe("unauthed");  
-    expect(await idbGet("meta", "ledger")).toBeDefined();  
+    expect(store.getBootStatus()).toBe("unauthed");
+    expect(await idbGet("meta", "ledger")).toBeDefined();
     expect(outbox.size()).toBe(1);
 
-    session = { user: { id: "user-A" } };  
+    session = { user: { id: "user-A" } };
     await syncNow("test");
 
-    expect(pushed().length).toBe(1);  
+    expect(pushed().length).toBe(1);
     expect(store.getBootStatus()).toBe("ready");
   });
 
@@ -409,34 +400,34 @@ describe("sync cycle: session guard before the push", () => {
       removeItem: (k: string) => values.delete(k),
     };
     cacheDeployment("cloud");
-    await idbPut("meta", "user-A", "userId");  
-    outbox.add(catOp());  
+    await idbPut("meta", "user-A", "userId");
+    outbox.add(catOp());
     session = { user: { id: "user-B" } };
 
     await syncNow("test");
-     
+
     for (let i = 0; i < 100 && reloads === 0; i++) await new Promise((r) => setTimeout(r, 5));
 
-    expect(called("/api/sync/push")).toBe(false);  
+    expect(called("/api/sync/push")).toBe(false);
     expect(called("/api/sync/replace")).toBe(false);
-    expect(store.getBootStatus()).not.toBe("foreign");  
-    expect(reloads).toBe(1);  
-    expect(await idbGet("meta", "ledger")).toBeUndefined();  
-    expect(await idbGet("meta", "userId")).toBeUndefined();  
-    expect(outbox.size()).toBe(0);  
+    expect(store.getBootStatus()).not.toBe("foreign");
+    expect(reloads).toBe(1);
+    expect(await idbGet("meta", "ledger")).toBeUndefined();
+    expect(await idbGet("meta", "userId")).toBeUndefined();
+    expect(outbox.size()).toBe(0);
   });
 
   it("SELFHOST: only the human's explicit choice destroys a foreign replica", async () => {
     await idbPut("meta", "user-A", "userId");
     outbox.add(catOp());
     session = { user: { id: "user-B" } };
-    await assertOwnReplica().catch(() => {});  
+    await assertOwnReplica().catch(() => {});
     expect(store.getBootStatus()).toBe("foreign");
 
-    await discardLocalReplica();  
+    await discardLocalReplica();
 
     expect(reloads).toBe(1);
-    expect(await idbGet("meta", "ledger")).toBeUndefined();  
+    expect(await idbGet("meta", "ledger")).toBeUndefined();
     expect(await idbGet("meta", "userId")).toBeUndefined();
     expect(outbox.size()).toBe(0);
   });
@@ -449,7 +440,7 @@ describe("sync cycle: session guard before the push", () => {
     await syncNow("test");
 
     expect(called("/api/sync/push")).toBe(true);
-    expect(outbox.size()).toBe(0);  
+    expect(outbox.size()).toBe(0);
     await persist.flushed();
     expect(await idbGet<string>("meta", "userId")).toBe("user-A");
     expect(store.getBootStatus()).toBe("ready");
@@ -494,23 +485,18 @@ describe("sync cycle: session guard before the push", () => {
     await expect(pushLocalToServer()).rejects.toThrow(); // aborted, not applied to B's budget
     expect(called("/api/sync/replace")).toBe(false);
     expect(store.getBootStatus()).toBe("foreign");
-    expect(await idbGet("meta", "ledger")).toBeDefined();  
+    expect(await idbGet("meta", "ledger")).toBeDefined();
   });
 });
 
- 
-
 describe("sync cycle: the session is re-verified every cycle", () => {
   it("sign-in as another user in ANOTHER tab → the long-lived tab pushes nothing", async () => {
-    
-
-
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };
-    await syncNow("boot");  
+    await syncNow("boot");
 
-    outbox.add(catOp());  
-    session = { user: { id: "user-B" } };  
+    outbox.add(catOp());
+    session = { user: { id: "user-B" } };
 
     await syncNow("interval");
 
@@ -523,30 +509,28 @@ describe("sync cycle: the session is re-verified every cycle", () => {
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };
     outbox.add(catOp());
-    await syncNow("boot");  
+    await syncNow("boot");
     expect(pushed().length).toBe(1);
 
-    outbox.add(catOp());  
-    session = null;  
+    outbox.add(catOp());
+    session = null;
     await syncNow("interval");
-    expect(store.getBootStatus()).toBe("unauthed");  
+    expect(store.getBootStatus()).toBe("unauthed");
 
-    session = { user: { id: "user-B" } };  
+    session = { user: { id: "user-B" } };
     await syncNow("interval");
 
-    expect(pushed().length).toBe(1);  
-    expect(store.getBootStatus()).toBe("foreign");  
+    expect(pushed().length).toBe(1);
+    expect(store.getBootStatus()).toBe("foreign");
     expect(outbox.size()).toBe(1); // A's queued op is preserved, not thrown away
   });
 });
-
- 
 
 describe("sync cycle: replica with no owner stamp", () => {
   it("the session's budget IS the replica's → adopted and pushed", async () => {
     outbox.add(catOp());
     session = { user: { id: "user-C" } };
-    serverBudget = BUDGET_A;  
+    serverBudget = BUDGET_A;
 
     await syncNow("test");
 
@@ -556,16 +540,13 @@ describe("sync cycle: replica with no owner stamp", () => {
   });
 
   it("a pending REPLACE with an EMPTY outbox never overwrites the session's budget", async () => {
-    
-
-
-    markReplacePending();  
+    markReplacePending();
     session = { user: { id: "user-B" } };
-    serverBudget = BUDGET_B;  
+    serverBudget = BUDGET_B;
 
     await syncNow("test");
 
-    expect(outbox.size()).toBe(0);  
+    expect(outbox.size()).toBe(0);
     expect(called("/api/sync/replace")).toBe(false); // B's budget is NOT overwritten
   });
 
@@ -578,9 +559,6 @@ describe("sync cycle: replica with no owner stamp", () => {
   });
 
   it("assertOwnReplica guards the writes made outside sync.ts (E2EE enable/disable)", async () => {
-    
-
-
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-B" } };
 
@@ -600,30 +578,28 @@ describe("sync cycle: replica with no owner stamp", () => {
 
 describe("sync: an UNBOUND replica (no budgetId)", () => {
   it("is refused against a session budget that HOLDS DATA (no cross-tenant overwrite)", async () => {
-    
-
-    store.replace(nonEmptyLedger(), 0, "");  
+    store.replace(nonEmptyLedger(), 0, "");
     await persist.persistLedger(store.snapshotForPersist());
     session = { user: { id: "user-B" } };
     serverHasData = true; // …and B's budget is NOT empty
 
-    await expect(pushLocalToServer()).rejects.toThrow();  
+    await expect(pushLocalToServer()).rejects.toThrow();
 
     expect(called("/api/sync/replace")).toBe(false); // B's budget is NOT wiped and overwritten
-    expect(reloads).toBe(0);  
+    expect(reloads).toBe(0);
     await persist.flushed();
     expect(await idbGet("meta", "userId")).toBeUndefined(); // NOT adopted on a guess
-    expect(await idbGet("meta", "ledger")).toBeDefined();  
+    expect(await idbGet("meta", "ledger")).toBeDefined();
   });
 
   it("is adopted when the session's budget is provably EMPTY (nothing to destroy)", async () => {
-    store.replace(nonEmptyLedger(), 0, "");  
+    store.replace(nonEmptyLedger(), 0, "");
     session = { user: { id: "user-B" } };
-    serverHasData = false;  
+    serverHasData = false;
 
     await pushLocalToServer();
 
-    expect(wrote(BUDGET_A)).toEqual(["replace"]);  
+    expect(wrote(BUDGET_A)).toEqual(["replace"]);
     await persist.flushed();
     expect(await idbGet<string>("meta", "userId")).toBe("user-B");
   });
@@ -644,19 +620,19 @@ describe("sync: an UNBOUND replica (no budgetId)", () => {
 
 describe("sync: an unproven replica is refused, never wiped", () => {
   it("2.0 upgrade path: the owner's budget is lazily created (new id) → no write, no data loss", async () => {
-    outbox.add(catOp());  
-    session = { user: { id: "user-owner" } };  
+    outbox.add(catOp());
+    session = { user: { id: "user-owner" } };
     serverBudget = BUDGET_B; // …whose budget was lazily created empty (the old one is not attached yet)
 
     await syncNow("test");
 
-    expect(called("/api/sync/push")).toBe(false);  
+    expect(called("/api/sync/push")).toBe(false);
     expect(getSyncStatus().state).toBe("unverified"); // …and the UI can SAY so (not a red "error")
     expect(reloads).toBe(0); // NOT wiped — the mismatch proves nothing about the account
-    expect(outbox.size()).toBe(1);  
+    expect(outbox.size()).toBe(1);
     expect(store.getBootStatus()).toBe("ready"); // the app keeps working — it just cannot send
     await persist.flushed();
-    expect(await idbGet("meta", "ledger")).toBeDefined();  
+    expect(await idbGet("meta", "ledger")).toBeDefined();
     expect(await idbGet("meta", "userId")).toBeUndefined(); // …and NOT adopted on a guess
   });
 
@@ -664,14 +640,14 @@ describe("sync: an unproven replica is refused, never wiped", () => {
     outbox.add(catOp());
     session = { user: { id: "user-owner" } };
     serverBudget = BUDGET_B;
-    await syncNow("test");  
+    await syncNow("test");
     expect(getSyncStatus().state).toBe("unverified");
 
-    serverBudget = BUDGET_A;  
+    serverBudget = BUDGET_A;
     await syncNow("test");
 
-    expect(called("/api/sync/push")).toBe(true);  
-    expect(getSyncStatus().state).toBe("synced");  
+    expect(called("/api/sync/push")).toBe(true);
+    expect(getSyncStatus().state).toBe("synced");
     await persist.flushed();
     expect(await idbGet<string>("meta", "userId")).toBe("user-owner");
   });
@@ -685,7 +661,7 @@ describe("sync: an unproven replica is refused, never wiped", () => {
     await recheckReplicaOwner(); // Settings → Sync → [Check again], while the budget is not reattached
 
     expect(called("/api/sync/push")).toBe(false); // the button cannot write either
-    expect(getSyncStatus().state).toBe("unverified");  
+    expect(getSyncStatus().state).toBe("unverified");
     expect(outbox.size()).toBe(1);
     expect(reloads).toBe(0);
     await persist.flushed();
@@ -699,10 +675,10 @@ describe("sync: an unproven replica is refused, never wiped", () => {
     await syncNow("test");
     expect(getSyncStatus().state).toBe("unverified");
 
-    serverBudget = BUDGET_A;  
-    await recheckReplicaOwner();  
+    serverBudget = BUDGET_A;
+    await recheckReplicaOwner();
 
-    expect(wrote(BUDGET_A)).toHaveLength(1);  
+    expect(wrote(BUDGET_A)).toHaveLength(1);
     expect(getSyncStatus().state).toBe("synced");
     await persist.flushed();
     expect(await idbGet<string>("meta", "userId")).toBe("user-owner");
@@ -714,11 +690,11 @@ describe("sync: an unproven replica is refused, never wiped", () => {
     serverBudget = BUDGET_B;
     await syncNow("test");
     await persist.flushed();
-    expect(await idbGet("meta", "ledger")).toBeDefined();  
+    expect(await idbGet("meta", "ledger")).toBeDefined();
 
-    await discardLocalReplica();  
+    await discardLocalReplica();
 
-    expect(reloads).toBe(1);  
+    expect(reloads).toBe(1);
     expect(await idbGet("meta", "ledger")).toBeUndefined();
     expect(outbox.size()).toBe(0);
   });
@@ -758,18 +734,18 @@ describe("sync status: ownerUnproven is sticky across the re-proof", () => {
   };
 
   it("stays true through the 'syncing' of a cycle that re-proves and fails again", async () => {
-    outbox.add(catOp());  
+    outbox.add(catOp());
     session = { user: { id: "user-owner" } };
     serverBudget = BUDGET_B;
     await syncNow("test");
     expect(getSyncStatus().ownerUnproven).toBe(true);
 
     const { seen, stop } = record();
-    await syncNow("test");  
+    await syncNow("test");
     await recheckReplicaOwner();
     stop();
 
-    expect(seen.some((s) => s.state === "syncing")).toBe(true);  
+    expect(seen.some((s) => s.state === "syncing")).toBe(true);
     expect(seen.every((s) => s.unproven)).toBe(true); // …the fact the UI reads does NOT
     expect(getSyncStatus().state).toBe("unverified");
     expect(getSyncStatus().ownerUnproven).toBe(true);
@@ -781,10 +757,10 @@ describe("sync status: ownerUnproven is sticky across the re-proof", () => {
     await syncNow("test");
     expect(getSyncStatus().ownerUnproven).toBe(true);
 
-    serverBudget = BUDGET_A;  
+    serverBudget = BUDGET_A;
     await recheckReplicaOwner();
 
-    expect(getSyncStatus().ownerUnproven).toBe(false);  
+    expect(getSyncStatus().ownerUnproven).toBe(false);
     expect(getSyncStatus().state).toBe("synced");
   });
 
@@ -794,28 +770,18 @@ describe("sync status: ownerUnproven is sticky across the re-proof", () => {
     await syncNow("test");
     expect(getSyncStatus().ownerUnproven).toBe(true);
 
-    enterLoginPreservingReplica();  
+    enterLoginPreservingReplica();
 
     expect(getSyncStatus().ownerUnproven).toBe(false);
     expect(getSyncStatus().state).toBe("unauthed");
   });
 });
 
-
-
-
-
-
-
-
-
-
 describe("sync push: the per-request tenant assertion", () => {
   it("the cookie is swapped BETWEEN batches → the rest of the outbox never lands in B's budget", async () => {
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };
-    for (let i = 0; i < 150; i++) outbox.add(catOp()); 
-
+    for (let i = 0; i < 150; i++) outbox.add(catOp());
 
     onPush = () => {
       session = { user: { id: "user-B" } };
@@ -825,46 +791,35 @@ describe("sync push: the per-request tenant assertion", () => {
 
     await syncNow("test");
 
-    expect(pushed().length).toBe(2);  
-    expect(wrote(BUDGET_A)).toHaveLength(100);  
-    expect(wrote(BUDGET_B)).toEqual([]);  
-    expect(store.getBootStatus()).toBe("foreign");  
-    expect(reloads).toBe(0);  
+    expect(pushed().length).toBe(2);
+    expect(wrote(BUDGET_A)).toHaveLength(100);
+    expect(wrote(BUDGET_B)).toEqual([]);
+    expect(store.getBootStatus()).toBe("foreign");
+    expect(reloads).toBe(0);
   });
 
   it("same user, budget rotated (reseed / restore / reattach) → resync, then the ops go out", async () => {
     // The very same 409, from the legitimate cause: it must NOT become a permanent refusal.
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };
-    serverBudget = BUDGET_B;  
-    store.replace(emptyLedger(), 0, BUDGET_A);  
+    serverBudget = BUDGET_B;
+    store.replace(emptyLedger(), 0, BUDGET_A);
     outbox.add(catOp());
 
     await syncNow("test");
 
-    expect(wrote(BUDGET_B)).toHaveLength(1);  
+    expect(wrote(BUDGET_B)).toHaveLength(1);
     expect(store.getBudgetId()).toBe(BUDGET_B);
     expect(outbox.size()).toBe(0);
-    expect(reloads).toBe(0);  
+    expect(reloads).toBe(0);
   });
 });
-
-
-
-
-
-
-
-
-
-
 
 describe("sync pull: a resync never replaces the mirror on an unverified session", () => {
   it("the cookie is swapped mid-cycle (EMPTY outbox) → A's replica is NOT overwritten by B's", async () => {
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };
-    expect(outbox.size()).toBe(0); 
-
+    expect(outbox.size()).toBe(0);
 
     onPull = () => {
       session = { user: { id: "user-B" } };
@@ -875,11 +830,11 @@ describe("sync pull: a resync never replaces the mirror on an unverified session
     await syncNow("interval");
 
     expect(called("/api/sync/snapshot")).toBe(false); // B's ledger is never even fetched…
-    expect(store.getBudgetId()).toBe(BUDGET_A);  
-    expect(store.getBootStatus()).toBe("foreign");  
-    expect(reloads).toBe(0);  
+    expect(store.getBudgetId()).toBe(BUDGET_A);
+    expect(store.getBootStatus()).toBe("foreign");
+    expect(reloads).toBe(0);
     await persist.flushed();
-    expect(await idbGet<string>("meta", "budgetId")).toBe(BUDGET_A);  
+    expect(await idbGet<string>("meta", "budgetId")).toBe(BUDGET_A);
     expect(await idbGet<string>("meta", "userId")).toBe("user-A");
   });
 
@@ -891,7 +846,7 @@ describe("sync pull: a resync never replaces the mirror on an unverified session
 
     await syncNow("interval");
 
-    expect(called("/api/sync/snapshot")).toBe(true);  
+    expect(called("/api/sync/snapshot")).toBe(true);
     expect(store.getBudgetId()).toBe(BUDGET_B);
     expect(store.getBootStatus()).toBe("ready");
     expect(reloads).toBe(0);
@@ -914,20 +869,20 @@ describe("sync boot: the replica's owner is checked BEFORE it is rendered", () =
     expect(store.getBootStatus()).toBe("foreign"); // App never renders A's ledger to B
     expect(called("/api/sync/snapshot")).toBe(false); // …and B's data is not bootstrapped over it
     expect(reloads).toBe(0);
-    expect(await idbGet("meta", "ledger")).toBeDefined();  
+    expect(await idbGet("meta", "ledger")).toBeDefined();
   });
 
   it("the session expired → Login BEFORE the data is on screen (replica + outbox preserved)", async () => {
     await idbPut("meta", "user-A", "userId");
     outbox.add(catOp());
-    session = null;  
+    session = null;
     e2ee.setTierMeta({ tier: "e2ee", epoch: 3 });
     e2ee.setDek(generateDek(), 3);
 
     await retryBoot();
 
-    expect(store.getBootStatus()).toBe("unauthed");  
-    expect(outbox.size()).toBe(1);  
+    expect(store.getBootStatus()).toBe("unauthed");
+    expect(outbox.size()).toBe(1);
     expect(await idbGet("meta", "ledger")).toBeDefined();
     expect(e2ee.isDekValidForEpoch(3)).toBe(true); // re-auth + unlock policy, not destructive sign-out
   });
@@ -947,7 +902,7 @@ describe("sync boot: the replica's owner is checked BEFORE it is rendered", () =
     await retryBoot();
 
     expect(store.getBootStatus()).toBe("ready");
-    expect(called("/api/auth/get-session")).toBe(true);  
+    expect(called("/api/auth/get-session")).toBe(true);
   });
 
   it("no owner stamp → server theme preferences settle before ready releases the startup splash", async () => {
@@ -974,7 +929,7 @@ describe("sync boot: the replica's owner is checked BEFORE it is rendered", () =
     offline = true; // get-session THROWS (network), it does not answer "no session"
 
     await retryBoot();
-    await syncNow("drain");  
+    await syncNow("drain");
 
     expect(store.getBootStatus()).toBe("ready");
   });
@@ -1022,13 +977,13 @@ describe("sync boot: a leftover `planned` transaction is swept before the replic
     session = { user: { id: "user-A" } };
 
     await retryBoot();
-    await syncNow("drain");  
+    await syncNow("drain");
 
     expect(store.getBootStatus()).toBe("ready");
-    expect(store.getLedger()!.transactions).toHaveLength(0);  
-    expect(outbox.size()).toBe(0);  
+    expect(store.getLedger()!.transactions).toHaveLength(0);
+    expect(outbox.size()).toBe(0);
     expect(pushed().length).toBeGreaterThan(0); // it left through the real push path, not just memory
-    expect(wrote(BUDGET_A)).toHaveLength(1);  
+    expect(wrote(BUDGET_A)).toHaveLength(1);
   });
 
   it("a clean ledger (no legacy planned rows) boots without pushing anything extra", async () => {
@@ -1037,7 +992,7 @@ describe("sync boot: a leftover `planned` transaction is swept before the replic
     await retryBoot();
 
     expect(store.getBootStatus()).toBe("ready");
-    expect(outbox.size()).toBe(0);  
+    expect(outbox.size()).toBe(0);
   });
 });
 
@@ -1054,8 +1009,8 @@ describe("sync e2ee: the checkpoint upload carries the verified owner", () => {
   const e2eeReplicaDue = () => {
     e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
     e2ee.setDek(generateDek(), 1); // validated for the epoch the fixture runs at
-    e2ee.noteOpsSeen(e2ee.SNAPSHOT_EVERY_OPS);  
-    serverE2eeCursor = 5;  
+    e2ee.noteOpsSeen(e2ee.SNAPSHOT_EVERY_OPS);
+    serverE2eeCursor = 5;
   };
   /** The upload is fire-and-forget BY DESIGN (it must not block the cycle) — let it land. */
   const uploaded = async () => {
@@ -1082,7 +1037,7 @@ describe("sync e2ee: the checkpoint upload carries the verified owner", () => {
     session = { user: { id: "user-A" } };
     e2eeReplicaDue();
     onPull = () => {
-      session = { user: { id: "user-B" } };  
+      session = { user: { id: "user-B" } };
       serverBudget = BUDGET_B;
       onPull = null;
     };
@@ -1090,8 +1045,8 @@ describe("sync e2ee: the checkpoint upload carries the verified owner", () => {
     await syncNow("interval");
     await uploaded();
 
-    expect(snapshotUploads[0]?.userId).toBe("user-A");  
-    expect(wrote(BUDGET_B)).toEqual([]);  
+    expect(snapshotUploads[0]?.userId).toBe("user-A");
+    expect(wrote(BUDGET_B)).toEqual([]);
   });
 });
 
@@ -1125,12 +1080,12 @@ describe("sync e2ee v2: encryption context discipline", () => {
     expect(pushedCipherOps).toHaveLength(1);
     const row = pushedCipherOps[0]!;
     expect(row.opId).toBe(op.opId);
-     
+
     const pt = await decryptPayload(row.ciphertext, dek, opAadContext(BUDGET_V2, 1, op.opId));
     expect(JSON.parse(pt).kind).toBe("category.create");
     // …and under any other epoch/budget/opId it fails (the vectors in crypto.test.ts)
     await expect(decryptPayload(row.ciphertext, dek, opAadContext(BUDGET_V2, 2, op.opId))).rejects.toThrow();
-    expect(outbox.size()).toBe(0);  
+    expect(outbox.size()).toBe(0);
   });
 
   it("appends a terminal rules preference after late E2EE pending work before pushing", async () => {
@@ -1184,7 +1139,7 @@ describe("sync e2ee v2: encryption context discipline", () => {
 
     await syncNow("test");
 
-    expect(store.getLedger()!.categories).toEqual([]);  
+    expect(store.getLedger()!.categories).toEqual([]);
     expect(store.getCursor()).toBe(0); // the cursor did not advance past unauthenticated rows
     expect(getSyncStatus().state).toBe("error"); // the cycle failed loudly, not silently
   });
@@ -1192,7 +1147,7 @@ describe("sync e2ee v2: encryption context discipline", () => {
   it("pull: rows from another epoch (response-epoch drift) fail before the mirror is touched", async () => {
     await v2Replica(1);
     const op = catOp();
-     
+
     const stale = await e2ee.encryptOp(op, dek, { budgetId: BUDGET_V2, epoch: 2 });
     serverPullOps = [{ seq: 1, opId: stale.opId, ciphertext: stale.ciphertext }];
 
@@ -1207,7 +1162,7 @@ describe("sync e2ee v2: encryption context discipline", () => {
     const op = catOp();
     const row = await e2ee.encryptOp(op, dek, { budgetId: BUDGET_V2, epoch: 1 });
     serverPullOps = [{ seq: 7, opId: row.opId, ciphertext: row.ciphertext }];
-    e2ee.noteOpsSeen(e2ee.SNAPSHOT_EVERY_OPS);  
+    e2ee.noteOpsSeen(e2ee.SNAPSHOT_EVERY_OPS);
 
     await syncNow("test");
     for (let i = 0; i < 100 && snapshotUploads.length === 0; i++) {
@@ -1216,7 +1171,7 @@ describe("sync e2ee v2: encryption context discipline", () => {
 
     expect(snapshotUploads).toHaveLength(1);
     const up = snapshotUploads[0]!;
-    expect(up.uptoSeq).toBe(7); 
+    expect(up.uptoSeq).toBe(7);
 
     await expect(e2ee.decryptSnapshot(up.blob!, dek, { budgetId: BUDGET_V2, epoch: 1, uptoSeq: 7 })).resolves.toBeDefined();
     await expect(e2ee.decryptSnapshot(up.blob!, dek, { budgetId: BUDGET_V2, epoch: 1, uptoSeq: 0 })).rejects.toThrow();
@@ -1231,10 +1186,10 @@ describe("sync e2ee v2: encryption context discipline", () => {
 
     await syncNow("test");
 
-    expect(outbox.size()).toBe(1);  
-    expect(store.getLedger()!.categories).toHaveLength(1);  
+    expect(outbox.size()).toBe(1);
+    expect(store.getLedger()!.categories).toHaveLength(1);
     expect(store.getCursor()).toBe(0);
-    expect(wrote(BUDGET_V2)).toEqual([]);  
+    expect(wrote(BUDGET_V2)).toEqual([]);
     expect(e2ee.getCipherVersion()).toBe(1); // the legacy format is recorded (Settings shows the action)
     expect(getSyncStatus().state).toBe("error");
   });
@@ -1256,7 +1211,7 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
     serverBudget = BUDGET_V2;
     store.replace({ ...emptyLedger(), categories: [{ id: crypto.randomUUID(), name: "pre-existing", archived: false }] }, 3, BUDGET_V2);
     e2ee.setTierMeta({ tier: "e2ee", epoch });
-    e2ee.setDek(oldDek, epoch);  
+    e2ee.setDek(oldDek, epoch);
   };
 
   it("F1/F3: a key rotation on another device ends on Unlock — never a poisoned push or an error loop", async () => {
@@ -1272,24 +1227,24 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
 
     // the push met the epoch 409 BEFORE anything was stored; bootstrap then found a checkpoint
     // the held key cannot open → trust is over: key dropped, Unlock takes the screen
-    expect(pushedCipherOps).toEqual([]);  
+    expect(pushedCipherOps).toEqual([]);
     expect(wrote(BUDGET_V2)).toEqual([]);
     expect(store.getBootStatus()).toBe("locked"); // the Unlock screen — not a silent error loop
-    expect(e2ee.getDek()).toBeNull();  
-    expect(outbox.size()).toBe(1);  
-    expect(store.getLedger()!.categories.map((c) => c.name)).toEqual(["pre-existing"]);  
+    expect(e2ee.getDek()).toBeNull();
+    expect(outbox.size()).toBe(1);
+    expect(store.getLedger()!.categories.map((c) => c.name)).toEqual(["pre-existing"]);
   });
 
   it("F1 precondition: an ADOPTED epoch alone never pushes — the unvalidated key locks the engine", async () => {
     await stampedReplica(1);
     outbox.add(catOp());
-     
+
     e2ee.setTierMeta({ tier: "e2ee", epoch: 2 });
     serverEpoch = 2;
 
     await syncNow("test");
 
-    expect(called("/api/sync2/push")).toBe(false);  
+    expect(called("/api/sync2/push")).toBe(false);
     expect(store.getBootStatus()).toBe("locked");
     expect(outbox.size()).toBe(1);
   });
@@ -1300,20 +1255,20 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
     upgradeNetworkFail = true;
 
     await expect(upgradeServerE2eeV2("ceremony-pass-123")).rejects.toThrow();
-    expect(await hasPendingE2eeUpgrade()).toBe(true);  
+    expect(await hasPendingE2eeUpgrade()).toBe(true);
     expect(upgradeCalls).toHaveLength(1);
 
     // adoptions in between (409 bodies from other channels) must not clobber the intent
     e2ee.setTierMeta({ tier: "e2ee", epoch: 7 });
 
     upgradeNetworkFail = false;
-    await upgradeServerE2eeV2(null);  
+    await upgradeServerE2eeV2(null);
 
     expect(upgradeCalls).toHaveLength(2);
     expect(upgradeCalls[1]).toBe(upgradeCalls[0]); // byte-identical: the server's idempotency branch is reachable
-    expect(await hasPendingE2eeUpgrade()).toBe(false);  
-    expect(e2ee.getTierMeta()).toEqual({ tier: "e2ee", epoch: 2 });  
-    expect(e2ee.isDekValidForEpoch(2)).toBe(true);  
+    expect(await hasPendingE2eeUpgrade()).toBe(false);
+    expect(e2ee.getTierMeta()).toEqual({ tier: "e2ee", epoch: 2 });
+    expect(e2ee.isDekValidForEpoch(2)).toBe(true);
     expect(e2ee.getCipherVersion()).toBe(2);
   });
 
@@ -1362,7 +1317,7 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
     upgradeNetworkFail = true;
     await expect(upgradeServerE2eeV2("ceremony-pass-123")).rejects.toThrow();
     upgradeNetworkFail = false;
-    serverEpoch = 5;  
+    serverEpoch = 5;
 
     await expect(upgradeServerE2eeV2(null)).rejects.toThrow("tier_mismatch");
 
@@ -1380,33 +1335,32 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
     // would destroy the server copy beyond recovery. The validated-key precondition must gate
     // it BEFORE any obligation processing.
     await stampedReplica(1);
-    markReplacePending();  
+    markReplacePending();
     e2ee.setTierMeta({ tier: "e2ee", epoch: 2 }); // adopted from a 409 — key NOT re-validated
     serverEpoch = 2;
 
     await syncNow("test");
 
     expect(overwriteOwners).toEqual([]); // /sync2/reset was never posted
-    expect(wrote(BUDGET_V2)).toEqual([]);  
+    expect(wrote(BUDGET_V2)).toEqual([]);
     expect(store.getBootStatus()).toBe("locked"); // waiting for Unlock, not silently erroring
 
-     
     const newDek = generateDek();
-    e2ee.setDek(newDek, 2);  
+    e2ee.setDek(newDek, 2);
     store.setBootStatus("ready");
     await syncNow("test");
-    expect(overwriteOwners).toEqual(["user-A"]);  
+    expect(overwriteOwners).toEqual(["user-A"]);
     expect(wrote(BUDGET_V2)).toContain("reset");
   });
 
   it("R1: resetServerE2ee refuses an unvalidated key even when passed EXPLICITLY", async () => {
     await stampedReplica(1);
-    e2ee.setTierMeta({ tier: "e2ee", epoch: 2 });  
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 2 });
     serverEpoch = 2;
 
     await expect(resetServerE2ee(e2ee.getDek()!)).rejects.toThrow("no_encryption_key");
 
-    expect(overwriteOwners).toEqual([]);  
+    expect(overwriteOwners).toEqual([]);
   });
 
   it("F5: an edit made in another tab DURING the ceremony survives commit and pushes under the new epoch", async () => {
@@ -1414,10 +1368,9 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
     e2ee.setCipherVersion(1);
     const before = catOp();
     store.applyLocal(before);
-    outbox.add(before);  
+    outbox.add(before);
     const late = catOp();
     onUpgrade = () => {
-       
       store.applyLocal(late);
       outbox.add(late);
       onUpgrade = null;
@@ -1425,14 +1378,13 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
 
     await upgradeServerE2eeV2("ceremony-pass-123");
 
-     
     expect(outbox.size()).toBe(1);
     expect(outbox.snapshot()[0]!.op.opId).toBe(late.opId);
     const names = store.getLedger()!.categories.map((c) => c.name);
-    expect(names).toContain("Food");  
-    expect(store.getLedger()!.categories).toHaveLength(3);  
+    expect(names).toContain("Food");
+    expect(store.getLedger()!.categories).toHaveLength(3);
 
-    await syncNow("test");  
+    await syncNow("test");
     expect(outbox.size()).toBe(0);
     expect(wrote(BUDGET_V2)).toContain(late.opId);
     const pushed = pushedCipherOps.find((r) => r.opId === late.opId);
@@ -1452,8 +1404,8 @@ describe("sync: 401 on an out-of-cycle write routes to Login", () => {
     await expect(pushLocalToServer()).rejects.toThrow();
 
     expect(called("/api/sync/replace")).toBe(false);
-    expect(store.getBootStatus()).toBe("unauthed");  
-    expect(await idbGet("meta", "ledger")).toBeDefined();  
+    expect(store.getBootStatus()).toBe("unauthed");
+    expect(await idbGet("meta", "ledger")).toBeDefined();
   });
 
   it("assertOwnReplica (Settings → E2EE) with no session → BootStatus unauthed", async () => {
@@ -1470,7 +1422,7 @@ describe("sync cycle: e2ee replica with no owner stamp", () => {
     e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
     e2ee.setDek(new Uint8Array(32), 1); // validated for the fixture's epoch
     outbox.add(catOp()); // queued ops (plaintext, waiting to be encrypted at push)
-    markReplacePending();  
+    markReplacePending();
     session = { user: { id: "user-B" } };
     serverBudget = BUDGET_B; // a different e2ee budget — same epoch 1, so the server would accept
 
@@ -1488,7 +1440,7 @@ describe("sync cycle: e2ee replica with no owner stamp", () => {
     // and replays A's plaintext outbox onto it, which the next cycle would push.
     e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
     e2ee.setDek(new Uint8Array(32), 1); // validated for the fixture's epoch
-    store.replace(emptyLedger(), 0, "");  
+    store.replace(emptyLedger(), 0, "");
     outbox.add(catOp());
     session = { user: { id: "user-B" } };
     serverIsPlain = true;
@@ -1498,7 +1450,7 @@ describe("sync cycle: e2ee replica with no owner stamp", () => {
     expect(called("/api/sync2/push")).toBe(false);
     expect(called("/api/sync/push")).toBe(false); // …not on the v1 path either
     expect(called("/api/sync/replace")).toBe(false);
-    expect(outbox.size()).toBe(1);  
+    expect(outbox.size()).toBe(1);
     expect(reloads).toBe(0); // unverifiable ≠ proven foreign: we do NOT wipe on a guess
     await persist.flushed();
     expect(await idbGet("meta", "userId")).toBeUndefined(); // and it is NOT adopted
@@ -1520,7 +1472,7 @@ describe("sync: the e2ee ownership proof and the DEK's provenance", () => {
     e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
     store.replace(emptyLedger(), 0, "");
   };
-   
+
   const reload = async () => {
     await persist.flushed();
     e2ee.__resetDekForTests();
@@ -1533,7 +1485,7 @@ describe("sync: the e2ee ownership proof and the DEK's provenance", () => {
     // server serves below; the successful authenticated decrypt is what lets the replica adopt
     // the budget id its own key just vouched for (v2 writes are fail-closed without one).
     serverBlob = await e2ee.encryptSnapshot(emptyLedger(), dek, { budgetId: BUDGET_B, epoch: 1, uptoSeq: 0 });
-    await idbPut("meta", dek, "e2eeDek");  
+    await idbPut("meta", dek, "e2eeDek");
     legacyE2eeReplica();
     await reload();
     outbox.add(catOp());
@@ -1542,7 +1494,7 @@ describe("sync: the e2ee ownership proof and the DEK's provenance", () => {
 
     await syncNow("test");
 
-    expect(wrote(BUDGET_B)).toHaveLength(1);  
+    expect(wrote(BUDGET_B)).toHaveLength(1);
     await persist.flushed();
     expect(await idbGet<string>("meta", "userId")).toBe("user-A");
   });
@@ -1554,11 +1506,11 @@ describe("sync: the e2ee ownership proof and the DEK's provenance", () => {
     // own checkpoint would decrypt with it ("ours"), A's replica would be stamped as B's, A's
     // queued ops would be pushed into B's journal and a pending replace would overwrite it.
     const dekOfB = generateDek();
-    serverBlob = await e2ee.encryptSnapshot(emptyLedger(), dekOfB, { budgetId: BUDGET_B, epoch: 1, uptoSeq: 0 });  
-    legacyE2eeReplica();  
-    e2ee.setDek(dekOfB, 1);  
-    outbox.add(catOp());  
-    markReplacePending();  
+    serverBlob = await e2ee.encryptSnapshot(emptyLedger(), dekOfB, { budgetId: BUDGET_B, epoch: 1, uptoSeq: 0 });
+    legacyE2eeReplica();
+    e2ee.setDek(dekOfB, 1);
+    outbox.add(catOp());
+    markReplacePending();
     session = { user: { id: "user-B" } };
     serverBudget = BUDGET_B;
 
@@ -1566,8 +1518,8 @@ describe("sync: the e2ee ownership proof and the DEK's provenance", () => {
     await syncNow("test");
 
     expect(e2ee.isDekFromStore()).toBe(false);
-    expect(wrote(BUDGET_B)).toEqual([]);  
-    expect(outbox.size()).toBe(1);  
+    expect(wrote(BUDGET_B)).toEqual([]);
+    expect(outbox.size()).toBe(1);
     expect(reloads).toBe(0);
     await persist.flushed();
     expect(await idbGet("meta", "userId")).toBeUndefined(); // A's replica is NOT adopted by B
@@ -1592,18 +1544,18 @@ describe("sync: full-budget overwrites carry the verified owner", () => {
   it("/sync/replace names the verified user, and a mid-upload sign-in as B is refused", async () => {
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };
-     
+
     onOverwrite = () => {
       session = { user: { id: "user-B" } };
       serverBudget = BUDGET_B;
       onOverwrite = null;
     };
 
-    await expect(pushLocalToServer()).rejects.toThrow();  
+    await expect(pushLocalToServer()).rejects.toThrow();
 
     expect(overwriteOwners).toEqual(["user-A"]); // the tenant the client verified travels along
     expect(wrote(BUDGET_B)).toEqual([]); // B's budget is NOT wiped and replaced by A's ledger
-    expect(wrote(BUDGET_A)).toEqual([]);  
+    expect(wrote(BUDGET_A)).toEqual([]);
   });
 
   it("/sync2/reset names the verified user, and a mid-upload sign-in as B is refused", async () => {
@@ -1639,17 +1591,15 @@ describe("sync: full-budget overwrites carry the verified owner", () => {
     // "migrate hosts / rebuild the server" flow — it must NOT be mistaken for a cross-tenant write.
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };
-    store.replace(nonEmptyLedger(), 0, BUDGET_B);  
-    markReplacePending();  
+    store.replace(nonEmptyLedger(), 0, BUDGET_B);
+    markReplacePending();
 
     await syncNow("test");
 
-    expect(wrote(BUDGET_A)).toEqual(["replace"]);  
-    expect(store.getBudgetId()).toBe(BUDGET_A);  
+    expect(wrote(BUDGET_A)).toEqual(["replace"]);
+    expect(store.getBudgetId()).toBe(BUDGET_A);
   });
 });
-
- 
 
 describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards)", () => {
   it("quiesces an in-flight push before another batch and preserves its unacknowledged local queue", async () => {
@@ -1689,7 +1639,7 @@ describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards
     } finally {
       configurePersistenceAccountStorageDrain(null);
     }
-    expect(wrote(BUDGET_A).length).toBe(1);  
+    expect(wrote(BUDGET_A).length).toBe(1);
   });
 
   it("offline: nothing pushed, the remainder reported — NOTHING destroyed here", async () => {
@@ -1706,6 +1656,6 @@ describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards
     } finally {
       configurePersistenceAccountStorageDrain(null);
     }
-    expect(outbox.size()).toBe(1);  
+    expect(outbox.size()).toBe(1);
   });
 });

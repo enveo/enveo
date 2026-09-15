@@ -1,7 +1,3 @@
-
-
-
-
 // Combining-marks range fallback for engines without \p{Diacritic} support (verified bun 1.3/ICU 75
 // DOES support it — see search.test.ts — but this keeps the function inert instead of throwing
 // if it ever runs somewhere that doesn't). The range is written as \u escapes, NOT literal
@@ -43,8 +39,6 @@ export function normalizeForSearch(s: string): string {
     .toLowerCase();
 }
 
-
-
 export function matchesSearch(text: string, query: string): boolean {
   const q = normalizeForSearch(query.trim());
   if (!q) return true;
@@ -63,8 +57,6 @@ export function highlightRanges(text: string, query: string): Array<{ text: stri
   const chars = Array.from(text);
   if (!q || chars.length === 0) return [{ text, hit: false }];
 
-  
-
   let normalized = "";
   const boundaries: number[] = [0];
   for (const ch of chars) {
@@ -72,13 +64,12 @@ export function highlightRanges(text: string, query: string): Array<{ text: stri
     boundaries.push(normalized.length);
   }
 
-   
   const floorCharIndex = (pos: number): number => {
     let i = 0;
     while (i + 1 < boundaries.length && boundaries[i + 1]! <= pos) i++;
     return i;
   };
-   
+
   const ceilCharIndex = (pos: number): number => {
     let i = 0;
     while (i < boundaries.length && boundaries[i]! < pos) i++;
@@ -87,7 +78,7 @@ export function highlightRanges(text: string, query: string): Array<{ text: stri
 
   const segments: Array<{ text: string; hit: boolean }> = [];
   let charIdx = 0; // next original character index not yet emitted into a segment
-  let searchFrom = 0;  
+  let searchFrom = 0;
   for (;;) {
     const pos = normalized.indexOf(q, searchFrom);
     if (pos === -1) break;

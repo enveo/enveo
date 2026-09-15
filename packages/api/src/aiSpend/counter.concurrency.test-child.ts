@@ -19,62 +19,55 @@ export const SENTINEL = "__AI_SPEND_COUNTER_CHILD__";
 
 export type CounterChildOutput = {
   migration: {
-     
     rerunIdempotent: boolean;
-     
+
     dataPreserved: boolean;
   };
   lazyRow: {
-     
     oneRowAfterFirstCheck: boolean;
     /** A second check did not create another row. */
     stillOneRowAfterSecondCheck: boolean;
-     
+
     periodBoundsAreUtcMonth: boolean;
     firstCheckAllowed: boolean;
     recordedZero: boolean;
   };
   thresholds: {
-     
     oneBelowAllows: boolean;
-     
+
     exactThresholdDenies: boolean;
     aboveDenies: boolean;
-     
+
     retryAfterPositiveInt: boolean;
   };
   crossing: {
-     
     overshootRetained: boolean;
-     
+
     nextAttemptDenied: boolean;
   };
   concurrency: {
-     
     bothChecksAllowed: boolean;
     /** Both concurrent atomic increments are retained even though the sum exceeds $5. */
     bothIncrementsRetained: boolean;
-     
+
     distinctUsersIndependent: boolean;
   };
   durability: {
-     
     freshConnectionSeesTotal: boolean;
   };
   integrity: {
     /** A rolled-back foreign transaction cannot decrement the counter. */
     rollbackCannotDecrement: boolean;
-     
+
     negativeStoreRejected: boolean;
-     
+
     duplicatePeriodRejected: boolean;
-     
+
     negativeAmountRejected: boolean;
   };
   latePeriod: {
-     
     chargedIntoCheckedPeriod: boolean;
-     
+
     currentMonthUntouched: boolean;
   };
 };
@@ -118,14 +111,13 @@ async function main() {
     const rows = await pooled<{ spent: string }[]>`
       select spent_nano_usd::text as spent from ai_user_monthly_spend
       where policy = ${POLICY} and user_id = ${userId} and period_key = ${periodKey}`;
-    return BigInt(rows[0]?.spent ?? "-1");  
+    return BigInt(rows[0]?.spent ?? "-1");
   };
   const setSpent = async (userId: string, periodKey: string, v: bigint) => {
     await pooled`update ai_user_monthly_spend set spent_nano_usd = ${v.toString()}::bigint
       where policy = ${POLICY} and user_id = ${userId} and period_key = ${periodKey}`;
   };
 
-   
   const userA = await newUser("a");
   const first = await checkSpend({ policy: POLICY, userId: userA });
   // epoch ms via SQL — drizzle overrides the shared client's parsers, so timestamps arrive as strings
@@ -146,7 +138,6 @@ async function main() {
     Number(periodRow.end_ms) === expected.endMs;
   const currentKey = first.periodKey;
 
-   
   await setSpent(userA, currentKey, THRESHOLD - 1n);
   const oneBelow = await checkSpend({ policy: POLICY, userId: userA });
   await setSpent(userA, currentKey, THRESHOLD);
@@ -156,13 +147,11 @@ async function main() {
   const retryAfterPositiveInt =
     !exact.allowed && Number.isSafeInteger(exact.retryAfterSeconds) && exact.retryAfterSeconds >= 1 && exact.retryAfterSeconds <= 32 * 24 * 3600;
 
-   
   await setSpent(userA, currentKey, 4_000_000_000n);
   await recordSpend({ policy: POLICY, userId: userA, periodKey: currentKey, actualNanoUsd: 2_000_000_000n });
   const afterCross = await spentOf(userA, currentKey);
   const nextAttempt = await checkSpend({ policy: POLICY, userId: userA });
 
-   
   const userB = await newUser("b");
   const kb = (await checkSpend({ policy: POLICY, userId: userB })).periodKey;
   await setSpent(userB, kb, 3_000_000_000n);
@@ -182,14 +171,12 @@ async function main() {
   ]);
   const distinctUsersIndependent = (await spentOf(userC, ck.periodKey)) === 7n && (await spentOf(userD, dk.periodKey)) === 11n;
 
-   
   const independent = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
   const freshRows = await independent<{ spent: string }[]>`
     select spent_nano_usd::text as spent from ai_user_monthly_spend
     where policy = ${POLICY} and user_id = ${userB} and period_key = ${kb}`;
   const freshConnectionSeesTotal = BigInt(freshRows[0]?.spent ?? "-1") === 6_000_000_000n;
 
-   
   let rollbackCannotDecrement = false;
   await independent
     .begin(async (tx) => {
@@ -225,7 +212,6 @@ async function main() {
     negativeAmountRejected = true;
   }
 
-   
   const userE = await newUser("e");
   const nowKey = (await checkSpend({ policy: POLICY, userId: userE })).periodKey;
   const prev = new Date(Date.UTC(Number(nowKey.slice(0, 4)), Number(nowKey.slice(5, 7)) - 1, 1) - 1);

@@ -45,14 +45,11 @@ describe("durable import foreground and Activity view models", () => {
     expect([item("queued"), item("running")].map(canRemove)).toEqual([false, false]);
   });
   it("presents persisted phases in order and sends a waiting observer directly to review", () => {
-     
     const phases: ImportActivityItem["phase"][] = ["uploading", "queued", "extracting", "validating", "enriching", "reconciling"];
 
-     
     const presentations = phases.map((phase) => importProgressPresentation(item(phase === "queued" ? "queued" : "running", { phase })));
     const ready = importProgressPresentation(item("ready"));
 
-     
     expect(presentations.map((state) => state.message)).toEqual([
       "Uploading screenshots…",
       "Waiting to start…",
@@ -66,7 +63,6 @@ describe("durable import foreground and Activity view models", () => {
   });
 
   it("keeps background close distinct from explicit cancellation", async () => {
-     
     const events: string[] = [];
     const deps = {
       jobId: "job-running",
@@ -74,18 +70,15 @@ describe("durable import foreground and Activity view models", () => {
       cancel: async (id: string) => void events.push(`cancelled:${id}`),
     };
 
-     
     await runImportProgressAction("background", deps);
     expect(events).toEqual(["closed"]);
 
-     
     events.length = 0;
     await runImportProgressAction("cancel", deps);
     expect(events).toEqual(["cancelled:job-running", "closed"]);
   });
 
   it("deduplicates the merged activity list and groups attention and recent completion truthfully", () => {
-     
     const duplicateDraft = item("queued", { id: "same", source: "plain-draft", updatedAt: "2026-08-24T10:00:00.000Z" });
     const accepted = item("running", { id: "same", source: "plain", updatedAt: "2026-08-24T10:02:00.000Z" });
     const ready = item("ready", { id: "ready" });
@@ -94,10 +87,8 @@ describe("durable import foreground and Activity view models", () => {
     const cancelled = item("cancelled", { id: "cancelled" });
     const expired = item("completed", { id: "expired", expiresAt: "2026-08-23T00:00:00.000Z" });
 
-     
     const sections = activitySections([duplicateDraft, accepted, ready, failed, completed, cancelled, expired], new Date("2026-08-24T12:00:00.000Z"));
 
-     
     expect(sections.active.map(({ id, source }) => ({ id, source }))).toEqual([{ id: "same", source: "plain" }]);
     expect(sections.ready.map((job) => job.id)).toEqual(["ready"]);
     expect(sections.failed.map((job) => job.id)).toEqual(["failed"]);

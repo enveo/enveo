@@ -7,9 +7,6 @@ const DEVICE_PREFERENCES_KEY = "devicePreferences";
 export interface DevicePreferences {
   schemaVersion: 1;
   discreet: boolean;
-  
-
-
 
   themeModeOverride: ThemeMode | null;
   accentThemeOverride: AccentTheme | null;

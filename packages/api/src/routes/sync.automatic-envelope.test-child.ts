@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import type { ClientLedgerInput } from "@enveo/shared";
 
 export const SENTINEL = "__SYNC_AUTOMATIC_ENVELOPE__";

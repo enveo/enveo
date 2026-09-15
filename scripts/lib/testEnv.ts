@@ -15,26 +15,21 @@ export type TestMode = "default" | "db";
 
 export type EnvRecord = Readonly<Record<string, string | undefined>>;
 
- 
 export type DbTarget = Readonly<{
   host: string;
   port: string;
   database: string;
   /** `host:port/database` for HUMANS — never a user name, never a password, never the full URL. */
   redacted: string;
-  
-
-
-
 
   key: string;
 }>;
 
 export type TestEnvPlan = Readonly<{
   mode: TestMode;
-   
+
   overrides: Readonly<Record<string, string>>;
-   
+
   banner: string;
 }>;
 
@@ -76,7 +71,6 @@ export const DEAD_DB_URL = "postgres://unused:unused@127.0.0.1:1/enveo_no_such_d
  */
 export const DEFAULT_APP_DB_URL = "postgres://enveo:enveo@localhost:5432/enveo";
 
- 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", "::ffff:127.0.0.1"]);
 
 function canonicalHost(host: string): string {
@@ -208,7 +202,7 @@ export function planTestEnv(mode: TestMode, env: EnvRecord): TestEnvResult {
       mode,
       overrides: {
         OPENAI_API_KEY: "",
-        AI_SAFETY_IDENTIFIER_SECRET: "",  
+        AI_SAFETY_IDENTIFIER_SECRET: "",
         TEST_DATABASE_URL: testUrl,
         DATABASE_URL: DEAD_DB_URL,
         [RUNNER_MARKER]: RUNNER_MARKER_VALUE,

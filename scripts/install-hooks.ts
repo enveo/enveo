@@ -25,7 +25,6 @@ function signalExitCode(signal: NodeJS.Signals): number {
 }
 
 async function main(): Promise<number> {
-   
   if (!existsSync(join(process.cwd(), ".git"))) {
     console.log("hooks: no .git here (production/container install) — skipping lefthook install");
     return 0;

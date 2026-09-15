@@ -1,8 +1,3 @@
-
-
-
-
-
 import { describe, expect, it } from "bun:test";
 import type { ImportProposal } from "@enveo/shared";
 import { type ApplyItem, applyInput, findTransferError, legacyItemsFromRecognition, planImportDryRun } from "./import";
@@ -87,18 +82,18 @@ describe("import/apply — extended items", () => {
       error: "transfer_invalid",
       index: 1,
     });
-     
+
     expect(findTransferError([baseItem({ type: "transfer", toAccountId: ACC_A })], ACC_A)).toEqual({
       error: "transfer_invalid",
       index: 0,
     });
-     
+
     expect(findTransferError([baseItem({ type: "transfer", accountId: ACC_B, toAccountId: ACC_B })], ACC_A)).toEqual({ error: "transfer_invalid", index: 0 });
   });
 
   it("dedupe as before: editing the AMOUNT drops out of the strong key (date+amount+source_ref)", () => {
     const idx = buildDupIndex([{ date: "2031-04-16", amount: 2785, sourceRef: "MAPLE HARBOR*MEMBERSHIP" }]);
-     
+
     expect(classifyDup({ date: "2031-04-16", amount: 2785, rawPlace: "MAPLE HARBOR*MEMBERSHIP" }, idx)).toBe("exists");
     // changed amount → NO LONGER a duplicate (not even probable — different date+amount)
     expect(classifyDup({ date: "2031-04-16", amount: 9000, rawPlace: "MAPLE HARBOR*MEMBERSHIP" }, idx)).toBe("new");
@@ -195,7 +190,7 @@ describe("import/apply — the per-request budget assertion", () => {
   });
 
   it("the apply body accepts an optional budgetId and rejects a non-uuid", () => {
-    expect(applyInput.safeParse(body()).success).toBe(true);  
+    expect(applyInput.safeParse(body()).success).toBe(true);
     expect(applyInput.safeParse(body({ budgetId: BUDGET_A })).success).toBe(true);
     expect(applyInput.safeParse(body({ budgetId: "not-a-uuid" })).success).toBe(false);
   });

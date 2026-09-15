@@ -76,7 +76,7 @@ export function AiSection() {
   const save = () => {
     const value = key.trim();
     if (!value) return;
-     
+
     setKey("");
     void runAction("saving", () => provider.saveCredential(value), t("OpenAI key saved securely."));
   };

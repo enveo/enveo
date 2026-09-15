@@ -31,15 +31,15 @@ export interface PlainImportUploadDraftInput {
   budgetId: string;
   accountId: string;
   locale: AiLocale;
-   
+
   images: string[];
 }
 
 export interface PlainImportUploadDraft extends PlainImportUploadDraftInput {
   requestHash: string;
-   
+
   uploadAttemptedAt: string | null;
-   
+
   cancelRequestedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -55,13 +55,13 @@ export interface StoredE2eeImportJob extends ImportJobProgress {
   locale: AiLocale;
   tier: "e2ee";
   epoch: number;
-   
+
   inputCiphertext: string | null;
-   
+
   chunkCiphertext: string | null;
   checkpointCiphertext: string | null;
   resultCiphertext: string | null;
-   
+
   checkpointRevision: number;
   proposalCount: number;
   screenshots: ImportJobScreenshotProgress;
@@ -199,9 +199,6 @@ async function sha256Hex(value: string): Promise<string> {
   return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-
-
-
 async function requestHash(input: PlainImportUploadDraftInput): Promise<string> {
   return sha256Hex(JSON.stringify(["enveo-import-upload-draft", 1, input.id, input.budgetId, input.accountId, input.locale, input.images]));
 }
@@ -288,7 +285,6 @@ function normalizedPartialFailure(value: unknown): ImportJobPartialFailure | nul
     : null;
 }
 
- 
 function normalizedJob(job: StoredE2eeImportJob): StoredE2eeImportJob {
   return {
     ...job,

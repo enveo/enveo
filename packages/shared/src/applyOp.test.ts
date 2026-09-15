@@ -6,10 +6,8 @@ import { acc, alloc, asClientLedger, deepFreeze, env, grp, interpret, ledgerArb,
 import type { OpKind, OpPayload } from "./ops";
 import type { ClientLedger, Transaction } from "./types";
 
- 
 const apply = <K extends OpKind>(l: ClientLedger, kind: K, payload: OpPayload<K>) => applyOp(deepFreeze(l), mkOp(kind, payload));
 
- 
 function base(): ClientLedger {
   const g1 = grp({ id: "G1" });
   const g2 = grp({ id: "G2" });
@@ -29,8 +27,6 @@ function base(): ClientLedger {
   };
 }
 
- 
-
 describe("applyOp: txn.create", () => {
   it("appends a normalized transaction with server defaults at the end", () => {
     const l = { ...base(), transactions: [tx({ id: "T0", accountId: "A1" })] };
@@ -44,7 +40,7 @@ describe("applyOp: txn.create", () => {
       sourceRef: "LINDEN MARKET 123 DENVER",
       createdAt: "2026-06-05T10:00:00.000Z",
     });
-    expect(next.transactions.map((t) => t.id)).toEqual(["T0", "T1"]);  
+    expect(next.transactions.map((t) => t.id)).toEqual(["T0", "T1"]);
     expect(next.transactions[1]).toEqual({
       id: "T1",
       type: "expense",
@@ -52,7 +48,7 @@ describe("applyOp: txn.create", () => {
       toAccountId: null,
       amount: 30_00,
       date: "2026-06-05",
-      isRefund: false,  
+      isRefund: false,
       envelopeId: "E1",
       placeId: null,
       categoryId: null,
@@ -75,14 +71,14 @@ describe("applyOp: txn.create", () => {
       toAccountId: "A2",
       amount: 10_00,
       date: "2026-06-05",
-      envelopeId: "E1",  
+      envelopeId: "E1",
       categoryId: "C1",
       createdAt: "2026-06-05T10:00:00.000Z",
     });
     const t = next.transactions[0]!;
     expect(t.toAccountId).toBe("A2");
     expect(t.envelopeId).toBeNull();
-     
+
     expect(t.categoryId).toBe("C1");
   });
 
@@ -93,7 +89,7 @@ describe("applyOp: txn.create", () => {
       accountId: "A1",
       amount: 50_00,
       date: "2026-06-05",
-      envelopeId: "E1",  
+      envelopeId: "E1",
       categoryId: "C1",
       items: [
         { envelopeId: "E1", categoryId: "C1", amount: 30_00 },
@@ -121,8 +117,6 @@ describe("applyOp: txn.create", () => {
     expect(next.transactions[0]!.createdAt).toBe(MISSING_CREATED_AT);
   });
 });
-
- 
 
 describe("applyOp: txn.update", () => {
   const existing = (): Transaction =>
@@ -161,11 +155,11 @@ describe("applyOp: txn.update", () => {
       categoryId: null,
       name: null,
       note: null, // full replacement — a field not sent = null
-      tag: "LINDEN MARKET",  
-      sourceRef: "LINDEN MARKET 123 DENVER",  
+      tag: "LINDEN MARKET",
+      sourceRef: "LINDEN MARKET 123 DENVER",
       allocationFromEnvelopeId: null,
       allocationToEnvelopeId: null,
-      items: [],  
+      items: [],
       createdAt: "2026-06-01T08:00:00.000Z", // NEVER changed
     });
   });
@@ -270,7 +264,7 @@ describe("applyOp: txn.update", () => {
       { id: "item-local:T1:0", envelopeId: "E2", categoryId: null, amount: 20_00 },
       { id: "item-local:T1:1", envelopeId: "E1", categoryId: "C1", amount: 30_00 },
     ]);
-    expect(next.transactions[0]!.envelopeId).toBeNull();  
+    expect(next.transactions[0]!.envelopeId).toBeNull();
   });
 
   it("an update to transfer normalizes like create", () => {
@@ -288,7 +282,7 @@ describe("applyOp: txn.update", () => {
     const t = next.transactions[0]!;
     expect(t.toAccountId).toBe("A2");
     expect(t.envelopeId).toBeNull();
-     
+
     expect(t.categoryId).toBe("C1");
   });
 
@@ -309,8 +303,6 @@ describe("applyOp: txn.update", () => {
   });
 });
 
- 
-
 describe("applyOp: txn.delete", () => {
   it("removes the row; missing row = no-op (idempotent)", () => {
     const l = { ...base(), transactions: [tx({ id: "T1", accountId: "A1" })] };
@@ -320,8 +312,6 @@ describe("applyOp: txn.delete", () => {
     expect(applyOp(frozen, mkOp("txn.delete", { id: "T1" }))).toBe(frozen);
   });
 });
-
- 
 
 describe("applyOp: alloc.set", () => {
   it("insert: synthetic id from the natural key", () => {
@@ -346,13 +336,11 @@ describe("applyOp: alloc.set", () => {
       month: "2026-06",
       amount: 99_00,
     });
-     
+
     const other = apply(l, "alloc.set", { envelopeId: "E1", month: "2026-07", amount: 10_00 });
     expect(other.allocations).toHaveLength(2);
   });
 });
-
- 
 
 describe("applyOp: account.*", () => {
   it("create: DB defaults for omitted fields", () => {
@@ -376,9 +364,9 @@ describe("applyOp: account.*", () => {
     const a = next.accounts[0]!;
     expect(a.name).toBe("Updated");
     expect(a.sort).toBe(5);
-    expect(a.initialBalance).toBe(100_00);  
+    expect(a.initialBalance).toBe(100_00);
     expect(a.onBudget).toBe(true);
-     
+
     const frozen = deepFreeze(next);
     expect(applyOp(frozen, mkOp("account.update", { id: "MISSING", name: "x" }))).toBe(frozen);
   });
@@ -394,7 +382,7 @@ describe("applyOp: account.*", () => {
     };
     const next = apply(l, "account.delete", { id: "A1" });
     expect(next.accounts.map((a) => a.id)).toEqual(["A2"]);
-    expect(next.transactions.map((t) => t.id)).toEqual(["T3"]);  
+    expect(next.transactions.map((t) => t.id)).toEqual(["T3"]);
   });
 
   it("delete removes transactions carrying automatic allocation effects with their account", () => {
@@ -413,8 +401,6 @@ describe("applyOp: account.*", () => {
     expect(next.transactions.map((t) => t.id)).toEqual(["T2"]);
   });
 });
-
- 
 
 describe("applyOp: envelope.*", () => {
   it("create: DB defaults for omitted fields", () => {
@@ -470,16 +456,14 @@ describe("applyOp: envelope.*", () => {
     expect(next.allocations.map((a) => a.envelopeId)).toEqual(["E2"]); // allocation cascade
     expect(next.accounts.map((account) => account.automaticEnvelopeId)).toEqual([null, "E2"]);
     const [t1, t2, t3] = next.transactions;
-    expect(t1!.envelopeId).toBeNull();  
+    expect(t1!.envelopeId).toBeNull();
     expect(t1!.allocationFromEnvelopeId).toBeNull();
     expect(t1!.allocationToEnvelopeId).toBeNull();
     expect(t2!.items).toEqual([{ id: "i2", envelopeId: "E2", categoryId: null, amount: 20_00 }]);
-    expect(t2!.amount).toBe(50_00);  
-    expect(t3).toBe(l.transactions[2]!);  
+    expect(t2!.amount).toBe(50_00);
+    expect(t3).toBe(l.transactions[2]!);
   });
 });
-
- 
 
 describe("applyOp: group.*", () => {
   it("create with the sort=0 default and a partial update", () => {
@@ -493,7 +477,7 @@ describe("applyOp: group.*", () => {
 
   it("delete: envelope.delete effects for all envelopes of the group, then the group", () => {
     const l: ClientLedger = {
-      ...base(),  
+      ...base(),
       accounts: base().accounts.map((account) => ({ ...account, automaticEnvelopeId: account.id === "A1" ? "E1" : "E3" })),
       allocations: [alloc("E1", "2026-06", 50_00), alloc("E3", "2026-06", 30_00)],
       transactions: [
@@ -518,8 +502,6 @@ describe("applyOp: group.*", () => {
     expect(next.transactions[1]!.items).toEqual([{ id: "i2", envelopeId: "E3", categoryId: null, amount: 20_00 }]);
   });
 });
-
- 
 
 describe("applyOp: category/place create", () => {
   it("appends dictionary rows, visible in entry until archived", () => {
@@ -550,8 +532,6 @@ describe("applyOp: dictionary upkeep", () => {
   });
 
   it("DEGRADES a delete to an archive once something references the entry", () => {
-    
-
     let l = apply(base(), "place.create", { id: "P9", name: "Prairie Fuel" });
     l = apply(l, "txn.create", { id: "T9", type: "expense", accountId: "A1", amount: 1000, date: "2026-08-19", placeId: "P9" });
 
@@ -596,7 +576,7 @@ describe("applyOp: create on an existing id is a no-op", () => {
     };
     const once = apply(base(), "txn.create", payload);
     const twice = apply(once, "txn.create", payload);
-    expect(twice).toBe(once);  
+    expect(twice).toBe(once);
     expect(twice.transactions.map((t) => t.id)).toEqual(["T1"]);
   });
 
@@ -625,8 +605,6 @@ describe("applyOp: create on an existing id is a no-op", () => {
   });
 });
 
- 
-
 describe("applyOp: unknown kind", () => {
   it("unknown op kind is a no-op (ops queued by an older/retired app version)", () => {
     const l = base();
@@ -639,12 +617,10 @@ describe("applyOp: unknown kind", () => {
   });
 });
 
- 
-
 describe("applyOp: input immutability", () => {
   it("touched collections are fresh arrays, the input unchanged", () => {
     const l = { ...base(), transactions: [tx({ id: "T1", accountId: "A1" })] };
-    deepFreeze(l);  
+    deepFreeze(l);
     const next = applyOp(
       l,
       mkOp("txn.create", {
@@ -660,7 +636,7 @@ describe("applyOp: input immutability", () => {
     expect(next.transactions).not.toBe(l.transactions);
     expect(l.transactions).toHaveLength(1);
     expect(next.transactions).toHaveLength(2);
-    expect(next.accounts).toBe(l.accounts);  
+    expect(next.accounts).toBe(l.accounts);
   });
 });
 
@@ -676,7 +652,7 @@ describe("applyOp: invariant §2.3 (property-based)", () => {
         for (const s of specs) {
           const op = interpret(ledger, s, nextId);
           if (!op) continue;
-          ledger = applyOp(deepFreeze(ledger), op);  
+          ledger = applyOp(deepFreeze(ledger), op);
           for (const m of MONTHS) {
             const st = computeBudgetState(ledger, m);
             expect(budgetedPlusToBeBudgeted(st)).toBe(totalOnBudget(st));
@@ -703,7 +679,7 @@ describe("applyOp: dictionary merge", () => {
     ]);
     expect(l.transactions.find((t) => t.id === "T1")?.placeId).toBe("P2");
     expect(l.transactions.find((t) => t.id === "T2")?.placeId).toBe("P2");
-    expect(l.transactions.find((t) => t.id === "T1")?.amount).toBe(1000);  
+    expect(l.transactions.find((t) => t.id === "T1")?.amount).toBe(1000);
   });
 
   it("repoints a category inside SPLIT ITEMS, not just the parent", () => {

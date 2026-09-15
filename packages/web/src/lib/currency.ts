@@ -18,15 +18,7 @@ export { CURRENCY_DIGITS, SUPPORTED_CURRENCIES, type SupportedCurrency } from "@
  * No conversion ever happens: the currency is a DISPLAY unit (formatMoney/currencySymbol).
  */
 
- 
 export const FALLBACK_CURRENCY: SupportedCurrency = "USD";
-
-
-
-
-
-
-
 
 export const UNSET_BUDGET_CURRENCIES: readonly string[] = ["EUR", "PLN"];
 
@@ -36,7 +28,6 @@ export const UNSET_BUDGET_CURRENCIES: readonly string[] = ["EUR", "PLN"];
  * closest supported unit (European ones → EUR); everything unmapped falls back to USD.
  */
 const REGION_CURRENCY: Record<string, SupportedCurrency> = {
-   
   AD: "EUR",
   AT: "EUR",
   BE: "EUR",
@@ -72,7 +63,7 @@ const REGION_CURRENCY: Record<string, SupportedCurrency> = {
   IS: "EUR",
   MD: "EUR",
   MK: "EUR",
-   
+
   PL: "PLN",
   CZ: "CZK",
   SE: "SEK",
@@ -89,14 +80,14 @@ const REGION_CURRENCY: Record<string, SupportedCurrency> = {
   GG: "GBP",
   IM: "GBP",
   JE: "GBP",
-   
+
   US: "USD",
   CA: "CAD",
   BR: "BRL",
   MX: "MXN",
   AR: "ARS",
   PE: "PEN",
-   
+
   AU: "AUD",
   NZ: "NZD",
   IN: "INR",
@@ -105,7 +96,7 @@ const REGION_CURRENCY: Record<string, SupportedCurrency> = {
   MY: "MYR",
   TH: "THB",
   PH: "PHP",
-   
+
   IL: "ILS",
   PS: "ILS",
   AE: "AED",
@@ -113,32 +104,21 @@ const REGION_CURRENCY: Record<string, SupportedCurrency> = {
   ZA: "ZAR",
 };
 
-
-
-
-
 function regionOf(tag: string): string | null {
   const clean = tag.trim();
   if (!clean) return null;
   try {
     const region = new Intl.Locale(clean).maximize().region;
     if (region) return region.toUpperCase();
-  } catch {
-     
-  }
+  } catch {}
   const m = /^[a-z]{2,3}[-_]([a-z]{2})(?:[-_]|$)/i.exec(clean);
   return m ? m[1]!.toUpperCase() : null;
 }
 
- 
 export function currencyForLocale(tag: string | null | undefined): SupportedCurrency {
   const region = tag ? regionOf(tag) : null;
   return (region && REGION_CURRENCY[region]) || FALLBACK_CURRENCY;
 }
-
-
-
-
 
 export function currencyForLocales(tags: readonly string[]): SupportedCurrency {
   for (const tag of tags) {
@@ -149,7 +129,6 @@ export function currencyForLocales(tags: readonly string[]): SupportedCurrency {
   return FALLBACK_CURRENCY;
 }
 
- 
 export function browserLocales(): string[] {
   if (typeof navigator === "undefined") return [];
   const list = navigator.languages;

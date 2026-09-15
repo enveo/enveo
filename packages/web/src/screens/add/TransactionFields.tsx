@@ -5,9 +5,6 @@ import { useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { font, P } from "../../lib/theme";
 
-
-
-
 export function TransactionFields({
   name,
   note,
@@ -53,8 +50,7 @@ export function TransactionFields({
         </div>
       </div>
 
-      {
-}
+      {}
       {note && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: `0 ${P}px 4px` }}>
           <Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" size={14} color={C.mute} />

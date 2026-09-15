@@ -10,13 +10,12 @@ export interface AddDraft {
   item: ImportReviewDraftItem;
   accountId: string;
   initial?: EditedImportItem;
-   
+
   automaticEnvelopeDefault?: boolean;
   onSave: (e: EditedImportItem, meta: { automaticEnvelopeDefault: boolean }) => void;
   onCancel: () => void;
 }
 
- 
 export interface SplitItem {
   envelopeId: string;
   amount: number;

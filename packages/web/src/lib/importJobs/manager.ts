@@ -152,7 +152,6 @@ export class ImportJobManager {
           scope,
           activity,
           capability,
-          
 
           windowTarget: null,
           documentTarget: null,
@@ -302,7 +301,6 @@ export class ImportJobManager {
     this.windowTarget?.addEventListener("online", this.wake);
     this.windowTarget?.addEventListener("focus", this.wake);
     this.documentTarget?.addEventListener("visibilitychange", this.wake);
-    
 
     this.wakeTimer = this.scheduleInterval(this.wakeLocal, E2EE_WAKE_INTERVAL_MS);
     this.handleState();

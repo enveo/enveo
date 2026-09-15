@@ -1,17 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -28,7 +14,6 @@ if (TEST_URL && TEST_URL === process.env.DATABASE_URL) {
 const CLIENT_ID = "idempotency-test";
 const KIND = "txn.create";
 
- 
 const connect = (url: string) => {
   const client = postgres(url, { max: 2, onnotice: () => {} });
   return { client, db: drizzle(client, { schema: s }) };
@@ -101,7 +86,7 @@ describe.skipIf(!TEST_URL)("push idempotency guard (per budget)", () => {
       }),
     ).rejects.toThrow("domain rejection");
     expect(await opsFor(opId)).toHaveLength(0);
-     
+
     expect(await claimOp(db, { opId, budgetId: budgetA, clientId: CLIENT_ID, kind: KIND })).toBe(true);
   });
 });

@@ -9,7 +9,6 @@
  */
 import { describe, expect, test } from "bun:test";
 
- 
 function dayDeltaPct(total: number, avg: number): number | null {
   return avg > 0 ? (total - avg) / avg : null;
 }
@@ -30,6 +29,6 @@ describe("dayDeltaPct", () => {
     expect(pct).not.toBeNull();
     expect(Number.isNaN(pct)).toBe(false);
     expect(pct).toBeCloseTo((-80_00 - 42_00) / 42_00, 6);
-    expect(pct!).toBeLessThan(-1);  
+    expect(pct!).toBeLessThan(-1);
   });
 });

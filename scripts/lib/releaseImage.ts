@@ -27,11 +27,10 @@ export type IndexManifest = Readonly<{
 
 export type ImageIndex = Readonly<{
   manifests?: readonly IndexManifest[];
-   
+
   annotations?: Readonly<Record<string, string>>;
 }>;
 
- 
 export type AnnotationSource = Readonly<{
   where: string;
   annotations: Readonly<Record<string, string>> | undefined;
@@ -39,11 +38,11 @@ export type AnnotationSource = Readonly<{
 
 export type IdentityExpectations = Readonly<{
   platforms: readonly string[];
-   
+
   revision: string;
-   
+
   version: string;
-   
+
   source: string;
 }>;
 
@@ -54,13 +53,11 @@ const ATTESTATION_SUBJECT = "vnd.docker.reference.digest";
 const isAttestation = (manifest: IndexManifest): boolean =>
   manifest.annotations?.[ATTESTATION_TYPE] === "attestation-manifest" || manifest.platform?.architecture === "unknown";
 
- 
 const platformOf = (manifest: IndexManifest): string =>
   [manifest.platform?.os, manifest.platform?.architecture, manifest.platform?.variant]
     .filter((part): part is string => part !== undefined && part !== "")
     .join("/");
 
- 
 export type RunnableManifest = Readonly<{ platform: string; digest: string }>;
 
 /**
@@ -76,17 +73,9 @@ export function runnableManifests(index: ImageIndex): RunnableManifest[] {
   return (index.manifests ?? []).filter((m) => !isAttestation(m)).map((m) => ({ platform: platformOf(m), digest: m.digest ?? "" }));
 }
 
- 
 export function runnablePlatforms(index: ImageIndex): string[] {
   return runnableManifests(index).map((m) => m.platform);
 }
-
-
-
-
-
-
-
 
 function labelsByPlatform(imageJson: unknown, platforms: readonly string[]): Map<string, Record<string, string> | null> {
   const byPlatform = new Map<string, Record<string, string> | null>();
@@ -105,7 +94,6 @@ function labelsByPlatform(imageJson: unknown, platforms: readonly string[]): Map
   return byPlatform;
 }
 
- 
 export function checkLabels(imageJson: unknown, expected: IdentityExpectations): string[] {
   const violations: string[] = [];
   const wanted: ReadonlyArray<readonly [string, string]> = [

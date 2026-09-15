@@ -62,7 +62,6 @@ const base = {
   historyRecords: [],
 } satisfies Partial<ImportRecognitionPipelineInput>;
 
- 
 const extractAnswer = (request: ChatRequest, rowsPerImage: (imageIndex: number) => Array<ReturnType<typeof modelRow>>) => {
   const content = request.messages[1]!.content as Array<Record<string, unknown>>;
   const count = content.filter((part) => part.type === "image_url").length;
@@ -71,7 +70,6 @@ const extractAnswer = (request: ChatRequest, rowsPerImage: (imageIndex: number) 
 
 describe("chunked cycle one", () => {
   it("reads eight screenshots as two parallel windows and merges them in screenshot order", async () => {
-     
     const started: number[] = [];
     let inFlight = 0;
     let peak = 0;
@@ -126,9 +124,6 @@ describe("chunked cycle one", () => {
 describe("seam between windows", () => {
   const overlapping = (request: ChatRequest, meta: ImportRecognitionChatMeta | undefined) =>
     extractAnswer(request, (imageIndex) => {
-      
-
-
       if (meta?.stage === "extract" && meta.chunk === 0 && imageIndex === 5) return [modelRow("last", 5, { rawTextLines: ["CLOVER MARKET C1234 DENV"] })];
       if (meta?.stage === "extract" && meta.chunk === 1 && imageIndex === 0) return [modelRow("ctx", 0, { rawTextLines: ["CLOVER MARKET C1234 DENV"] })];
       if (meta?.stage === "extract" && meta.chunk === 1 && imageIndex === 1) {
@@ -162,7 +157,7 @@ describe("seam between windows", () => {
     ]);
     const later = result.rows.find((row) => row.rowId === "c1:first")!;
     expect(later.relation).toEqual({ kind: "duplicate_of", rowId: "c0:last" });
-     
+
     const identical = result.proposals.find((proposal) => proposal.rowId === "c1:same")!;
     expect(identical.duplicateStatus).toBe("exists");
     expect(identical.selected).toBe(false);
@@ -234,7 +229,6 @@ describe("durable window resume and failure", () => {
     const chunkCalls: number[] = [];
     const stored: number[] = [];
     let failedChunks: number[] | null = null;
-    
 
     const result = await runImportRecognitionPipeline({
       ...base,

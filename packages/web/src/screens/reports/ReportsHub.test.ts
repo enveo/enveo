@@ -1,13 +1,5 @@
-
-
-
-
-
-
 import { describe, expect, test } from "bun:test";
 import { netWorthDeltaPct } from "./ReportsHub";
-
-
 
 function points(...totals: number[]): { month: string; total: number }[] {
   return totals.map((total, i) => ({ month: `2026-${String(i + 1).padStart(2, "0")}`, total }));

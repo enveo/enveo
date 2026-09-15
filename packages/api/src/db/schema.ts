@@ -21,7 +21,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
- 
 const money = (name: string) => bigint(name, { mode: "number" });
 const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({
   dataType: () => "bytea",
@@ -59,7 +58,6 @@ export const accountPreferences = pgTable(
   }),
 );
 
- 
 export const authSessions = pgTable("auth_sessions", {
   id: uuid("id").primaryKey(),
   userId: uuid("user_id")
@@ -92,7 +90,6 @@ export const authAccounts = pgTable("auth_accounts", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
 
- 
 export const authVerifications = pgTable("auth_verifications", {
   id: uuid("id").primaryKey(),
   identifier: text("identifier").notNull(),
@@ -110,14 +107,13 @@ export const budgets = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    
 
     currency: text("currency").notNull().default("EUR"),
-     
+
     tier: text("tier").notNull().default("plain"),
     /** DEK wrapped with the KEK (client-side) — the server never sees the key in plaintext. */
     wrappedDek: text("wrapped_dek"),
-     
+
     kdfParams: text("kdf_params"),
     /** Encryption epoch — bumped on enable/disable/upgrade; guards sync-channel compatibility. */
     epoch: integer("epoch").notNull().default(0),
@@ -228,11 +224,11 @@ export const importJobs = pgTable(
     retryAt: timestamp("retry_at", { withTimezone: true, mode: "date" }),
     appliedCount: integer("applied_count").notNull().default(0),
     skippedCount: integer("skipped_count").notNull().default(0),
-     
+
     screenshotTotal: integer("screenshot_total").notNull().default(0),
     screenshotsRead: integer("screenshots_read").notNull().default(0),
     screenshotsFailed: integer("screenshots_failed").notNull().default(0),
-     
+
     partialRetryJobId: uuid("partial_retry_job_id").references((): AnyPgColumn => importJobs.id, { onDelete: "set null" }),
     partialImageCount: integer("partial_image_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
@@ -404,7 +400,7 @@ export const transactions = pgTable(
     allocationToEnvelopeId: uuid("allocation_to_envelope_id").references(() => envelopes.id, { onDelete: "set null" }),
     placeId: uuid("place_id").references(() => places.id, { onDelete: "set null" }),
     categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
-     
+
     name: text("name"),
     note: text("note"),
     // normalized merchant tag (e.g. "LINDEN MARKET") — idempotency key of screenshot imports
@@ -493,7 +489,6 @@ export const syncOps = pgTable(
   }),
 );
 
- 
 export const e2eeOps = pgTable(
   "e2ee_ops",
   {
@@ -511,7 +506,6 @@ export const e2eeOps = pgTable(
   }),
 );
 
- 
 export const e2eeSnapshots = pgTable("e2ee_snapshots", {
   budgetId: uuid("budget_id")
     .primaryKey()
@@ -560,7 +554,7 @@ export const allocations = pgTable(
     envelopeId: uuid("envelope_id")
       .notNull()
       .references(() => envelopes.id, { onDelete: "cascade" }),
-    month: text("month").notNull(),  
+    month: text("month").notNull(),
     amount: money("amount").notNull().default(0),
   },
   (t) => ({

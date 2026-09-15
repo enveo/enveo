@@ -152,8 +152,6 @@ describe("scoreImportRecognition", () => {
   });
 
   test("relation recall keeps the truth-derived denominator when the model omits every relation", () => {
-    
-
     const expected = [expectedRow(), expectedRow({ id: "fx", relation: { kind: "fx_for", rowId: "purchase" }, expectedProposal: null })];
     const actual = [actualRow(), actualRow({ id: "fx", relation: null, proposal: null })];
 
@@ -798,8 +796,6 @@ describe("recognition evaluator adapters", () => {
   });
 
   test("candidate result validation fails closed before scoring malformed dynamic output", async () => {
-    
-
     const evaluator = (await import("../evaluate-import-recognition")) as Record<string, unknown>;
     expect(typeof evaluator.parseCandidateResult).toBe("function");
     const parseCandidateResult = evaluator.parseCandidateResult as (value: unknown, imageCount: number) => unknown;

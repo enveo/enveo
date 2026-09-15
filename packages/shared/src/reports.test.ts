@@ -40,7 +40,7 @@ describe("computeNetWorthSeries", () => {
     const series = computeNetWorthSeries(l, "2026-07", 12);
     expect(series.length).toBe(12);
     expect(series[series.length - 1]!.month).toBe("2026-07");
-     
+
     expect(series[series.length - 1]!.total).toBe(960_00);
   });
 
@@ -83,7 +83,7 @@ describe("computeSpendingByDimension", () => {
     expect(rows.map((r) => [r.name, r.amount])).toEqual([
       ["Jedzenie", 200_00],
       ["Auto", 100_00],
-    ]);  
+    ]);
     expect(rows[0]!.pct).toBeCloseTo(200_00 / 300_00, 5);
   });
 
@@ -111,7 +111,7 @@ describe("isSavings field", () => {
     const l1 = applyOp(base, create);
     expect(l1.envelopes[0]!.isSavings).toBe(true);
     const create2: SyncOp = { opId: "o2", kind: "envelope.create", payload: { id: "S2", groupId: g.id, name: "Jedzenie" } as never };
-    expect(applyOp(l1, create2).envelopes[1]!.isSavings).toBe(false);  
+    expect(applyOp(l1, create2).envelopes[1]!.isSavings).toBe(false);
     const off: SyncOp = { opId: "o3", kind: "envelope.update", payload: { id: "S1", isSavings: false } as never };
     expect(applyOp(l1, off).envelopes[0]!.isSavings).toBe(false);
   });
@@ -136,7 +136,7 @@ describe("computeCashflowSeries", () => {
     });
     const jul = computeCashflowSeries(l, "2026-07", 12).at(-1)!;
     expect(jul.income).toBe(500_00);
-    expect(jul.expense).toBe(150_00);  
+    expect(jul.expense).toBe(150_00);
     expect(jul.net).toBe(350_00);
   });
 
@@ -153,12 +153,12 @@ describe("computeCashflowSeries", () => {
       transactions: [
         tx({ type: "income", accountId: "A", amount: 1000_00, date: "2026-07-03" }),
         tx({ type: "expense", accountId: "A", envelopeId: "N", amount: 200_00, date: "2026-07-05" }),
-        tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 500_00, date: "2026-07-06" }),  
+        tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 500_00, date: "2026-07-06" }),
       ],
     });
     const jul = computeCashflowSeries(l, "2026-07", 12).at(-1)!;
-    expect(jul.expense).toBe(200_00);  
-    expect(jul.net).toBe(800_00);  
+    expect(jul.expense).toBe(200_00);
+    expect(jul.net).toBe(800_00);
   });
 });
 
@@ -180,7 +180,7 @@ describe("computeSpendingByDimension savings exclusion", () => {
     });
     l.categories = [{ id: "C1", name: "Zakupy" }];
     const rows = computeSpendingByDimension(l, "2026-07", "2026-07", "category");
-    expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(100_00);  
+    expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(100_00);
     const byEnv = computeSpendingByDimension(l, "2026-07", "2026-07", "envelope");
     expect(byEnv.some((r) => r.name === "Obligacje")).toBe(false);
   });
@@ -200,19 +200,19 @@ describe("computeDailySpending", () => {
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "N", amount: 100_00, date: "2026-07-05" }),
         tx({ type: "expense", accountId: "A", envelopeId: "N", amount: 30_00, isRefund: true, date: "2026-07-05" }),
-        tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 500_00, date: "2026-07-10" }),  
-        tx({ type: "income", accountId: "A", amount: 999_00, date: "2026-07-15" }),  
-        tx({ type: "transfer", accountId: "A", toAccountId: "A", amount: 50_00, date: "2026-07-20" }),  
+        tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 500_00, date: "2026-07-10" }),
+        tx({ type: "income", accountId: "A", amount: 999_00, date: "2026-07-15" }),
+        tx({ type: "transfer", accountId: "A", toAccountId: "A", amount: 50_00, date: "2026-07-20" }),
       ],
     });
     const points = computeDailySpending(l, "2026-07");
-    expect(points.length).toBe(31);  
+    expect(points.length).toBe(31);
     expect(points[0]!.date).toBe("2026-07-01");
     expect(points[30]!.date).toBe("2026-07-31");
-    expect(points.find((p) => p.date === "2026-07-05")!.total).toBe(70_00);  
-    expect(points.find((p) => p.date === "2026-07-10")!.total).toBe(0);  
-    expect(points.find((p) => p.date === "2026-07-15")!.total).toBe(0);  
-    expect(points.find((p) => p.date === "2026-07-01")!.total).toBe(0);  
+    expect(points.find((p) => p.date === "2026-07-05")!.total).toBe(70_00);
+    expect(points.find((p) => p.date === "2026-07-10")!.total).toBe(0);
+    expect(points.find((p) => p.date === "2026-07-15")!.total).toBe(0);
+    expect(points.find((p) => p.date === "2026-07-01")!.total).toBe(0);
   });
 
   it("returns the correct day count for 28/29 (leap)/30/31-day months", () => {
@@ -221,7 +221,7 @@ describe("computeDailySpending", () => {
     const a = acc({ id: "A" });
     const l = asClientLedger({ accounts: [a], groups: [g], envelopes: [e], allocations: [], transactions: [] });
     expect(computeDailySpending(l, "2026-02").length).toBe(28); // 2026 — not a leap year
-    expect(computeDailySpending(l, "2028-02").length).toBe(29);  
+    expect(computeDailySpending(l, "2028-02").length).toBe(29);
     expect(computeDailySpending(l, "2026-04").length).toBe(30);
     expect(computeDailySpending(l, "2026-07").length).toBe(31);
   });
@@ -251,13 +251,13 @@ describe("computeDailySpending / computeCashflowSeries parity", () => {
             { id: "i2", envelopeId: "S", categoryId: null, amount: 40_00 },
           ],
         }),
-        tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 30_00, date: "2026-07-15" }),  
+        tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 30_00, date: "2026-07-15" }),
       ],
     });
     const daily = computeDailySpending(l, "2026-07");
     const cashflow = computeCashflowSeries(l, "2026-07", 1)[0]!;
     expect(daily.reduce((s, d) => s + d.total, 0)).toBe(cashflow.expense);
-    expect(cashflow.expense).toBe(140_00);  
+    expect(cashflow.expense).toBe(140_00);
   });
 });
 
@@ -273,10 +273,10 @@ describe("topPlaces", () => {
       allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "P1", amount: 100_00, date: "2026-07-01" }),
-        tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "P1", amount: 150_00, date: "2026-07-02" }),  
+        tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "P1", amount: 150_00, date: "2026-07-02" }),
         tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "P2", amount: 120_00, date: "2026-07-03" }),
-        tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "P2", amount: 180_00, date: "2026-07-04" }),  
-        tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "P3", amount: 999_00, date: "2026-07-05" }),  
+        tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "P2", amount: 180_00, date: "2026-07-04" }),
+        tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "P3", amount: 999_00, date: "2026-07-05" }),
         tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "P4", amount: 500_00, isRefund: true, date: "2026-07-06" }), // refund-only — must not appear
         tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 50_00, date: "2026-07-07" }), // no place — must not appear
       ],
@@ -360,7 +360,7 @@ describe("topPlaces", () => {
     l.places = [{ id: "P1", name: "Sklep" }];
     const top = topPlaces(l, "2026-07", "2026-07");
     expect(top.length).toBe(1);
-    expect(top[0]!.count).toBe(1);  
+    expect(top[0]!.count).toBe(1);
     expect(top[0]!.total).toBe(50_00); // only the non-savings item, NOT the full 200
   });
 
@@ -393,8 +393,8 @@ describe("largestExpenses", () => {
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-01" }),
         tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 300_00, date: "2026-07-02" }),
-        tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 900_00, isRefund: true, date: "2026-07-03" }),  
-        tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 200_00, date: "2026-06-30" }),  
+        tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 900_00, isRefund: true, date: "2026-07-03" }),
+        tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 200_00, date: "2026-06-30" }),
       ],
     });
     const rows = largestExpenses(l, "2026-07");
@@ -412,8 +412,8 @@ describe("largestExpenses", () => {
       allocations: [],
       transactions: [
         tx({ id: "z", type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-10" }),
-        tx({ id: "a", type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-10" }),  
-        tx({ id: "b", type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-05" }),  
+        tx({ id: "a", type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-10" }),
+        tx({ id: "b", type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-05" }),
       ],
     });
     const rows = largestExpenses(l, "2026-07", 10);
@@ -462,12 +462,12 @@ describe("largestExpenses", () => {
     l.places = [{ id: "P1", name: "Sklep" }];
     l.categories = [{ id: "C1", name: "Jedzenie kat" }];
     const byId = Object.fromEntries(largestExpenses(l, "2026-07", 10).map((r) => [r.id, r.label]));
-    expect(byId.t1).toBe("Sklep");  
-    expect(byId.t2).toBe("Kawa u Zosi");  
-    expect(byId.t3).toBe("Nota");  
-    expect(byId.t4).toBe("Jedzenie kat");  
-    expect(byId.t5).toBe("Jedzenie");  
-    expect(byId.t6).toBe("—");  
+    expect(byId.t1).toBe("Sklep");
+    expect(byId.t2).toBe("Kawa u Zosi");
+    expect(byId.t3).toBe("Nota");
+    expect(byId.t4).toBe("Jedzenie kat");
+    expect(byId.t5).toBe("Jedzenie");
+    expect(byId.t6).toBe("—");
   });
 
   it("includes split transactions at their full amount", () => {
@@ -536,13 +536,13 @@ describe("largestExpenses", () => {
       envelopes: [eSav],
       allocations: [],
       transactions: [
-        tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 500_00, date: "2026-07-05" }),  
+        tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 500_00, date: "2026-07-05" }),
         tx({
           type: "expense",
           accountId: "A",
           amount: 300_00,
           date: "2026-07-06",
-          items: [{ id: "i1", envelopeId: "S", categoryId: null, amount: 300_00 }],  
+          items: [{ id: "i1", envelopeId: "S", categoryId: null, amount: 300_00 }],
         }),
       ],
     });
@@ -603,8 +603,8 @@ describe("largestExpenses", () => {
           date: "2026-07-01",
           items: [
             { id: "i1", envelopeId: "SM", categoryId: null, amount: 50_00 },
-            { id: "i2", envelopeId: "BIG", categoryId: null, amount: 150_00 },  
-            { id: "i3", envelopeId: "SAV", categoryId: null, amount: 500_00 },  
+            { id: "i2", envelopeId: "BIG", categoryId: null, amount: 150_00 },
+            { id: "i3", envelopeId: "SAV", categoryId: null, amount: 500_00 },
           ],
         }),
       ],
@@ -627,14 +627,14 @@ describe("spendingBaseline", () => {
       allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 100_00, date: "2026-06-10" }),
-         
+
         tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 300_00, date: "2026-04-10" }),
-        tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 900_00, date: "2026-07-10" }),  
+        tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 900_00, date: "2026-07-10" }),
       ],
     });
     l.categories = [{ id: "C1", name: "Jedzenie" }];
     const baseline = spendingBaseline(l, "2026-07", "category", 3);
-    expect(baseline.get("C1")).toBe(100_00);  
+    expect(baseline.get("C1")).toBe(100_00);
   });
 
   it("respects a custom `months` window", () => {
@@ -648,12 +648,12 @@ describe("spendingBaseline", () => {
       allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 100_00, date: "2026-06-10" }),
-        tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 300_00, date: "2026-04-10" }),  
+        tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 300_00, date: "2026-04-10" }),
       ],
     });
     l.categories = [{ id: "C1", name: "Jedzenie" }];
     const baseline = spendingBaseline(l, "2026-07", "category", 2);
-    expect(baseline.get("C1")).toBe(0);  
+    expect(baseline.get("C1")).toBe(0);
   });
 });
 
@@ -686,10 +686,10 @@ describe("computeEnvelopeTrends", () => {
     expect(trends.length).toBe(1);
     const t1 = trends[0]!;
     expect(t1.id).toBe("E1");
-    expect(t1.series).toEqual([100_00, 300_00, 60_00]);  
+    expect(t1.series).toEqual([100_00, 300_00, 60_00]);
     expect(t1.last).toBe(60_00);
-    expect(t1.baseline).toBe(100_00);  
-    expect(t1.deltaPct).toBe(-0.4);  
+    expect(t1.baseline).toBe(100_00);
+    expect(t1.deltaPct).toBe(-0.4);
   });
 
   it("drops envelopes with an all-zero series and archived envelopes", () => {
@@ -738,7 +738,7 @@ describe("computeEnvelopeTrends", () => {
       transactions: [tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-05" })],
     });
     const t = computeEnvelopeTrends(l, "2026-07", 2)[0]!;
-    expect(t.series).toEqual([0, 100_00]);  
+    expect(t.series).toEqual([0, 100_00]);
     expect(t.baseline).toBe(0);
     expect(t.deltaPct).toBeNull();
   });
@@ -755,9 +755,9 @@ describe("computeEnvelopeTrends", () => {
       allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "BIG", amount: 100_00, date: "2026-06-10" }),
-        tx({ type: "expense", accountId: "A", envelopeId: "BIG", amount: 900_00, date: "2026-07-10" }),  
+        tx({ type: "expense", accountId: "A", envelopeId: "BIG", amount: 900_00, date: "2026-07-10" }),
         tx({ type: "expense", accountId: "A", envelopeId: "SMALL", amount: 100_00, date: "2026-06-10" }),
-        tx({ type: "expense", accountId: "A", envelopeId: "SMALL", amount: 110_00, date: "2026-07-10" }),  
+        tx({ type: "expense", accountId: "A", envelopeId: "SMALL", amount: 110_00, date: "2026-07-10" }),
       ],
     });
     const trends = computeEnvelopeTrends(l, "2026-07", 2);
@@ -768,25 +768,25 @@ describe("computeEnvelopeTrends", () => {
 describe("savingsRate", () => {
   it("current = last point's net/income; median = same ratio over the earlier points", () => {
     const points: CashflowPoint[] = [
-      { month: "2026-04", income: 1000_00, expense: 800_00, net: 200_00 },  
-      { month: "2026-05", income: 1000_00, expense: 900_00, net: 100_00 },  
-      { month: "2026-06", income: 1000_00, expense: 700_00, net: 300_00 },  
-      { month: "2026-07", income: 2000_00, expense: 1000_00, net: 1000_00 },  
+      { month: "2026-04", income: 1000_00, expense: 800_00, net: 200_00 },
+      { month: "2026-05", income: 1000_00, expense: 900_00, net: 100_00 },
+      { month: "2026-06", income: 1000_00, expense: 700_00, net: 300_00 },
+      { month: "2026-07", income: 2000_00, expense: 1000_00, net: 1000_00 },
     ];
     const { current, median } = savingsRate(points);
     expect(current).toBeCloseTo(0.5, 5);
-    expect(median).toBeCloseTo(0.2, 5);  
+    expect(median).toBeCloseTo(0.2, 5);
   });
 
   it("zero-income current month → current null; zero-income earlier month excluded from median (not treated as 0)", () => {
     const points: CashflowPoint[] = [
-      { month: "2026-05", income: 0, expense: 0, net: 0 },  
-      { month: "2026-06", income: 1000_00, expense: 900_00, net: 100_00 },  
-      { month: "2026-07", income: 0, expense: 0, net: 0 },  
+      { month: "2026-05", income: 0, expense: 0, net: 0 },
+      { month: "2026-06", income: 1000_00, expense: 900_00, net: 100_00 },
+      { month: "2026-07", income: 0, expense: 0, net: 0 },
     ];
     const { current, median } = savingsRate(points);
     expect(current).toBeNull();
-    expect(median).toBeCloseTo(0.1, 5);  
+    expect(median).toBeCloseTo(0.1, 5);
   });
 
   it("empty series → both null", () => {
@@ -943,7 +943,7 @@ describe("computeDaySpending", () => {
     });
     const d = computeDaySpending(l, "2026-07-14");
     expect(d.total).toBe(30_00);
-    expect(d.count).toBe(2);  
+    expect(d.count).toBe(2);
   });
 
   it("unassigned expense appears under NULL_LABEL.envelope", () => {
@@ -1001,7 +1001,7 @@ describe("computeDaySpending", () => {
     });
     const d = computeDaySpending(l, "2026-07-14");
     expect(d.total).toBe(100_00);
-    expect(d.count).toBe(1);  
+    expect(d.count).toBe(1);
     expect(d.txns).toHaveLength(1); // appears once, not once per item
     expect(d.byEnvelope.map((r) => [r.envelopeId, r.amount])).toEqual([
       ["FOOD", 70_00],
@@ -1119,7 +1119,7 @@ describe("computeSpendingDetail", () => {
           date: "2026-07-05",
           items: [
             { id: "i1", envelopeId: "E1", categoryId: "C1", amount: 60_00 },
-            { id: "i2", envelopeId: "E1", categoryId: "C2", amount: 40_00 },  
+            { id: "i2", envelopeId: "E1", categoryId: "C2", amount: 40_00 },
           ],
         }),
       ],
@@ -1151,7 +1151,7 @@ describe("computeSpendingDetail", () => {
     });
     const detail = computeSpendingDetail(l, "2026-07", "2026-07", "envelope", "E1");
     expect(detail?.txnCount).toBe(2);
-    expect(detail?.amount).toBe(50_00);  
+    expect(detail?.amount).toBe(50_00);
     expect(detail?.largestAmount).toBe(200_00); // the refund never competes for "largest"
   });
 

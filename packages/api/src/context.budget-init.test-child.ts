@@ -39,33 +39,32 @@ export type BudgetInitOutput = {
     rowCount1: number;
     rowCount2: number;
   };
-   
+
   inTxPath: {
     createdId: string;
     rowCount: number;
-     
+
     lockHeldByOuterTxPid: boolean;
   };
   fastPath: {
-     
     existingReturned: boolean;
     rowCountAfter: number;
-     
+
     journalRowsAdded: number;
   };
   multiBudget: {
     returnedId: string;
-     
+
     minId: string;
     rowCountAfter: number;
   };
-   
+
   nullCtxReturnedABudget: boolean;
 };
 
 async function main(): Promise<void> {
   const { env } = await import("./env");
-   
+
   assertThrowawayDb(env.DATABASE_URL);
 
   const postgres = (await import("postgres")).default;
@@ -126,8 +125,6 @@ async function main(): Promise<void> {
     journalInsertCount: await journalInsertsOf(idA),
   };
 
-   
-
   const [user1, user2] = await Promise.all([newUser("u1"), newUser("u2")]);
   const [id1, id2] = await Promise.all([getBudgetId(ctxFor(user1!)), getBudgetId(ctxFor(user2!))]);
   const twoUsers: BudgetInitOutput["twoUsers"] = {
@@ -175,8 +172,6 @@ async function main(): Promise<void> {
     journalRowsAdded: (await journalInsertsOf(preexisting!.id)) - journalBefore,
   };
 
-   
-
   const multiUser = await newUser("multi");
   const inserted = await db
     .insert(s.budgets)
@@ -195,8 +190,6 @@ async function main(): Promise<void> {
     minId,
     rowCountAfter: (await budgetRowsOf(multiUser)).length,
   };
-
-   
 
   const nullResolved = await getBudgetId(null);
   const nullCtxReturnedABudget = typeof nullResolved === "string" && nullResolved.length > 0;

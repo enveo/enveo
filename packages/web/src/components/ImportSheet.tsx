@@ -72,21 +72,13 @@ import { type ImportBalanceMatchState, ImportBalanceReceipt } from "./ImportBala
 import { ImportCompletionDetails } from "./ImportCompletionDetails";
 import { LazyChunk, useOpenedOnce } from "./lazy";
 
- 
 const ReconcileSheet = lazy(() => import("./ReconcileSheet").then((m) => ({ default: m.ReconcileSheet })));
 
 import { PdfWithoutTextError, statementPagesFromPdf } from "../lib/pdfText";
 import { ImportProgress, importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "./ImportProgress";
 
-
-
-
-
-
-
-
 type Phase = "pick" | "progress" | "review" | "done";
- 
+
 async function downscale(f: File, maxSide = 1600): Promise<string> {
   const bmp = await createImageBitmap(f);
   const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
@@ -136,7 +128,6 @@ export function ImportSheet({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [partialRetryStarted, setPartialRetryStarted] = useState(false);
-  
 
   const [bankValue, setBankValue] = useState("");
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
@@ -154,7 +145,7 @@ export function ImportSheet({
   const [sourceAccountUnavailable, setSourceAccountUnavailable] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
   const [pendingProcess, setPendingProcess] = useState(false);
-   
+
   const [edited, setEdited] = useState<Record<number, EditedImportItem>>({});
   const [editedAutomaticDefaults, setEditedAutomaticDefaults] = useState<Record<number, boolean>>({});
   const [editorIdx, setEditorIdx] = useState<number | null>(null);
@@ -291,8 +282,6 @@ export function ImportSheet({
     setError(null);
     setNotice(null);
     try {
-      
-
       const incoming: string[] = [];
       for (const file of files) {
         if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) incoming.push(...(await statementPagesFromPdf(file)));
@@ -315,7 +304,6 @@ export function ImportSheet({
       }
       setImages((prev) => [...prev, ...list]);
     } catch (e) {
-       
       const pdfInvolved = [...files].some((file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name));
       setError(
         e instanceof PdfWithoutTextError
@@ -350,8 +338,6 @@ export function ImportSheet({
     }
   };
 
-  
-
   useEffect(() => {
     if (!pendingProcess) return;
     setPendingProcess(false);
@@ -375,7 +361,6 @@ export function ImportSheet({
       if (job?.status !== "ready" || !job.result || !job.accountId) throw new Error("invalid_import_job_state");
       await importJobManager.withApplySession(job.id, async () => {
         if (!job.result || !job.accountId) throw new Error("invalid_import_job_state");
-        
 
         await assertOwnReplica();
         const reviewEpoch = reviewE2eeEpoch.current;
@@ -506,7 +491,7 @@ export function ImportSheet({
             skippedCount: completedProgress.skippedCount,
           });
         }
-        setLastAccountId(job.accountId);  
+        setLastAccountId(job.accountId);
         setDoneReceipt(receipt);
         setDoneStats({ added: appliedCount, dup: skippedCount });
         setPhase("done");
@@ -597,13 +582,13 @@ export function ImportSheet({
   const bankBalance = parseAmount(bankValue);
   const sourceAfter = balanceEffect.find((effect) => effect.accountId === accountId)?.after ?? accountsNow.find((account) => account.id === accountId)?.balance;
   const difference = bankBalance !== null && sourceAfter !== undefined ? bankBalance - sourceAfter : null;
-   
+
   const reconcileTarget = bankBalance;
   const proposalFits = match.kind === "proposal" && difference !== null && match.changes.reduce((sum, change) => sum + change.delta, 0) === difference;
   const rowLabel = (rowId: string): string => {
     const row = items.find((candidate) => candidate.rowId === rowId);
     const edit = row ? edited[items.indexOf(row)] : undefined;
-     
+
     return edit?.name || row?.item?.name || row?.item?.tag || row?.rawTextLines[0] || rowId;
   };
   const runBalanceMatch = async () => {
@@ -627,7 +612,7 @@ export function ImportSheet({
       setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: 0 });
       return;
     }
-     
+
     setMatch({ kind: "searching" });
     const rowsById = new Map(job.result.rows.map((row) => [row.rowId, row]));
     const reviewById = new Map(items.map((row) => [row.rowId, row]));
@@ -666,7 +651,6 @@ export function ImportSheet({
       if (answer.choice === null) setMatch({ kind: "declined", rationale: answer.rationale });
       else setMatch({ kind: "proposal", changes: solutions[answer.choice]!, rationale: answer.rationale, alternatives: solutions.length - 1 });
     } catch {
-       
       if (generation === viewGeneration.current) setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: solutions.length - 1 });
     }
   };
@@ -969,7 +953,7 @@ export function ImportSheet({
 
             {visibleImportReviewRows(items).map(({ row, index: idx, position }) => {
               const it = row.item;
-               
+
               const e = edited[idx] as EditedImportItem | undefined;
               const type = e?.type ?? it?.type ?? null;
               const amount = e?.amount ?? it?.amount ?? row.amount;
@@ -1308,8 +1292,7 @@ export function ImportSheet({
           />
         </LazyChunk>
       )}
-      {
-}
+      {}
       {show &&
         editorIdx !== null &&
         items[editorIdx]?.editable &&
@@ -1361,8 +1344,6 @@ export function ImportSheet({
         feature="import"
         onClose={() => setShowConsent(false)}
         onDecided={(mode) => {
-          
-
           setShowConsent(false);
           if (mode !== "rules") setPendingProcess(true);
         }}

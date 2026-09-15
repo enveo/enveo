@@ -22,21 +22,8 @@ import { assertBudgetFks } from "../sync/apply";
 import { buildDupIndex, classifyDup, existingImportRowsForAccount, importCandidateDirection } from "./import-dedupe";
 import { budgetAssertionFails } from "./sync";
 
-
-
-
-
-
-
-
-
-
-
 export const importRoutes = new Hono();
 
- 
-
- 
 export async function loadImportHistory(budgetId: string, currency: string, database: DB = db): Promise<ImportHistoryRecord[]> {
   const [txns, envs, cats, plcs] = await Promise.all([
     database
@@ -86,7 +73,6 @@ export class ImportCycleOneFailure extends Error {
 }
 
 export interface ServerImportRecognitionAdapterInput {
-   
   images: ReadonlyArray<string | null>;
   chunks?: ImportChunkState[];
   locale: string;
@@ -105,8 +91,6 @@ export interface ServerImportRecognitionAdapterInput {
   cycleTwoFailureMode?: "fallback" | "strict";
   lifecycle?: ImportRecognitionPipelineInput["lifecycle"];
 }
-
-
 
 export function runServerImportRecognitionAdapter(input: ServerImportRecognitionAdapterInput) {
   const accounts: Account[] = input.accountRows.map((account) => ({ ...account, type: account.type as Account["type"] }));
@@ -135,8 +119,6 @@ export function runServerImportRecognitionAdapter(input: ServerImportRecognition
     lifecycle: input.lifecycle,
   });
 }
-
-
 
 export async function extractImportForBudget(input: { budgetId: string; accountId: string; images: string[]; locale: string; chat: ImportModelChat }) {
   const { budgetId, accountId, images, locale, chat } = input;
@@ -268,14 +250,13 @@ export const applyInput = z.object({
         type: z.enum(["expense", "income", "transfer"]),
         name: z.string().default(""),
         tag: z.string(),
-        rawPlace: z.string().nullable().optional(),  
+        rawPlace: z.string().nullable().optional(),
         envelopeId: z.string().uuid().nullable(),
         categoryId: z.string().uuid().nullable().optional(),
         placeName: z.string().nullable().optional(),
-        
 
-        accountId: z.string().uuid().optional(),  
-        toAccountId: z.string().uuid().nullable().optional(),  
+        accountId: z.string().uuid().optional(),
+        toAccountId: z.string().uuid().nullable().optional(),
         isRefund: z.boolean().optional(), // expense only; otherwise ignored
         note: z.string().max(2000).optional(),
         /* Deliberate add despite a sure duplicate (the user edited an
@@ -297,7 +278,7 @@ export type ApplyItem = z.infer<typeof applyInput>["items"][number];
 
 export interface ExistingImportEvidence {
   accountId: string;
-   
+
   toAccountId: string | null;
   type: "expense" | "income" | "transfer";
   date: string;
@@ -305,7 +286,6 @@ export interface ExistingImportEvidence {
   sourceRef: string | null;
 }
 
- 
 export function planImportDryRun(input: { globalAccountId: string; items: ApplyItem[]; existing: ExistingImportEvidence[] }) {
   const duplicateIndexes = new Map<string, ReturnType<typeof buildDupIndex>>();
   const duplicateIndexFor = (accountId: string) => {
@@ -344,8 +324,6 @@ export function planImportDryRun(input: { globalAccountId: string; items: ApplyI
   return { added, skipped, dryRun: true as const, results };
 }
 
-
-
 export function findTransferError(items: ApplyItem[], globalAccountId: string): { error: "transfer_invalid"; index: number } | null {
   const index = items.findIndex((it) => it.type === "transfer" && (!it.toAccountId || it.toAccountId === (it.accountId ?? globalAccountId)));
   return index === -1 ? null : { error: "transfer_invalid", index };
@@ -364,7 +342,6 @@ importRoutes.post("/import/apply", async (c) => {
   }
   if (body.dryRun !== true) return c.json({ error: "client_write_required" }, 410);
 
-   
   const transferErr = findTransferError(body.items, body.accountId);
   if (transferErr) return c.json(transferErr, 400);
 

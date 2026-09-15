@@ -79,7 +79,7 @@ export async function recordSpend(i: { policy: SpendPolicyName; userId: string; 
   if (typeof i.actualNanoUsd !== "bigint" || i.actualNanoUsd < 0n) {
     throw new Error("recordSpend: actualNanoUsd must be a non-negative bigint");
   }
-  const period = periodForKey(i.periodKey);  
+  const period = periodForKey(i.periodKey);
   await pg`
     insert into ai_user_monthly_spend (policy, user_id, period_key, period_start, period_end, spent_nano_usd)
     values (${i.policy}, ${i.userId}, ${period.key}, ${new Date(period.startMs).toISOString()}::timestamptz, ${new Date(period.endMs).toISOString()}::timestamptz, ${i.actualNanoUsd.toString()}::bigint)

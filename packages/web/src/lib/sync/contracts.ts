@@ -1,8 +1,3 @@
-
-
-
-
-
 import type { ClientLedger } from "@enveo/shared";
 import type { Tier } from "../e2ee";
 import type { PullChange } from "../store";
@@ -24,7 +19,6 @@ export interface PushResponse {
   results: Array<{ opId: string; status: "applied" | "duplicate" | "rejected"; error?: string }>;
 }
 
- 
 export interface E2eeSnapshotResponse {
   budgetId?: string | null;
   epoch: number;
@@ -103,7 +97,6 @@ export class BudgetMismatchError extends Error {
   }
 }
 
- 
 export const EMPTY_LEDGER: ClientLedger = {
   accounts: [],
   groups: [],
@@ -114,11 +107,6 @@ export const EMPTY_LEDGER: ClientLedger = {
   places: [],
   budgets: [],
 };
-
-
-
-
-
 
 export type BootSource = "replica" | "snapshot" | null;
 
@@ -140,7 +128,7 @@ export interface SyncStatus {
   pending: number;
   deadLetters: number;
   lastSyncAt: string | null;
-   
+
   ownerUnproven: boolean;
 }
 
@@ -160,32 +148,19 @@ export interface IdentityDeps {
   discardForeignReplica(): Promise<void>;
 }
 
-
-
-
-
-
-
 export interface TransportDeps {
-   
   enterUnauthed(): void;
   /** The multi-tenant guard for full-budget overwrites; returns the VERIFIED session user id. */
   assertOwnReplica(): Promise<string>;
-   
+
   notePeersMayNeedUpdate(): void;
 }
 
-
-
-
-
-
 export interface CycleDeps {
-   
   notePeersMayNeedUpdate(): void;
-   
+
   broadcastUpdatedIfPending(): void;
-   
+
   postPokeToPeers(): void;
   /** After pending work lands on an E2EE mirror, append the privacy-safe terminal provider op. */
   ensureE2eeProviderPreference(): boolean;

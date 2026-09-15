@@ -2,9 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
 
 const rows = [
-   
   { date: "2031-04-16", amount: 4250, sourceRef: "EXAMPLE CITY SANITATION" },
-   
+
   { date: "2031-04-12", amount: 7350, sourceRef: null },
 ];
 
@@ -38,7 +37,7 @@ describe("classifyDup — import duplicates without nondeterministic fields", ()
     const i2 = buildDupIndex([]);
     i2.markSeen({ date: "2031-04-03", amount: 5000, rawPlace: "LINDEN MARKET 123" });
     expect(classifyDup({ date: "2031-04-03", amount: 5000, rawPlace: "LINDEN MARKET 123" }, i2)).toBe("exists");
-     
+
     expect(classifyDup({ date: "2031-04-03", amount: 5000, rawPlace: "PRAIRIE FUEL 77" }, i2)).toBe("new");
   });
 });

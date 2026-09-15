@@ -42,13 +42,13 @@ export function StartScreen({
   onPrev: () => void;
   onNext: () => void;
   onNav: (s: ScreenId) => void;
-   
+
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
-   
+
   onOpenReport: (tab: ReportTab) => void;
-   
+
   onOpenMonthDay: (date: string) => void;
-   
+
   editWidgets: boolean;
   onEditWidgets: (open: boolean) => void;
 }) {
@@ -57,7 +57,7 @@ export function StartScreen({
   const { t, lang } = useT();
   const { settings } = useSettings();
   const inWide = useWideHost() !== null;
-   
+
   const MW = (minor: number) => M(minor).replace(/[.,]\d\d(?!\d)/, "");
   const hs = tbbState(state.readyToAssign);
   const ruler = monthRuler(todayISO());
@@ -72,7 +72,6 @@ export function StartScreen({
     </span>
   );
 
-   
   const accountsCount = state.accounts.filter((a) => !a.archived).length;
   const envelopesCount = state.envelopes.filter((e) => !e.archived).length;
 
@@ -170,7 +169,7 @@ export function StartScreen({
         </div>
       </div>
 
-      { }
+      {}
       {(accountsCount === 0 || envelopesCount === 0) && (
         <CardBox style={{ display: "flex", flexDirection: "column", gap: 8, margin: `0 ${P}px 10px`, padding: "12px 14px" }}>
           {accountsCount === 0 && (
@@ -234,14 +233,13 @@ export function StartScreen({
   );
 }
 
- 
 function AmountHero({ value }: { value: number }) {
   const C = useTheme();
   const M = useMask();
   const { hc } = useBand();
   const neg = value < 0;
   const big = neg ? hc(C.headerNeg, C.neg) : hc("var(--cta)", C.text);
-   
+
   const small = neg ? big : hc(C.headerMute, C.soft);
   const s = M(value);
   const m = s.match(/^(.*?)([,.]\d{2})(\s?\D*)$/);

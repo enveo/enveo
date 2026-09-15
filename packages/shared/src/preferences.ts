@@ -9,9 +9,6 @@ export type ThemeMode = (typeof THEME_MODES)[number];
 export const ACCENT_THEMES = ["teal", "duet"] as const;
 export type AccentTheme = (typeof ACCENT_THEMES)[number];
 
-
-
-
 export const ACCOUNT_ACCENT_THEMES = ["auto", ...ACCENT_THEMES] as const;
 export type AccountAccentTheme = (typeof ACCOUNT_ACCENT_THEMES)[number];
 
@@ -37,9 +34,6 @@ export const WIDGET_IDS = [
   "heatmap",
 ] as const;
 export type WidgetId = (typeof WIDGET_IDS)[number];
-
-
-
 
 export const WIDE_WIDGET_IDS = [
   "envelopes",
@@ -75,19 +69,11 @@ export interface WidgetConfig {
 export interface WideWidgetConfig {
   id: WideWidgetId;
   enabled: boolean;
-   
+
   w: number;
-   
+
   h: number;
-  /**
-   * ADDITIVE OPTIONAL (the F4 cut restored, owner round 3 item 14): whether the tile body scrolls
-   * when its content overflows, vs. clipping at the tile edge. Absent — the entire installed base,
-   * since this field never existed before — resolves per-widget-id to the design's own default
-   * (`resolveWidgetScroll`, web/lib/wideBoard.ts): false for the two fixed stat/chart tiles
-   * (net worth, cashflow — the design's own `startWidgets` ship them `scroll:false`), true for
-   * everything else. Never bake a default in HERE: "absent" must stay a real, distinguishable
-   * state so an old replica row with no key at all keeps resolving correctly forever.
-   */
+
   scroll?: boolean;
   opts?: WidgetOpts;
 }
@@ -113,8 +99,8 @@ export interface BudgetPreferences {
   aiProvider: "rules" | "enveo" | "openai";
   openaiModel: OpenAiModel;
   customProfiles: CustomAiProfile[];
-  startWidgets: WidgetConfig[];  
-  wideWidgets: WideWidgetConfig[];  
+  startWidgets: WidgetConfig[];
+  wideWidgets: WideWidgetConfig[];
 }
 
 export type BudgetPreferenceField = "aiProvider" | "openaiModel" | "customProfiles" | "startWidgets" | "wideWidgets";
@@ -204,8 +190,6 @@ export const widgetConfigSchema = z.union([
 
 const widgetStackSchema = z.array(widgetConfigSchema).refine((widgets) => unique(widgets.map((widget) => widget.id)), { message: "widget ids must be unique" });
 
- 
-
 const wideFrame = { enabled: z.boolean(), w: z.number().int().min(1).max(4), h: z.number().int().min(1).max(8), scroll: z.boolean().optional() };
 
 const optionlessWide = <T extends WideWidgetId>(id: T) => z.object({ id: z.literal(id), ...wideFrame }).strict();
@@ -273,8 +257,7 @@ export function createDefaultStartWidgets(): WidgetConfig[] {
     { id: "envelopesSavings", enabled: false },
     { id: "reportCashflow", enabled: true },
     { id: "reportNetWorth", enabled: false },
-    // New widgets ship disabled by default on phone: "available on mobile too" means offered
-    // in Edit widgets, not imposed on every existing Start (product decision, PR5 reconciliation).
+
     { id: "attention", enabled: false },
     { id: "recent", enabled: false },
     { id: "spending", enabled: false },
@@ -288,25 +271,12 @@ export function createDefaultStartWidgets(): WidgetConfig[] {
  *  departure noted on `trends` below. */
 export function createDefaultWideWidgets(): WideWidgetConfig[] {
   return [
-    
-
-
     { id: "reportNetWorth", enabled: true, w: 1, h: 1 },
     { id: "reportCashflow", enabled: true, w: 3, h: 1 },
     { id: "envelopes", enabled: true, w: 2, h: 2, opts: { mode: "all" } },
     { id: "recent", enabled: true, w: 2, h: 4 },
     { id: "spending", enabled: true, w: 2, h: 2 },
-    // h:3, not the mock's h:2 — the ONE tile whose size the mock's array can no longer describe.
-    // Owner round 7 item 29 replaced this widget's compact row (a 44x20 spark + a bare amount,
-    // ~30px) with the Trends REPORT's row: name over a "{now} · median {median}" sub-line beside
-    // the spark, ~49px, and ~61px wherever that sub-line takes a second line (measured at 1440 with
-    // the panel open: the sub-line's column is 127px there, and a four-figure amount already wraps
-    // it in English). Three of those plus the "{n} rising · {m} falling" caption is ~200px, and a
-    // 2-high tile has 150px of body — the mock's height was chosen for a row that no longer exists,
-    // so keeping it would ship a default tile that opens scrolled past its own content. A 3-high
-    // tile is 254px: the three rows the design lists (v3.dc.html:548) fit with room to spare in
-    // every language. Boards already saved keep whatever height their owner has; this is the
-    // starting layout and what "Reset layout" restores.
+
     { id: "trends", enabled: true, w: 2, h: 3 },
     { id: "attention", enabled: true, w: 2, h: 2 },
     { id: "goals", enabled: true, w: 2, h: 2 },

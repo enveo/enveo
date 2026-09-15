@@ -13,22 +13,6 @@ import { emptyTransactionFilters, matchesTransactionFilters } from "../../lib/tr
 import { EnvEdit } from "../../screens/Budget";
 import { PERIOD_KEY, PERIODS, type Period } from "../../screens/Envelope";
 
-/**
- * Design parity wave C task 2 (waveC-t2-brief.md, model: `AccountPanel.tsx`) — the wide panel's
- * envelope-summary body, replacing the phone `EnvelopeScreen` (which carried its own back-chevron
- * header, a duplicate month-nav row and a full-width "Transactions/Edit" footer bar into the
- * panel — owner rule 2's exact "phone chrome in a panel" violation, gaps-budget.md #2). Month is
- * the resolved `PanelView`'s own month (App's viewed month) — this component only ever RENDERS
- * it, it never navigates it (no local month state, unlike `EnvelopeScreen`); the shared top band
- * is the only month-nav in the wide shell.
- *
- * Everything computed EXCLUSIVELY locally from the IndexedDB replica, same as `EnvelopeScreen`/
- * `AccountPanel`: `computeEnvelopeSummary` (category window + 6-month series + carry-in) +
- * `computeStateResponse` (this month's allocated/spent/available + this month's transactions).
- * The category-window period buttons and their labels are IMPORTED from `screens/Envelope.tsx`
- * (now exported) rather than duplicated — the brief's "extract the trio/breakdown data helpers"
- * direction, applied to the one piece of that screen's own logic another consumer needs verbatim.
- */
 export function EnvelopePanel({
   envelopeId,
   month,
@@ -48,8 +32,6 @@ export function EnvelopePanel({
   const M = useMask();
   const { t, lang } = useT();
   const version = useLedgerVersion();
-  
-
 
   const wideHost = useWideHost();
   const foldTwoCol = wideHost?.mode === "fold";
@@ -69,10 +51,6 @@ export function EnvelopePanel({
   const env = stateM?.envelopes.find((e) => e.id === envelopeId);
 
   const categoryNameById = useMemo(() => new Map((stateM?.categories ?? []).map((c) => [c.id, c.name])), [stateM]);
-
-  
-
-
 
   const recentTxns = useMemo(() => {
     if (!stateM) return [];
@@ -99,7 +77,6 @@ export function EnvelopePanel({
   const maxSpent = Math.max(...series.map((s) => s.spent), 1);
   const total = data.categoriesTotal;
 
-   
   const stat = (label: string, value: string, color: string) => (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ fontSize: 9.5, letterSpacing: 0.6, textTransform: "uppercase", color: C.mute, marginBottom: 4 }}>{label}</div>
@@ -116,23 +93,18 @@ export function EnvelopePanel({
     if (tx.type === "income" || tx.isRefund) return { text: `+${M(tx.amount)}`, color: C.pos };
     return { text: `-${M(tx.amount)}`, color: C.text };
   };
-  
-
 
   const subOf = (tx: Transaction): string => {
     const catId = tx.items.length > 0 ? (tx.items.find((i) => i.envelopeId === envelopeId)?.categoryId ?? null) : tx.categoryId;
     const catName = catId ? categoryNameById.get(catId) : null;
     return catName ? `${shortDate(tx.date, lang)} · ${catName}` : shortDate(tx.date, lang);
   };
-  
-
 
   const payeeOf = (tx: Transaction): string => tx.name || tx.note || env.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 13 }}>
-      {
-}
+      {}
       <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
         <div
           style={{
@@ -187,8 +159,7 @@ export function EnvelopePanel({
         </button>
       </div>
 
-      {
-}
+      {}
       <div style={{ border: `1px solid ${C.line}`, borderRadius: 14, padding: "14px 16px 12px" }}>
         <div style={{ display: "flex", textAlign: "center", gap: 8 }}>
           {stat(t("BUDGET"), M(env.allocated), C.text)}
@@ -203,7 +174,7 @@ export function EnvelopePanel({
         </div>
       </div>
 
-      { }
+      {}
       <div
         style={
           foldTwoCol
@@ -256,7 +227,7 @@ export function EnvelopePanel({
               <div key={c.categoryId ?? "none"} style={{ marginBottom: 10 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    { }
+                    {}
                     {c.categoryId === null ? t("No category") : c.name}
                   </span>
                   <span style={{ fontSize: 11.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{share.toFixed(1)}%</span>
@@ -275,19 +246,11 @@ export function EnvelopePanel({
         </div>
       </div>
 
-      {
-}
+      {}
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{t("Transactions in {name}", { name: env.name })}</span>
         <button
           onClick={() => onOpenTxns({ envId: envelopeId })}
-          
-
-
-
-
-
-
           style={{
             alignSelf: "center",
             display: "flex",

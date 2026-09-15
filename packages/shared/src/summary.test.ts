@@ -35,7 +35,7 @@ describe("computeEnvelopeSummary — 6-month series", () => {
     const l = fixture();
     l.transactions = [tx({ accountId: "A-off", envelopeId: "E1", amount: 7_00, date: "2026-06-05" })];
     const s = computeEnvelopeSummary(l, "E1", "2026-06");
-    expect(s.series.at(-1)!.spent).toBe(7_00);  
+    expect(s.series.at(-1)!.spent).toBe(7_00);
     expect(computeBudgetState(l, "2026-06").envelopes[0]!.spent).toBe(0); // the budget does not
   });
 
@@ -55,12 +55,12 @@ describe("computeEnvelopeSummary — 6-month series", () => {
           { id: "i2", envelopeId: "E2", categoryId: null, amount: 8_00 },
         ],
       }),
-      tx({ accountId: "A-on", envelopeId: "E1", amount: 3_00, date: "2026-05-15" }),  
+      tx({ accountId: "A-on", envelopeId: "E1", amount: 3_00, date: "2026-05-15" }),
     ];
     const s = computeEnvelopeSummary(l, "E1", "2026-06");
-     
+
     expect(s.series.at(-1)!.spent).toBe(30_00 - 10_00 - 5_00 + 12_00);
-    expect(s.series.at(-2)!.spent).toBe(3_00);  
+    expect(s.series.at(-2)!.spent).toBe(3_00);
   });
 });
 
@@ -69,7 +69,7 @@ describe("computeEnvelopeSummary — category breakdown (byCat)", () => {
     const l = fixture();
     l.transactions = [
       tx({ accountId: "A-on", envelopeId: "E1", categoryId: "C1", amount: 30_00, date: "2026-06-05" }),
-       
+
       tx({ type: "income", accountId: "A-on", envelopeId: "E1", categoryId: "C1", amount: 100_00, date: "2026-06-07" }),
     ];
     const s = computeEnvelopeSummary(l, "E1", "2026-06");
@@ -109,17 +109,12 @@ describe("computeEnvelopeSummary — category breakdown (byCat)", () => {
     const s = computeEnvelopeSummary(l, "E1", "2026-06");
     expect(s.categories).toEqual([
       { categoryId: null, name: "Bez kategorii", amount: 40_00 },
-       
+
       { categoryId: "C-ZNIKLA", name: "Inne", amount: 15_00 },
       { categoryId: "C1", name: "Jedzenie", amount: 15_00 },
     ]);
   });
 });
-
-
-
-
-
 
 function windowFixture(): ClientLedger {
   const g = grp({ id: "G1" });
@@ -129,7 +124,6 @@ function windowFixture(): ClientLedger {
     envelopes: [env("G1", { id: "E1" }), env("G1", { id: "E2" })],
     allocations: [alloc("E1", "2026-05", 50_00), alloc("E1", "2026-06", 40_00)],
     transactions: [
-       
       tx({ accountId: "A-on", envelopeId: "E1", categoryId: "C1", amount: 20_00, date: "2026-06-05" }),
       tx({
         accountId: "A-on",
@@ -141,13 +135,13 @@ function windowFixture(): ClientLedger {
         ],
       }),
       tx({ accountId: "A-on", envelopeId: "E1", categoryId: "C1", amount: 5_00, date: "2026-06-07", isRefund: true }),
-       
+
       tx({ accountId: "A-on", envelopeId: "E1", categoryId: "C1", amount: 30_00, date: "2026-05-10" }),
       tx({ accountId: "A-on", envelopeId: "E1", categoryId: "C-ZNIKLA", amount: 4_00, date: "2026-05-11" }),
-       
+
       tx({ accountId: "A-on", envelopeId: "E1", categoryId: "C2", amount: 7_00, date: "2026-04-15" }),
       tx({ accountId: "A-on", envelopeId: "E1", categoryId: null, amount: 2_00, date: "2026-04-16" }),
-       
+
       tx({ accountId: "A-on", envelopeId: "E1", categoryId: "C1", amount: 100_00, date: "2025-07-20" }),
       tx({ accountId: "A-on", envelopeId: "E1", categoryId: "C1", amount: 999_00, date: "2025-06-20" }),
     ],
@@ -163,12 +157,12 @@ function windowFixture(): ClientLedger {
 describe("computeEnvelopeSummary — category windows (opts.categoryMonths)", () => {
   it("default (no opts) — categories cover ONLY the selected month, exactly as today", () => {
     const s = computeEnvelopeSummary(deepFreeze(windowFixture()), "E1", "2026-06");
-     
+
     expect(s.categories).toEqual([
       { categoryId: "C1", name: "Jedzenie", amount: 15_00 },
       { categoryId: "C2", name: "Chemia", amount: 12_00 },
     ]);
-     
+
     expect(computeEnvelopeSummary(windowFixture(), "E1", "2026-06", { categoryMonths: 1 }).categories).toEqual(s.categories);
     expect(s.categoriesTotal).toBe(27_00);
   });
@@ -176,8 +170,8 @@ describe("computeEnvelopeSummary — category windows (opts.categoryMonths)", ()
   it("{categoryMonths: 3} — amounts = sum over the [m−2 … m] window, categoriesTotal = sum of rows", () => {
     const s = computeEnvelopeSummary(deepFreeze(windowFixture()), "E1", "2026-06", { categoryMonths: 3 });
     expect(s.categories).toEqual([
-      { categoryId: "C1", name: "Jedzenie", amount: 45_00 },  
-      { categoryId: "C2", name: "Chemia", amount: 19_00 },  
+      { categoryId: "C1", name: "Jedzenie", amount: 45_00 },
+      { categoryId: "C2", name: "Chemia", amount: 19_00 },
       { categoryId: "C-ZNIKLA", name: "Inne", amount: 4_00 },
       { categoryId: null, name: "Bez kategorii", amount: 2_00 },
     ]);
@@ -188,7 +182,7 @@ describe("computeEnvelopeSummary — category windows (opts.categoryMonths)", ()
 
   it("{categoryMonths: 12} — the [m−11 … m] window covers all 12 months but not the 13th", () => {
     const s = computeEnvelopeSummary(deepFreeze(windowFixture()), "E1", "2026-06", { categoryMonths: 12 });
-     
+
     expect(s.categories[0]).toEqual({ categoryId: "C1", name: "Jedzenie", amount: 145_00 });
     expect(s.categoriesTotal).toBe(145_00 + 19_00 + 4_00 + 2_00);
   });

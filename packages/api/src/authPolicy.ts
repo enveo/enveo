@@ -1,4 +1,3 @@
- 
 export type SignupPolicyInput = {
   deployment: "selfhost" | "cloud";
   allowSignups: string;

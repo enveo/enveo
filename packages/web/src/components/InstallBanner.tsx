@@ -27,9 +27,7 @@ export function markInstallOffered(): void {
   if (storageMode() === "memory-session") return;
   try {
     localStorage.setItem(FLAG, "dismissed");
-  } catch {
-     
-  }
+  } catch {}
 }
 
 /**

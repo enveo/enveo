@@ -1,4 +1,3 @@
- 
 import type { Dict } from "../index";
 
 export const pl: Dict = {
@@ -254,7 +253,7 @@ export const pl: Dict = {
     other: "Dodano {n} transakcji",
   },
   "Adding…": "Dodawanie…",
-   
+
   "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
     "Potem pozostałe urządzenia trzeba odblokować ponownie nowym hasłem albo świeżym kodem parowania — stare kody parowania przestają działać.",
   "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.":
@@ -475,8 +474,6 @@ export const pl: Dict = {
   "Failed to load the image.": "Nie udało się wczytać obrazka.",
   "Could not read the file: {reason}": "Nie udało się wczytać pliku: {reason}",
   "Fill all goals ›": "Wypełnij wszystkie cele ›",
-  
-
 
   "Fill by goals": "Zasil cele",
   Filter: "Filtruj",
@@ -652,7 +649,6 @@ export const pl: Dict = {
   "Rebuild data on this device": "Odbuduj dane na tym urządzeniu",
   "Rebuilding…": "Odbudowywanie…",
   "Recent activity": "Ostatnia aktywność",
-  
 
   "Recent in {name}": "Ostatnie: {name}",
   "Recognizing…": "Rozpoznawanie…",
@@ -1176,7 +1172,6 @@ export const pl: Dict = {
   "vs the {avg} daily average": "wobec średniej dziennej {avg}",
   "Refreshing takes a second, nothing is lost.": "Odświeżenie zajmie chwilę, nic nie zostanie utracone.",
   "{name} {pct}%": "{name} {pct}%",
-  
 
   "Overspends, pace risks and shortfalls": "Przekroczenia, ryzyko tempa i braki",
   "6-month sparklines": "wykresy z 6 mies.",
@@ -1213,14 +1208,14 @@ export const pl: Dict = {
   "Reconcile ›": "Wyrównaj ›",
   "All transactions ›": "Wszystkie transakcje ›",
   "total {amount} this month": "razem {amount} w tym miesiącu",
-   
+
   "total {amount} this month · click a row for detail": "razem {amount} w tym miesiącu · kliknij wiersz, aby zobaczyć szczegóły",
-   
+
   "Add widget": "Dodaj widget",
-   
+
   "Content scrolls when it does not fit the tile.": "Treść przewija się, gdy nie mieści się w kafelku.",
   "Every widget is already on the grid.": "Każdy widget jest już na siatce.",
-   
+
   "Overflowing content is clipped at the tile edge.": "Treść wykraczająca poza kafelek zostaje przycięta.",
   "Remove from the grid": "Usuń z siatki",
   "Reset layout": "Resetuj układ",
@@ -1229,8 +1224,7 @@ export const pl: Dict = {
   "Size on the grid": "Rozmiar na siatce",
   "Size: {w} × {h} — drag the ◢ corner on the tile to resize": "Rozmiar: {w} × {h} — przeciągnij róg ◢ kafelka, aby zmienić rozmiar",
   "Widget settings": "Ustawienia widgetu",
-  // Add-widget picker (owner round 6 item 28): the panel the board's "+" tile opens — the eyebrow
-  // above the list of widgets not on the board, plus one line per widget saying what it shows.
+
   "Not on the board": "Poza siatką",
   "Every envelope with what is left this month.": "Wszystkie koperty z tym, co zostało w tym miesiącu.",
   "Only checked transactions will be added.": "Dodane zostaną tylko zaznaczone transakcje.",
@@ -1244,7 +1238,6 @@ export const pl: Dict = {
   "A sparkline per envelope with its change this month.": "Wykres przebiegu dla każdej koperty ze zmianą w tym miesiącu.",
   "Which days you spend on, and the places you visit most.": "W które dni wydajesz i w jakich miejscach bywasz najczęściej.",
 
-   
   "A local copy means the app opens instantly and keeps working on a plane.":
     "Lokalna kopia oznacza, że aplikacja otwiera się natychmiast i działa dalej nawet w samolocie.",
   "A negative balance is fine — that is how a credit card starts.": "Ujemne saldo to nic złego — tak zaczyna np. karta kredytowa.",
@@ -1265,12 +1258,8 @@ export const pl: Dict = {
     "Każdy zapis na serwer jest już zablokowany. Nic nie zostało usunięte, bo decyzja należy do Ciebie — kopia na tym urządzeniu może być ostatnią, jaka istnieje.",
   "Export first: the JSON backup is written offline, without the server.": "Najpierw eksport: kopia zapasowa JSON jest zapisywana offline, bez serwera.",
   "Fill {amount} ›": "Wypełnij {amount} ›",
-  
-
-
 
   "Fill {amount}": "Wypełnij {amount}",
-  
 
   "Fill all ›": "Wypełnij wszystko ›",
   "Filled {amount} in {name}": "Wypełniono {amount} w {name}",
@@ -1365,7 +1354,6 @@ export const pl: Dict = {
   },
   "v{version} · refreshing takes a second, nothing is lost.": "v{version} · odświeżenie zajmuje chwilę, nic nie przepada.",
 
-   
   "A newer build is ready — refresh to update": "Dostępna jest nowsza wersja — odśwież, aby zaktualizować",
   "Enveo v{version} — a newer build is ready, refresh to update": "Enveo v{version} — dostępna jest nowsza wersja, odśwież, aby zaktualizować",
   "A retry is scheduled…": "Zaplanowano ponowną próbę…",

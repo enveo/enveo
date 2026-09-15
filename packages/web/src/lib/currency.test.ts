@@ -63,8 +63,8 @@ describe("currencyForLocale — region → currency", () => {
   });
 
   test("a region whose currency is 0-decimal and has no regional stand-in → the fallback", () => {
-    expect(currencyForLocale("id-ID")).toBe(FALLBACK_CURRENCY);  
-    expect(currencyForLocale("es-CO")).toBe(FALLBACK_CURRENCY);  
+    expect(currencyForLocale("id-ID")).toBe(FALLBACK_CURRENCY);
+    expect(currencyForLocale("es-CO")).toBe(FALLBACK_CURRENCY);
   });
 
   test("language-only tags resolve through Intl likely-subtags", () => {
@@ -84,9 +84,9 @@ describe("currencyForLocale — region → currency", () => {
 
   test("unknown region, malformed and empty input → the fallback", () => {
     expect(currencyForLocale("ja-JP")).toBe(FALLBACK_CURRENCY); // JPY: 0-decimal, deliberately unsupported
-    expect(currencyForLocale("ko-KR")).toBe(FALLBACK_CURRENCY);  
-    expect(currencyForLocale("vi-VN")).toBe(FALLBACK_CURRENCY);  
-    expect(currencyForLocale("ar-KW")).toBe(FALLBACK_CURRENCY);  
+    expect(currencyForLocale("ko-KR")).toBe(FALLBACK_CURRENCY);
+    expect(currencyForLocale("vi-VN")).toBe(FALLBACK_CURRENCY);
+    expect(currencyForLocale("ar-KW")).toBe(FALLBACK_CURRENCY);
     expect(currencyForLocale("!!!")).toBe(FALLBACK_CURRENCY);
     expect(currencyForLocale("")).toBe(FALLBACK_CURRENCY);
     expect(currencyForLocale(null)).toBe(FALLBACK_CURRENCY);
@@ -111,9 +111,9 @@ describe("currencyForLocales — navigator.languages", () => {
 
 describe("wizardCurrency — the onboarding preselect", () => {
   test("an untouched server default is replaced by the locale's currency", () => {
-    expect(wizardCurrency("EUR", ["en-US"])).toBe("USD");  
+    expect(wizardCurrency("EUR", ["en-US"])).toBe("USD");
     expect(wizardCurrency("PLN", ["de-DE"])).toBe("EUR"); // the legacy pre-2.1 default
-    expect(wizardCurrency(undefined, ["pl-PL"])).toBe("PLN");  
+    expect(wizardCurrency(undefined, ["pl-PL"])).toBe("PLN");
   });
 
   test("a currency the user picked deliberately is KEPT", () => {
@@ -197,7 +197,7 @@ describe("the supported list stays compatible with the money path", () => {
     for (const c of ["JPY", "KRW", "ISK", "CLP", "VND", "HUF", "COP", "IDR", "KWD", "BHD"]) {
       expect(SUPPORTED_CURRENCIES).not.toContain(c as never);
     }
-     
+
     const offered = SUPPORTED_CURRENCIES as readonly string[];
     const wrong = Object.entries(CURRENCY_DIGITS).filter(([c, d]) => d !== 2 && offered.includes(c));
     expect(wrong).toEqual([]);
@@ -219,7 +219,7 @@ describe("the supported list stays compatible with the money path", () => {
     for (const c of SUPPORTED_CURRENCIES) {
       for (const lang of ["pl", "en"] as const) {
         const s = formatMoney(123456, c, lang);
-        expect(s).toContain(lang === "pl" ? "234,56" : "234.56");  
+        expect(s).toContain(lang === "pl" ? "234,56" : "234.56");
         expect(currencySymbol(c, lang).length).toBeGreaterThan(0);
       }
     }

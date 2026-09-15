@@ -15,12 +15,7 @@ import { DataSection, LogoutSection } from "./settings/DataSection";
 import { DictionariesSection } from "./settings/Dictionaries";
 import { PrivacySection } from "./settings/PrivacySection";
 
- 
-
 export const SETTINGS_CATEGORIES = [
-  
-
-
   { id: "appearance", title: msg("Appearance and dashboard"), desc: msg("Theme, language, currency, privacy display, and widgets") },
   { id: "dictionaries", title: msg("Categories and places"), desc: msg("What Enveo suggests while you add a transaction") },
   { id: "ai", title: msg("Artificial intelligence"), desc: msg("Provider, model, and secure credential status") },
@@ -29,8 +24,6 @@ export const SETTINGS_CATEGORIES = [
 ] as const;
 
 export const SETTINGS_HUB_FOOTER_ACTIONS = ["signOut"] as const;
-
-
 
 export type SubId = (typeof SETTINGS_CATEGORIES)[number]["id"];
 
@@ -42,7 +35,6 @@ const SUB_TITLE: Record<SubId, Message> = {
   data: msg("Data and synchronization"),
 };
 
- 
 function Glyph({ color, children }: { color: string; children: ReactNode }) {
   return (
     <svg
@@ -93,7 +85,7 @@ export function SettingsScreen({ onBack, onInstall }: { onBack: () => void; onIn
   const onTouchEnd = (e: React.TouchEvent) => {
     const st = sw.current;
     sw.current = null;
-    if (!st || sub === null) return;  
+    if (!st || sub === null) return;
     const p = e.changedTouches[0]!;
     const dx = p.clientX - st.x,
       dy = p.clientY - st.y;
@@ -137,8 +129,6 @@ export function SettingsScreen({ onBack, onInstall }: { onBack: () => void; onIn
   );
 }
 
- 
-
 function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () => void }) {
   const C = useTheme();
   const { t } = useT();
@@ -147,7 +137,6 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
   const isDark =
     settings.themeMode === "auto" ? typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches : settings.themeMode === "dark";
 
-   
   const catAppearance = isDark ? "#ff8d7d" : "#f0685c";
   const catDictionaries = isDark ? "#a3c48a" : "#7ca968";
   const catAi = isDark ? "#e0aa58" : "#d99a3f";
@@ -156,7 +145,6 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
   // one color per category is the hub's visual language — install gets its OWN token
   // (violet), not a reuse of the Data navy (M10)
   const catInstall = isDark ? "#a89bdd" : "#6f5bb5";
-  
 
   const categoryDesc = (id: SubId) => t(SETTINGS_CATEGORIES.find((c) => c.id === id)!.desc);
 
@@ -313,7 +301,6 @@ function HubCard({
   );
 }
 
- 
 function AiBadge() {
   const C = useTheme();
   const { t } = useT();
@@ -327,7 +314,7 @@ function AiBadge() {
 /** "E2EE" badge — only when the budget is on the e2ee tier (lib/e2ee). */
 function E2eeBadge({ color }: { color: string }) {
   const { t } = useT();
-   
+
   useLedgerVersion();
   if (e2ee.getTierMeta().tier !== "e2ee") return null;
   return (
@@ -337,13 +324,11 @@ function E2eeBadge({ color }: { color: string }) {
   );
 }
 
- 
 function SyncStatusBadge({ okColor }: { okColor: string }) {
   const C = useTheme();
   const { lang } = useT();
   const { state, lastSyncAt, ownerUnproven } = useSyncStatus();
 
-   
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 30_000);

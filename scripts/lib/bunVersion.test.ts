@@ -1,11 +1,3 @@
-
-
-
-
-
-
-
-
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -107,7 +99,6 @@ describe("findDockerBaseProblems", () => {
   });
 
   it("accepts two DIFFERENT variants of the pinned version, each pinned separately", () => {
-     
     const alpine = `sha256:${"b".repeat(64)}`;
     const bases = collectDockerfileBunBases(
       [`FROM oven/bun:1.3.14@${digest} AS build`, `FROM oven/bun:1.3.14-alpine@${alpine} AS deps`, `FROM oven/bun:1.3.14-alpine@${alpine} AS runtime`].join(
@@ -174,11 +165,6 @@ describe("findBunVersionDrift", () => {
     expect(findBunVersionDrift("1.3.14", refs)).toEqual([{ file: "package.json", where: "@types/bun", found: "1.2.0", expected: "1.3.14" }]);
   });
 });
-
-
-
-
-
 
 const WORKFLOW_FILES = [
   ".github/workflows/ci.yml",

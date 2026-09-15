@@ -7,21 +7,17 @@ import { StartupSplash } from "./StartupSplash";
 
 describe("startup splash", () => {
   it("announces a single loading status without exposing decorative graphics", () => {
-     
     const html = renderToStaticMarkup(createElement(StartupSplash));
 
-     
     expect(html).toContain('role="status"');
     expect(html).toContain('aria-label="Loading Enveo"');
     expect(html).toContain('aria-hidden="true"');
   });
 
   it("uses the splash color for the browser and installed-PWA launch surfaces", () => {
-     
     const index = readFileSync(join(import.meta.dir, "..", "..", "index.html"), "utf8");
     const viteConfig = readFileSync(join(import.meta.dir, "..", "..", "vite.config.ts"), "utf8");
 
-     
     expect(index).toContain('<meta name="theme-color" content="#1d2a47"');
     expect(index).toContain("html { background: #1d2a47; }");
     expect(viteConfig).toContain('theme_color: "#1d2a47"');

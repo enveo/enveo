@@ -15,7 +15,6 @@ function ledgerWithSpend(envId: string, spendByMonth: Record<string, number>): L
 
 describe("computeEnvelopeBudgetStats", () => {
   it("uses the 6 fully-elapsed months before the selected month", () => {
-     
     const l = asClientLedger(
       ledgerWithSpend("E0", {
         "2026-01": 100_00,
@@ -31,7 +30,7 @@ describe("computeEnvelopeBudgetStats", () => {
     expect(s.months).toEqual([100_00, 100_00, 100_00, 100_00, 100_00, 100_00]);
     expect(s.medianSpend).toBe(100_00);
     expect(s.avgSpend).toBe(100_00);
-    expect(s.recurringLike).toBe(true);  
+    expect(s.recurringLike).toBe(true);
   });
 
   it("marks non-recurring envelopes and floors negative months at 0", () => {
@@ -72,7 +71,7 @@ describe("buildBudgetSuggestionBasis", () => {
     const g = grp();
     const eNeg = env(g.id, { id: "NEG", name: "Auto" });
     const eOk = env(g.id, { id: "OK", name: "Jedzenie" });
-     
+
     const l = asClientLedger({
       accounts: [onAcc(1000_00)],
       groups: [g],
@@ -84,7 +83,7 @@ describe("buildBudgetSuggestionBasis", () => {
     const neg = basis.candidates.find((c) => c.envelopeId === "NEG")!;
     const ok = basis.candidates.find((c) => c.envelopeId === "OK")!;
     expect(neg.priority).toBeGreaterThan(ok.priority);
-    expect(neg.baseDelta).toBeGreaterThanOrEqual(150_00);  
+    expect(neg.baseDelta).toBeGreaterThanOrEqual(150_00);
   });
 
   it("investor gives savings-like envelopes top priority and picks one as remainder sink", () => {
@@ -103,7 +102,7 @@ describe("buildBudgetSuggestionBasis", () => {
   it("savingsLike comes from the explicit isSavings flag, not the envelope name", () => {
     const g = grp();
     const eFlag = env(g.id, { id: "SAV", name: "Someday fund", isSavings: true });
-    const eName = env(g.id, { id: "NAME", name: "Oszczędności" });  
+    const eName = env(g.id, { id: "NAME", name: "Oszczędności" });
     const l = asClientLedger({ accounts: [onAcc(500_00)], groups: [g], envelopes: [eFlag, eName], allocations: [], transactions: [] });
     const basis = buildBudgetSuggestionBasis({ ledger: l, month: "2026-07", profile: "investor" });
     expect(basis.candidates.find((c) => c.envelopeId === "SAV")!.savingsLike).toBe(true);
@@ -159,7 +158,7 @@ describe("normalizeBudgetSuggestion", () => {
     const r = normalizeBudgetSuggestion(basis, [{ envelopeId: "E1", proposedDelta: 100_00 }]);
     expect(r.repaired).toBe(true);
     expect(r.distributed).toBe(basis.amountToDistribute);
-     
+
     expect(r.items.find((i) => i.envelopeId === "E2")!.proposedDelta).toBe(basis.amountToDistribute - 100_00);
   });
 
@@ -250,7 +249,6 @@ describe("monthlyTarget field", () => {
 import type { BudgetSuggestionBasis, BudgetSuggestionCandidate } from "./aiBudget";
 import { buildPrevMonthSuggestion, buildTopUpNegativesSuggestion, normalizeAgentSuggestion } from "./aiBudget";
 
- 
 const mkCand = (id: string, available: number, allocated = 0): BudgetSuggestionCandidate => ({
   envelopeId: id,
   baseDelta: 0,
@@ -351,9 +349,9 @@ describe("buildPrevMonthSuggestion", () => {
   it("delta = max(0, prevAllocated − currentAllocated); never takes allocations away", () => {
     const basis = mkBasis([mkCand("A", 0, 100_00), mkCand("B", 0, 80_00), mkCand("C", 0, 0)], 1000_00);
     const prev = new Map([
-      ["A", 300_00],  
-      ["B", 50_00],  
-    ]);  
+      ["A", 300_00],
+      ["B", 50_00],
+    ]);
     const r = buildPrevMonthSuggestion(basis, prev);
     expect(r.items.map((i) => i.envelopeId)).toEqual(["A"]);
     expect(r.items[0]!.proposedDelta).toBe(200_00);
@@ -519,7 +517,7 @@ describe("monthlyTarget in the engine", () => {
     const basis = buildBudgetSuggestionBasis({ ledger: ledgerWithTarget(500_00, 200_00), month: "2026-07", profile: "historical" });
     const obl = basis.candidates.find((c) => c.envelopeId === "OBL")!;
     expect(obl.stats.targetGap).toBe(300_00);
-    expect(obl.maxDelta).toBe(300_00);  
+    expect(obl.maxDelta).toBe(300_00);
   });
 
   it("rules fund a target within budget; delta never exceeds the gap", () => {

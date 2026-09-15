@@ -15,7 +15,6 @@
 
 export type StoreName = "meta" | "outbox" | "deadletter" | "importJobs" | "importDrafts";
 
- 
 export const KEY_PATH: Record<StoreName, string | null> = {
   meta: null,
   outbox: "localSeq",
@@ -48,29 +47,29 @@ export interface ImportDraftStateMutation extends ImportRecordScope {
 export interface StorageBackend {
   get(store: StoreName, key: IDBValidKey): Promise<unknown>;
   getAll(store: StoreName): Promise<unknown[]>;
-   
+
   mutateMeta(key: IDBValidKey, update: (current: unknown) => unknown): Promise<unknown>;
-   
+
   importTransactionProof(scope: ImportRecordScope, transactionId: string): Promise<"durable" | "rejected" | "absent">;
-   
+
   put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void>;
   /** Multiple puts in ONE transaction (atomic: all or nothing). */
   putMany(store: StoreName, entries: Array<{ value: unknown; key?: IDBValidKey }>): Promise<void>;
-   
+
   putImportJobIfRevision(value: unknown, expectedRevision: number): Promise<boolean>;
   /** Create/replace a job only when an existing same-id record belongs to this scope. */
   putImportJobForScope(value: unknown, scope: ImportRecordScope): Promise<boolean>;
-   
+
   putImportDraftIfAbsentOrSame(value: unknown): Promise<ImportDraftPutResult>;
-   
+
   mutateImportDraftState(mutation: ImportDraftStateMutation): Promise<unknown | undefined>;
-   
+
   deleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean>;
   deleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean>;
-   
+
   deleteImportJobWithMetaIfScope(id: IDBValidKey, scope: ImportRecordScope, metaKeys: IDBValidKey[], permitted: () => boolean): Promise<boolean>;
   deleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number>;
-   
+
   add(store: StoreName, value: unknown): Promise<IDBValidKey>;
   /**
    * ATOMICALLY move an op to dead-letter: delete from "outbox" (if seq !== null)
@@ -80,7 +79,7 @@ export interface StorageBackend {
   moveToDeadLetter(seq: number | null, deadLetter: unknown): Promise<void>;
   delete(store: StoreName, key: IDBValidKey): Promise<void>;
   clear(store: StoreName): Promise<void>;
-   
+
   clearAll(): Promise<void>;
 }
 

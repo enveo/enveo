@@ -5,7 +5,6 @@ import { P } from "../../lib/theme";
 const toneColor = (tone: AutomaticEnvelopeEffectTone, colors: { pos: string; neg: string; soft: string }): string =>
   tone === "positive" ? colors.pos : tone === "negative" ? colors.neg : colors.soft;
 
- 
 export function AutomaticEnvelopeEffect({ data, compact = false }: { data: AutomaticEnvelopeEffectData; compact?: boolean }) {
   const C = useTheme();
   return (

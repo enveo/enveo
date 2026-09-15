@@ -1,7 +1,6 @@
 import type { CSSProperties } from "react";
 import { font, P, type Theme } from "../../lib/theme";
 
- 
 export const collapsedRowStyle = (C: Theme, accent: boolean): CSSProperties => ({
   display: "flex",
   alignItems: "center",
@@ -16,7 +15,6 @@ export const collapsedRowStyle = (C: Theme, accent: boolean): CSSProperties => (
   cursor: "pointer",
 });
 
- 
 export const linkBtnStyle: CSSProperties = {
   background: "none",
   border: "none",

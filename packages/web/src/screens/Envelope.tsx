@@ -19,12 +19,6 @@ export const PERIODS = [1, 3, 6, 12] as const;
 export type Period = (typeof PERIODS)[number];
 export const PERIOD_KEY = { 1: msg("1 mo"), 3: msg("3 mo"), 6: msg("6 mo"), 12: msg("1 yr") } as const;
 
-
-
-
-
-
-
 export function EnvelopeScreen({
   envelopeId,
   initialMonth,
@@ -40,18 +34,12 @@ export function EnvelopeScreen({
   const M = useMask();
   const { t, lang } = useT();
   const version = useLedgerVersion();
-  // Task 4: PanelHost's own slim header (context label + ✕, PR4 §4d) already closes this pane
-  // when it is hosted there, so this screen's own back-button row is redundant chrome for EVERY
-  // panel host (desktop 400px and fold 552px alike) — gated on `host`, not `mode`. `useWideHost()`
-  // is null for the phone full-screen host (App.tsx's own `EnvelopeScreen` mount), so the row stays
-  // there unchanged.
+
   const wideHost = useWideHost();
   const panelHosted = wideHost?.host === "panel";
-  
-
 
   const foldTwoCol = wideHost?.mode === "fold";
-   
+
   const [m, setM] = useState(initialMonth);
   const [period, setPeriod] = useState<Period>(1);
   const [edit, setEdit] = useState<EnvelopeView | null>(null);
@@ -74,8 +62,6 @@ export function EnvelopeScreen({
     </button>
   );
 
-  
-
   if (!data || !stateM || !env) {
     return (
       <div className="gs" style={{ flex: 1, overflowY: "auto" }}>
@@ -92,7 +78,6 @@ export function EnvelopeScreen({
   const maxSpent = Math.max(...series.map((s) => s.spent), 1);
   const total = data.categoriesTotal;
 
-   
   const stat = (label: string, value: string, color: string) => (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ fontSize: 9.5, letterSpacing: 0.6, textTransform: "uppercase", color: C.mute, marginBottom: 4 }}>{label}</div>
@@ -103,7 +88,7 @@ export function EnvelopeScreen({
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-        { }
+        {}
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: `12px ${P}px 4px` }}>
           {backBtn}
           <div
@@ -123,7 +108,7 @@ export function EnvelopeScreen({
           <span style={{ fontSize: 18, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env.name}</span>
         </div>
 
-        { }
+        {}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "4px 0 12px" }}>
           <button
             onClick={() => setM(shiftMonth(m, -1))}
@@ -142,30 +127,27 @@ export function EnvelopeScreen({
           </button>
         </div>
 
-        { }
+        {}
         <div style={{ margin: `0 ${P}px 18px`, background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "14px 16px 12px" }}>
           <div style={{ display: "flex", textAlign: "center", gap: 8 }}>
             {stat(t("BUDGET"), M(env.allocated), C.text)}
             {stat(t("SPENT"), M(Math.max(0, env.spent)), C.text)}
             {stat(t("AVAILABLE"), `${neg ? "-" : ""}${M(Math.abs(env.available))}`, neg ? C.neg : C.pos)}
           </div>
-          { }
+          {}
           <div style={{ marginTop: 12, height: 7, background: C.inset, borderRadius: 4, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${progress * 100}%`, background: neg ? C.neg : env.color, borderRadius: 4, transition: "width .4s" }} />
           </div>
-          { }
+          {}
           <div style={{ marginTop: 8, textAlign: "center", fontSize: 10, color: carryIn < 0 ? C.neg : C.mute, fontVariantNumeric: "tabular-nums" }}>
             {t("{amount} from the previous month", { amount: `${carryIn < 0 ? "-" : "+"}${M(Math.abs(carryIn))}` })}
           </div>
         </div>
 
-        {
-
-
-}
+        {}
         <div style={foldTwoCol ? { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" } : undefined}>
           <div>
-            { }
+            {}
             <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `0 ${P}px 10px` }}>{t("Monthly breakdown")}</div>
             {series.map((s) => (
               <div key={s.month} style={{ display: "flex", alignItems: "center", gap: 10, margin: `0 ${P}px 8px` }}>
@@ -181,7 +163,7 @@ export function EnvelopeScreen({
           </div>
 
           <div>
-            { }
+            {}
             <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `10px ${P}px 8px` }}>{t("Breakdown by category")}</div>
             <div style={{ display: "flex", gap: 6, margin: `0 ${P}px 12px` }}>
               {PERIODS.map((p) => (
@@ -211,7 +193,7 @@ export function EnvelopeScreen({
                 <div key={c.categoryId ?? "none"} style={{ margin: `0 ${P}px 10px` }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                     <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      { }
+                      {}
                       {c.categoryId === null ? t("No category") : c.name}
                     </span>
                     <span style={{ fontSize: 11.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{share.toFixed(1)}%</span>
@@ -241,7 +223,7 @@ export function EnvelopeScreen({
         </div>
       </div>
 
-      { }
+      {}
       <div
         style={{
           display: "flex",

@@ -1,25 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { beforeAll, describe, expect, it } from "bun:test";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -81,8 +59,6 @@ describe.skipIf(!TEST_URL)("getBudgetId: serialized lazy initial-budget creation
   });
 
   it("a caller-owned transaction locks IN PLACE (withOperationLockInTx), creating one budget", () => {
-    
-
     expect(out.inTxPath.lockHeldByOuterTxPid).toBe(true);
     expect(out.inTxPath.createdId).not.toBe("");
     expect(out.inTxPath.rowCount).toBe(1);

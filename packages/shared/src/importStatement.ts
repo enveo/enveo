@@ -64,10 +64,9 @@ export function statementLinesFromTextItems(items: ReadonlyArray<PositionedText>
     );
 }
 
- 
 const ACCOUNT_NUMBER = /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{2,4}){3,8}\b|\b\d{20,34}\b/g;
 const BANK_CODE_LINE = /\b(BIC|SWIFT|SORT CODE)\b/i;
- 
+
 const BANK_CODE = /\b[A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\b/g;
 
 /**

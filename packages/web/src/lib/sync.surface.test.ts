@@ -1,12 +1,3 @@
-
-
-
-
-
-
-
-
-
 import { describe, expect, it } from "bun:test";
 import type { ClientLedger } from "@enveo/shared";
 import {
@@ -54,8 +45,6 @@ import {
   upgradeServerE2eeV2,
   wipeLocalData,
 } from "./sync";
-
- 
 
 const _getClientId: () => Promise<string> = getClientId;
 const _emptyLedger: ClientLedger = EMPTY_LEDGER;
@@ -108,16 +97,12 @@ const _retryBoot: () => Promise<void> = retryBoot;
 const _broadcastKeysChanged: () => Promise<void> = broadcastKeysChanged;
 const _wipeLocalData: () => Promise<void> = wipeLocalData;
 
- 
-
 const _tierMismatch: TierMismatchError = new TierMismatchError("e2ee", 1);
 const _tierOfMismatch: "plain" | "e2ee" = _tierMismatch.tier;
 const _epochOfMismatch: number = _tierMismatch.epoch;
 const _upgradeRequired: E2eeUpgradeRequiredError = new E2eeUpgradeRequiredError(1, null);
 const _epochOfUpgrade: number = _upgradeRequired.epoch;
 const _budgetOfUpgrade: string | null = _upgradeRequired.budgetId;
-
- 
 
 const _bootSources: BootSource[] = ["replica", "snapshot", null];
 const _syncStates: SyncState[] = ["synced", "syncing", "offline", "error", "unauthed", "unverified"];

@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { deleteEverythingAndStartFresh, isUnprovenReplicaError, type RecoverySteps } from "./recovery";
 
- 
-
 describe("isUnprovenReplicaError", () => {
   test("matches the assertOwnReplica sentinel and nothing else", () => {
     expect(isUnprovenReplicaError(new Error("foreign_replica"))).toBe(true);
@@ -13,9 +11,6 @@ describe("isUnprovenReplicaError", () => {
   });
 });
 
- 
-
- 
 function makeSteps(opts: { userId?: string | null; failAt?: "budgetReset" | "signOut" } = {}) {
   const calls: string[] = [];
   const fail = (name: string) => (opts.failAt === name ? Promise.reject(new Error(`${name}_failed`)) : Promise.resolve());
@@ -50,7 +45,7 @@ describe("deleteEverythingAndStartFresh", () => {
     await deleteEverythingAndStartFresh(steps);
     expect(calls).toEqual([
       "fetchSessionUserId",
-      "budgetReset(user-1)",  
+      "budgetReset(user-1)",
       "signOut",
       "clearDeviceStoragePolicy",
       "clearPersistedSettings",

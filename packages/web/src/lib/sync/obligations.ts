@@ -1,11 +1,5 @@
-
-
-
-
 import { idbGet } from "../idb";
 import * as persist from "../persist";
-
- 
 
 /**
  * Kept ACROSS cycles and (mirrored in IDB) across reloads. An op rejected
@@ -47,7 +41,6 @@ export function isReplacePending(): boolean {
   return replacePending;
 }
 
- 
 export function markReplacePending(): void {
   replacePending = true;
   void persist.putMeta("replacePending", true);
@@ -79,7 +72,6 @@ export async function hydrateObligations(): Promise<void> {
   }
 }
 
- 
 export function __resetObligations(): void {
   resyncPending = false;
   replacePending = false;

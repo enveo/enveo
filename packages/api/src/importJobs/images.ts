@@ -2,10 +2,9 @@ import { IMPORT_JOB_MAX_IMAGES } from "@enveo/shared";
 import type { ImportJobImageInput } from "./repository";
 
 export { IMPORT_JOB_MAX_IMAGES };
- 
+
 export const IMPORT_JOB_MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 export const IMPORT_JOB_MAX_TOTAL_IMAGE_BYTES = 24 * 1024 * 1024;
-
 
 export const IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES = 32 * 1024 * 1024 + 4096;
 
@@ -19,7 +18,7 @@ export class ImportJobImageError extends Error {
 }
 
 const DATA_URL = /^data:(image\/(?:jpeg|png|webp)|text\/plain);base64,([A-Za-z0-9+/]*={0,2})$/;
- 
+
 export const IMPORT_JOB_MAX_TEXT_PAGE_BYTES = 256 * 1024;
 function isStrictBase64(value: string): boolean {
   if (value.length === 0 || value.length % 4 !== 0) return false;
@@ -62,7 +61,6 @@ function decodeOne(value: string): ImportJobImageInput {
   const content = new Uint8Array(Buffer.from(encoded, "base64"));
   if (Buffer.from(content).toString("base64") !== encoded) throw new ImportJobImageError("invalid_image");
   if (mimeType === "text/plain") {
-     
     if (content.byteLength === 0 || content.byteLength > IMPORT_JOB_MAX_TEXT_PAGE_BYTES) throw new ImportJobImageError("too_large");
     return { mimeType, content };
   }

@@ -23,28 +23,11 @@ import { ACCOUNT_COLORS, CTA, font, P, TEAL } from "../lib/theme";
 import { AccountListRowContent } from "./AccountListRowContent";
 import { EnvelopePickerSheet } from "./add/EnvelopePickerSheet";
 
-/** Wide Accounts hero card debt-share caption (design parity wave E task 1, v3:2701-2706): below
- *  1% would round to a flat "0%" beside a non-zero Owed figure, so this says "under 1%" instead.
- *  The design's OWN zero-debt case reads the bare word "none" (v3:2703's `pct < 1` guard only
- *  fires once `debtTotal !== 0`) — deliberately literal "0%" here instead: numerically identical,
- *  and it keeps the caption's ONE placeholder a locale-neutral number+percent in every branch
- *  except the deliberate "under 1%" rounding note, rather than smuggling a second bare English
- *  word through as translatable data. `t` is needed only for that one branch. Extracted (out of
- *  the review that found this three-way rounding/threshold branch shipping with zero coverage)
- *  so the 0%/under-1%/rounded/100%-clamp boundaries are pinned by `Accounts.test.ts`, matching
- *  the `netWorthDeltaPct`/`netWorthRangeLabel` precedent this same epic already set. */
 export function accountDebtShareText(cashTotal: number, debtTotal: number, t: (m: Message) => string): string {
   const debtPct = cashTotal > 0 && debtTotal !== 0 ? (Math.abs(debtTotal) / cashTotal) * 100 : null;
   return debtPct === null ? "0%" : debtPct < 1 ? t("under 1%") : `${Math.min(100, Math.round(debtPct))}%`;
 }
 
-/** Wide Accounts card sub-line transaction count (design parity wave E task 1): "touches this
- *  account" is two-sided — a transfer's `toAccountId` counts too, the SAME rule
- *  `AccountPanel.tsx`'s own recent-activity list documents — against the caller's transaction
- *  list (the VIEWED month, same as every other per-month stat on `state`), never the global
- *  replica (that's the balance's job, computed separately from `accountsNow`). Extracted for the
- *  same reason as `accountDebtShareText` above: a two-sided membership test is exactly the kind
- *  of thing that silently flips direction under refactor without a pinned test. */
 export function accountTransactionCount(transactions: Pick<Transaction, "accountId" | "toAccountId">[], accountId: string): number {
   return transactions.filter((tr) => tr.accountId === accountId || tr.toAccountId === accountId).length;
 }
@@ -57,11 +40,8 @@ export function AccountsScreen({
 }: {
   state: StateResponse;
   onMenu: () => void;
-  /** PR6b Task 3: wide-only — a row opens the account pane instead of the edit sheet when both
-   *  this and `inWide` (below) hold. Phone never passes it (`inWide` is always false there), so
-   *  phone behaviour stays byte-identical. */
+
   onOpenAccount?: (id: string) => void;
-  
 
   selectedAccountId?: string | null;
 }) {
@@ -70,12 +50,8 @@ export function AccountsScreen({
   const { t, tp, lang } = useT();
   const wideHost = useWideHost();
   const inWide = wideHost !== null;
-  
-
 
   const acctCols = wideHost?.mode === "fold" ? "1fr" : "1fr 1fr";
-  
-
 
   const version = useLedgerVersion();
   const accountsNow = useMemo(() => {
@@ -86,22 +62,16 @@ export function AccountsScreen({
   const accounts = [...accountsNow].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
   const closed = [...accountsNow].filter((a) => a.archived).sort((a, b) => a.sort - b.sort);
   const total = accounts.reduce((s, a) => s + a.balance, 0);
-  
-
 
   const cashTotal = accounts.filter((a) => a.balance > 0).reduce((s, a) => s + a.balance, 0);
   const debtTotal = accounts.filter((a) => a.balance < 0).reduce((s, a) => s + a.balance, 0);
-  
-
 
   const segments = accounts.filter((a) => a.balance > 0).map((a) => ({ weight: a.balance, color: a.color }));
   const debtShareText = accountDebtShareText(cashTotal, debtTotal, t);
-  
 
   const accountTxnCount = (a: { id: string }) => accountTransactionCount(state.transactions, a.id);
   const [add, setAdd] = useState(false);
   const [edit, setEdit] = useState<StateResponse["accounts"][number] | null>(null);
-  
 
   const openRow = (a: StateResponse["accounts"][number]) => (inWide && onOpenAccount ? onOpenAccount(a.id) : setEdit(a));
   const [nm, setNm] = useState("");
@@ -122,7 +92,6 @@ export function AccountsScreen({
     if (automaticEnvelopeId && !state.envelopes.some((envelope) => !envelope.archived && envelope.id === automaticEnvelopeId)) setAutomaticEnvelopeId(null);
   }, [automaticEnvelopeId, state.envelopes]);
   const openAdd = () => {
-     
     setNm("");
     setBl("");
     setNmColor(ACCOUNT_COLORS[accounts.length % ACCOUNT_COLORS.length]!);
@@ -133,13 +102,10 @@ export function AccountsScreen({
   };
   const closeAdd = () => {
     setAutomaticPicker(false);
-    
 
     setBlPad(null);
     setAdd(false);
   };
-
-  
 
   const commitMove = (from: number, to: number) => {
     const order = [...accounts];
@@ -181,11 +147,6 @@ export function AccountsScreen({
       }
     >
       {inWide ? (
-        
-
-
-
-
         <>
           <div
             style={{
@@ -460,9 +421,6 @@ export function AccountsScreen({
                   key={a.id}
                   ref={dnd.itemRef(i)}
                   className="fu"
-                  // PR6b Task 3: the selected-row highlight wins over the drag-dragging background —
-                  // the two never coincide in practice (dragging clears any wide selection concern),
-                  // but selection reads first for clarity.
                   aria-current={selectedAccountId === a.id || undefined}
                   style={{
                     animationDelay: `${i * 22}ms`,

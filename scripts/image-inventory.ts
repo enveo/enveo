@@ -20,7 +20,6 @@ import { checkImage, type ImageFacts } from "./lib/imageInventory";
 const EXIT_VIOLATIONS = 1;
 const EXIT_USAGE = 2;
 
- 
 function run(argv: readonly string[]): string {
   const result = Bun.spawnSync([...argv], { stdio: ["ignore", "pipe", "pipe"] });
   if (result.exitCode !== 0) {
@@ -29,17 +28,10 @@ function run(argv: readonly string[]): string {
   return result.stdout.toString();
 }
 
- 
 const inImage = (image: string, script: string): string => run(["docker", "run", "--rm", "--network=none", "--entrypoint", "/bin/sh", image, "-c", script]);
-
-
-
-
-
 
 const bunInImage = (image: string, source: string): string => run(["docker", "run", "--rm", "--network=none", "--entrypoint", "bun", image, "-e", source]);
 
- 
 export function scanModuleSpecifiers(source: string, loader: "ts" | "tsx"): string[] {
   return new Bun.Transpiler({ loader }).scanImports(source).map(({ path }) => path);
 }

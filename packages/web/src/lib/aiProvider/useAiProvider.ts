@@ -4,8 +4,6 @@ import * as e2ee from "../e2ee";
 import { store } from "../store";
 import { createAiProvider } from "./factory";
 
-
-
 export function useAiProvider() {
   const { preferences } = useBudgetPreferences();
   const tier = e2ee.getTierMeta().tier;

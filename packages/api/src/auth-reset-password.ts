@@ -1,23 +1,8 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { and, eq, sql as raw } from "drizzle-orm";
 import { auth } from "./auth";
 import { db, sql } from "./db/client";
 import * as s from "./db/schema";
 
- 
 const CREDENTIAL = "credential";
 
 const USAGE = "Usage: bun run auth:reset-password <email> <new-password>";
@@ -50,11 +35,9 @@ async function resetPassword(email: string, password: string): Promise<number> {
     .limit(1);
 
   if (credential) {
-     
     await ctx.internalAdapter.updatePassword(user.id, hash);
     console.log(`Password updated for ${user.email}.`);
   } else {
-     
     await ctx.internalAdapter.createAccount({
       userId: user.id,
       providerId: CREDENTIAL,

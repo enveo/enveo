@@ -17,8 +17,6 @@ import type { EnvelopeGroup, EnvelopeView, StateResponse } from "@enveo/shared";
 import { useMask, useTheme } from "../../lib/contexts";
 import { type Message, useT } from "../../lib/i18n";
 
-
-
 function pickEnvelopes(state: StateResponse, mode: string): EnvelopeView[] {
   const envelopes = [...state.envelopes].filter((e) => !e.archived).sort((a, b) => a.sort - b.sort);
   if (mode === "savings") return envelopes.filter((e) => e.isSavings);
@@ -30,14 +28,8 @@ function pickEnvelopes(state: StateResponse, mode: string): EnvelopeView[] {
     const ids = new Set(mode.slice("picked:".length).split(",").filter(Boolean));
     return envelopes.filter((e) => ids.has(e.id));
   }
-  return envelopes;  
+  return envelopes;
 }
-
-
-
-
-
-
 
 function modeCaption(mode: string, groups: EnvelopeGroup[], t: (m: Message, p?: Record<string, string | number>) => string): string {
   if (mode === "savings") return t("Savings only");
@@ -55,7 +47,6 @@ function modeCaption(mode: string, groups: EnvelopeGroup[], t: (m: Message, p?: 
 export interface EnvelopePillGridProps {
   state: StateResponse;
   month: string;
-  
 
   mode: string;
   onOpenEnvelope: (envId: string, month: string) => void;
@@ -75,8 +66,7 @@ export function EnvelopePillGrid({ state, month, mode, onOpenEnvelope }: Envelop
   const caption = t("{mode} · total {amount}", { mode: modeCaption(mode, state.groups, t), amount: total });
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 7, flex: 1, minHeight: 0 }}>
-      {
-}
+      {}
       <div
         className="gsh"
         style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 6, alignContent: "start" }}

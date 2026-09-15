@@ -22,13 +22,12 @@ export type TierId = "low" | "medium" | "high";
 export interface ModelTier {
   id: TierId;
   model: OpenAiModel;
-   
+
   label: Message;
-   
+
   pricePer1M: { input: number; cachedInput: number; output: number };
 }
 
- 
 export const AI_MODEL_TIERS: readonly ModelTier[] = [
   { id: "low", model: "gpt-5.6-luna", label: msg("Economical"), pricePer1M: { input: 0.2, cachedInput: 0.02, output: 1.2 } },
   { id: "medium", model: "gpt-5.6-terra", label: msg("Balanced"), pricePer1M: { input: 2, cachedInput: 0.2, output: 12 } },
@@ -42,5 +41,4 @@ export const isLegacyOpenAiModel = (model: string): boolean => (LEGACY_OPENAI_MO
 
 export const tierForModel = (model: string): ModelTier | undefined => AI_MODEL_TIERS.find((t) => t.model === model);
 
- 
 export const costMultiplier = (tier: ModelTier): number => Math.round(tier.pricePer1M.input / AI_MODEL_TIERS[0]!.pricePer1M.input);

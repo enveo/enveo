@@ -7,7 +7,6 @@
 import { describe, expect, it } from "bun:test";
 import { timeoutSignal } from "./timeoutSignal";
 
- 
 function fakeTimers() {
   let fire: (() => void) | null = null;
   const cleared: unknown[] = [];
@@ -41,7 +40,7 @@ describe("timeoutSignal", () => {
     const { timers, cleared } = fakeTimers();
     const t = timeoutSignal(120_000, timers);
     t.clear();
-    expect(cleared).toEqual(["handle-1"]);  
+    expect(cleared).toEqual(["handle-1"]);
     expect(t.signal.aborted).toBe(false);
     expect(t.timedOut()).toBe(false);
   });
@@ -49,6 +48,6 @@ describe("timeoutSignal", () => {
   it("an abort that did not come from the timer is NOT a timeout", () => {
     const { timers } = fakeTimers();
     const t = timeoutSignal(120_000, timers);
-    expect(t.timedOut()).toBe(false);  
+    expect(t.timedOut()).toBe(false);
   });
 });

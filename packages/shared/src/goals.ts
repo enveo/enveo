@@ -1,25 +1,8 @@
 export type GoalProgress = { pct: number; funded: boolean; missing: number };
 
-
-
-
-
-
-
 function missingOf(target: number, allocated: number): number {
   return Math.max(0, target - Math.max(0, allocated));
 }
-
-
-
-
-
-
-
-
-
-
-
 
 export function goalProgress(e: { monthlyTarget: number | null; allocated: number }): GoalProgress | null {
   const target = e.monthlyTarget;

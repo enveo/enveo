@@ -70,7 +70,6 @@ export async function prepareExplicitSignOut(deps: SignOutDeps = realDeps): Prom
   }
 }
 
- 
 export async function completeExplicitSignOut(decision: SignOutDecision, deps: SignOutDeps = realDeps): Promise<void> {
   if (decision === "export") {
     if (!deps.canExport()) throw new Error("sign_out_export_unavailable");
@@ -79,8 +78,6 @@ export async function completeExplicitSignOut(decision: SignOutDecision, deps: S
   const lease = await deps.beginCoordination();
   let serverSucceeded = false;
   try {
-    
-
     const count = await deps.flushPending(lease);
     if (decision === "retry") {
       if (count !== 0) {
@@ -108,7 +105,6 @@ export async function completeExplicitSignOut(decision: SignOutDecision, deps: S
   }
 }
 
- 
 export async function retryLocalSignOutCleanup(): Promise<void> {
   const pending = pendingLocalCleanup;
   if (!pending) throw new Error("local_sign_out_cleanup_not_pending");

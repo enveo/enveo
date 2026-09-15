@@ -29,7 +29,6 @@
  * verification must not depend on live registry state.
  */
 
- 
 export const SELF_HOST_DOCS = [
   "README.md",
   "compose.selfhost.yml",
@@ -40,13 +39,11 @@ export const SELF_HOST_DOCS = [
   "docs/operations.md",
 ] as const;
 
- 
 export const DEPLOY_SCRIPT = "scripts/deploy.sh";
 
- 
 export type PolicyViolation = Readonly<{
   file: string;
-   
+
   line: number;
   rule: "image-tag" | "version-placeholder" | "remote-download" | "pipe-to-shell" | "package-manager";
   detail: string;
@@ -62,10 +59,8 @@ export type PolicyViolation = Readonly<{
  */
 const ENVEO_IMAGE = /ghcr\.io\/enveo\/enveo[\w.-]*([:@][^\s`'"<>,)\]]*)?/gi;
 
- 
 const VERSION_PLACEHOLDER = /\bv?X\.Y\.Z\b/g;
 
- 
 const ALLOWED_TAG = ":latest";
 
 /** Sentence punctuation that is not part of the reference (`…:latest.` ends a sentence). */
@@ -80,7 +75,7 @@ export function checkSelfHostImageRefs(file: string, text: string): PolicyViolat
   const violations: PolicyViolation[] = [];
   text.split("\n").forEach((raw, index) => {
     const line = index + 1;
-     
+
     let rest = raw;
     for (const match of raw.matchAll(ENVEO_IMAGE)) {
       const whole = match[0];
@@ -106,7 +101,6 @@ export function checkSelfHostImageRefs(file: string, text: string): PolicyViolat
   return violations;
 }
 
- 
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
 const URL_IN_LINE = /\bhttps?:\/\/([^\s'"|)/]+)/g;
 
@@ -155,7 +149,6 @@ export function checkDeployScript(text: string): PolicyViolation[] {
   return violations;
 }
 
- 
 export function formatViolations(violations: readonly PolicyViolation[]): string {
   return violations.map((v) => `  ${v.file}:${v.line}  [${v.rule}] ${v.detail}`).join("\n");
 }

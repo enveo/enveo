@@ -23,14 +23,11 @@
 import { runPersistenceAccountStorageWrite } from "./accountStorageOperations";
 import { idbAdd, idbClear, idbDelete, idbMoveToDeadLetter, idbPut, idbPutMany } from "./idb";
 
- 
 export interface LedgerSnap {
   ledger: unknown;
   cursor: number;
   budgetId: string | null;
 }
-
- 
 
 let chain: Promise<void> = Promise.resolve();
 let durableBroken = false;
@@ -84,16 +81,9 @@ export function enqueue<T>(task: () => Promise<T>): Promise<T | undefined> {
   return run.catch(() => undefined);
 }
 
- 
 export function flushed(): Promise<void> {
   return chain;
 }
-
- 
-
-
-
-
 
 export function persistLedger(snap: LedgerSnap): Promise<void> {
   return enqueue(() =>
@@ -107,15 +97,9 @@ export function persistLedger(snap: LedgerSnap): Promise<void> {
   ).then(() => {});
 }
 
- 
 export function addOutbox(op: unknown): Promise<number | undefined> {
   return enqueue(() => runPersistenceAccountStorageWrite(() => idbAdd("outbox", { op }) as Promise<number>));
 }
-
-
-
-
-
 
 export function putOutbox(getSeq: () => number | null, op: unknown): Promise<void> {
   return enqueue(async () => {
@@ -124,7 +108,6 @@ export function putOutbox(getSeq: () => number | null, op: unknown): Promise<voi
   }).then(() => {});
 }
 
- 
 export function deleteOutbox(getSeqs: ReadonlyArray<() => number | null>): Promise<void> {
   return enqueue(async () => {
     for (const get of getSeqs) {
@@ -144,7 +127,6 @@ export function putDeadLetter(dl: object, getSeq: () => number | null): Promise<
   return enqueue(() => runPersistenceAccountStorageWrite(() => idbMoveToDeadLetter(getSeq(), dl))).then(() => {});
 }
 
- 
 export function deleteDeadLetter(opId: string): Promise<void> {
   return enqueue(() => runPersistenceAccountStorageWrite(() => idbDelete("deadletter", opId))).then(() => {});
 }
@@ -162,7 +144,6 @@ export function clearOutbox(): Promise<void> {
   }).then(() => {});
 }
 
- 
 export function putMeta(key: string, value: unknown): Promise<void> {
   return enqueue(() => runPersistenceAccountStorageWrite(() => idbPut("meta", value, key))).then(() => {});
 }

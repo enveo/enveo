@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { clearOnboardingDraft, onboardingDraft } from "./Onboarding";
 
-
-
-
-
-
 describe("onboardingDraft", () => {
   test("starts empty/step 0, with currency/rows/drafts unset", () => {
     expect(onboardingDraft).toEqual({ step: 0, accName: "", accBal: "", currency: null, rows: null, drafts: null });

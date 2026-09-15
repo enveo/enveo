@@ -102,23 +102,17 @@ describe("padKey — the amount numpad engine (matrix from the spec)", () => {
   });
 
   test("÷ behaves exactly like + − × (first-class operator)", () => {
-     
     expect(padKey({ expr: "705", fresh: true }, "÷")).toEqual({ expr: "705÷", fresh: false });
 
-     
     expect(padKey({ expr: "15+25", fresh: false }, "÷").expr).toBe("40÷");
 
-     
     expect(padKey({ expr: "50÷2", fresh: false }, "÷").expr).toBe("25÷");
 
-     
     expect(padKey({ expr: "50+", fresh: false }, "÷").expr).toBe("50÷");
     expect(padKey({ expr: "50÷", fresh: false }, "×").expr).toBe("50×");
 
-     
     expect(padKey({ expr: "74÷", fresh: false }, "⌫").expr).toBe("74");
 
-     
     expect(padKey({ expr: "74÷", fresh: false }, "1").expr).toBe("74÷1");
   });
 });
@@ -151,7 +145,7 @@ describe("padKey — allocation pad negative-literal entry (allowNegative option
   test("padPreview/padPreviewLive compute the negative minor value", () => {
     expect(padPreview("-5000")).toBe(-500000);
     expect(padPreviewLive("-5000")).toBe(-500000);
-    expect(padPreviewLive("-5000−")).toBe(-500000);  
+    expect(padPreviewLive("-5000−")).toBe(-500000);
   });
 });
 
@@ -166,7 +160,7 @@ describe("padKey — regression: '−' must not wipe an already-allocated fresh 
     s = padKey(s, "1", { allowNegative: true });
     s = padKey(s, "0", { allowNegative: true });
     expect(s.expr).toBe("50−10");
-    expect(padPreview(s.expr)).toBe(4000);  
+    expect(padPreview(s.expr)).toBe(4000);
   });
 
   test("(b) '−' on a fresh ZERO expression still starts a negative literal (intended, unchanged)", () => {
@@ -175,7 +169,7 @@ describe("padKey — regression: '−' must not wipe an already-allocated fresh 
     expect(s).toEqual({ expr: "-", fresh: false });
     for (const d of ["1", "0", "0", "0"]) s = padKey(s, d, { allowNegative: true });
     expect(s.expr).toBe("-1000");
-    expect(padPreview(s.expr)).toBe(-100000);  
+    expect(padPreview(s.expr)).toBe(-100000);
   });
 
   test("(c) '−' on a fresh EMPTY expression starts a negative literal", () => {
@@ -248,7 +242,7 @@ describe("padPreview", () => {
   });
 
   test("÷: (c) a full division → minor units; (d) a trailing ÷ → null (unfinished value)", () => {
-    expect(padPreview("40÷4")).toBe(1000);  
+    expect(padPreview("40÷4")).toBe(1000);
     expect(padPreview("40÷")).toBe(null);
   });
 });
@@ -276,11 +270,11 @@ describe("evalExpression — an eval-free evaluator (CSP-safe)", () => {
     eq("50−24", 2600);
     eq("74+12", 8600);
     eq("2×50", 10000);
-    eq("10+2×50", 11000);  
+    eq("10+2×50", 11000);
     eq("100÷4", 2500);
-    eq("100÷0", null);  
-    eq("200-500", -30000);  
-    eq("1000×1000", 100000000);  
+    eq("100÷0", null);
+    eq("200-500", -30000);
+    eq("1000×1000", 100000000);
   });
   test("decimal comma and mixed operators", () => {
     eq("12,50", 1250);
@@ -288,8 +282,8 @@ describe("evalExpression — an eval-free evaluator (CSP-safe)", () => {
     eq("3×2,5", 750);
   });
   test("no eval — a malicious string returns null or an amount, never executes code", () => {
-    eq("alert(1)", null);  
-    expect(evalExpression("1;2")).toBe(100);  
+    eq("alert(1)", null);
+    expect(evalExpression("1;2")).toBe(100);
   });
 });
 
@@ -328,7 +322,7 @@ describe("desktop allocation input prefill (Budget.tsx AllocCell, PR6 Task 3b + 
   test("negative prefill keeps its sign through the commit round-trip", () => {
     expect(fmtSignedTrim(-5000)).toBe("-50");
     expect(roundTrip(-5000)).toBe(-5000);
-    expect(parseAmount(fmtSignedTrim(-5000))).toBe(-5000); 
+    expect(parseAmount(fmtSignedTrim(-5000))).toBe(-5000);
 
     expect(evalExpression(fmtTrim(-5000))).toBe(5000);
   });
@@ -373,9 +367,6 @@ describe("keyboardPadKey — physical-keyboard key → canonical pad key (owner 
 });
 
 describe("keyboard-driven padKey sequences (the Add pane's wide keyboard, item 26)", () => {
-  
-
-
   const type = (state: PadState, keys: string[]): PadState =>
     keys.reduce((s, key) => {
       const k = keyboardPadKey(key);
@@ -395,7 +386,7 @@ describe("keyboard-driven padKey sequences (the Add pane's wide keyboard, item 2
     // ⏎ with an open A⊕B reduces first (the confirm's hasOpenOp branch) — the "=" pad key:
     expect(hasOpenOp(s.expr)).toBe(true);
     s = padKey(s, "=");
-    expect(s.expr).toBe("10 000");  
+    expect(s.expr).toBe("10 000");
     expect(padPreview(s.expr)).toBe(1000000);
   });
 
@@ -404,7 +395,7 @@ describe("keyboard-driven padKey sequences (the Add pane's wide keyboard, item 2
     s = type(s, ["Backspace"]);
     expect(s).toEqual({ expr: "15", fresh: false });
     s = type(s, ["Backspace", "Backspace", "Backspace"]);
-    expect(s.expr).toBe("");  
+    expect(s.expr).toBe("");
   });
 
   test("TRAP leading zeros: typed 047.30 normalizes per segment, never an octal-shaped literal", () => {
@@ -429,7 +420,7 @@ describe("keyboard-driven padKey sequences (the Add pane's wide keyboard, item 2
 
   test("keyboard comma follows the pad's one-comma / two-decimals rules", () => {
     const s = type({ expr: "", fresh: true }, ["5", ".", "5", ",", "5", "5"]);
-    expect(s.expr).toBe("5,55");  
+    expect(s.expr).toBe("5,55");
   });
 });
 
@@ -452,7 +443,7 @@ describe("desktop Allocated cell arithmetic (owner round 5 item 27 — commit vi
 
   test("garbage → null → no write (the cell flags err and keeps editing)", () => {
     expect(evalExpression("abc")).toBe(null);
-    expect(evalExpression("500+")).toBe(null);  
+    expect(evalExpression("500+")).toBe(null);
     expect(evalExpression("+")).toBe(null);
     expect(evalExpression("1.234,56")).toBe(null); // Intl grouping never enters inputs
     expect(evalExpression("")).toBe(null);
@@ -471,7 +462,7 @@ describe("desktop Allocated cell arithmetic (owner round 5 item 27 — commit vi
         for (const b of operands) {
           const v = evalExpression(`${a}${op}${b}`);
           if (v !== null) expect(Number.isInteger(v)).toBe(true);
-           
+
           if (v === null) expect((op === "/" || op === "÷") && evalExpression(b) === 0).toBe(true);
         }
       }

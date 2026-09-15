@@ -28,7 +28,6 @@ export function assertThrowawayDb(resolvedUrl: string): void {
   }
 }
 
- 
 export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
     p,
@@ -37,11 +36,6 @@ export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promis
     }),
   ]);
 }
-
-
-
-
-
 
 export async function waitFor(
   probe: () => Promise<boolean>,
@@ -83,15 +77,9 @@ export function lockObserver(sql: ReturnType<typeof postgres>) {
   };
 }
 
- 
 export async function emitChildResult(sentinel: string, out: unknown): Promise<void> {
   await Bun.write(Bun.stdout, `${sentinel}${JSON.stringify(out)}\n`);
 }
-
-
-
-
-
 
 export async function runChild<T>(opts: { path: string; testUrl: string; sentinel: string; cwd: string; env?: Record<string, string> }): Promise<T> {
   const child = Bun.spawn([process.execPath, opts.path], {

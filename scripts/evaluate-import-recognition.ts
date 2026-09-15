@@ -1052,7 +1052,7 @@ interface ChatTransportInput {
   request: ChatRequest;
   apiKey: string;
   model: string;
-   
+
   meta?: ImportRecognitionChatMeta;
 }
 

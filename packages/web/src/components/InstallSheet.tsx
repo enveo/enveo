@@ -15,9 +15,6 @@ export function InstallSheet({ show, onClose }: { show: boolean; onClose: () => 
   const { t } = useT();
   const { state } = useInstall();
 
-  
-
-
   useEffect(() => {
     if (show && !isInstallable(state)) onClose();
   }, [show, state, onClose]);

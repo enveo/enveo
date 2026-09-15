@@ -34,8 +34,6 @@ describe("operatorAiSpendLimited (backlog §1 — cloud operator-key AI spend bu
     expect(operatorAiSpendLimited({ deployment: "selfhost", allowSignups: "1", operatorKeyPresent: true })).toBe(false);
   });
   it("follows the authoritative signup policy on cloud (open today under every credentialed state)", () => {
-    
-
     expect(signupsOpen({ deployment: "cloud", allowSignups: "", hasCredentialedUser: true })).toBe(true);
   });
 });

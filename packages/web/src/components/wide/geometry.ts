@@ -12,14 +12,7 @@ import { PANE_W, RAIL_W, type ViewMode } from "../../lib/viewMode";
  * — on the fold the detail pane is the thing being worked on).
  */
 
- 
 export const PRIMARY_MIN = 390;
-
-
-
-
-
-
 
 export function paneWidthFor(mode: Exclude<ViewMode, "phone">, viewportW: number): number {
   return Math.min(PANE_W[mode], Math.max(320, viewportW - RAIL_W[mode] - PRIMARY_MIN));

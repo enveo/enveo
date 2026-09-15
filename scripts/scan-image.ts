@@ -99,7 +99,6 @@ function main(argv: readonly string[]): number {
       return EXIT_SCAN_FAILED;
     }
 
-     
     const json = Bun.spawnSync(
       [
         "docker",

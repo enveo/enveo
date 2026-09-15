@@ -14,13 +14,6 @@
 import { constants } from "node:os";
 import { planTestEnv, type TestMode } from "./lib/testEnv";
 
-/** Everything that must pass before Enveo ships. Shared/API/web-lib domain plus this tooling. */
-// `web/src/screens` is here because it was NOT: three suites lived there unrun, and the Settings
-// information-architecture test had gone red without anyone noticing. Every directory holding a
-// test must be listed, or the test is decoration.
-// `web/src` itself (PR6 Task 1): `App.tsx`'s own `backFallback` is tested right next to it
-// (`App.backFallback.test.ts`) rather than in a subdirectory — bun dedupes the overlapping scan
-// with the `web/src/lib`/`components`/`screens` roots below, so this adds coverage, not repeats.
 export const TEST_PATHS = [
   "packages/shared",
   "packages/api",

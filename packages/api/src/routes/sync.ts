@@ -76,20 +76,13 @@ export const syncRoutes = new Hono();
  * taken BEFORE acquiring the lock and would lose writes committed while waiting.
  */
 
-
-
-
-
-
 export { CHANGES_CURSOR_LOCK_TEXT } from "../db/changesCursorLock";
 
- 
 async function maxSeq(x: Executor): Promise<number> {
   const [row] = await x.select({ cursor: dsql<number>`COALESCE(MAX(${s.changes.seq}), 0)`.mapWith(Number) }).from(s.changes);
   return row?.cursor ?? 0;
 }
 
- 
 const ENSURE_BARRIER_ATTEMPTS = 3;
 
 /**
@@ -130,8 +123,6 @@ async function withCursorBarrier<T>(c: Parameters<typeof requireTier>[0], work: 
   }
 }
 
- 
-
 syncRoutes.get("/sync/snapshot", async (c) => {
   const { budgetId, cursor, ledger } = await withCursorBarrier(c, async (tx, meta) => ({
     budgetId: meta.id,
@@ -141,11 +132,8 @@ syncRoutes.get("/sync/snapshot", async (c) => {
   return c.json({ budgetId, cursor, ...ledger });
 });
 
- 
-
 type PullChange = { seq: number; table: ReplicatedTable; op: "upsert"; row: unknown } | { seq: number; table: ReplicatedTable; op: "delete"; rowId: string };
 
- 
 async function loadCurrentRows(x: Executor, budgetId: string, table: ReplicatedTable, ids: string[]): Promise<Map<string, unknown>> {
   switch (table) {
     case "accounts": {
@@ -250,11 +238,9 @@ export async function pullChanges(x: Executor, budgetId: string, since: number):
     .where(and(gt(s.changes.seq, since), eq(s.changes.budgetId, budgetId)))
     .orderBy(s.changes.seq);
 
-   
   const latest = new Map<string, (typeof rows)[number]>();
   for (const r of rows) latest.set(`${r.tableName}|${r.rowId}`, r);
 
-   
   const upsertIds = new Map<ReplicatedTable, string[]>();
   for (const r of latest.values()) {
     if (r.op !== "upsert" || !isReplicated(r.tableName)) continue;
@@ -269,13 +255,13 @@ export async function pullChanges(x: Executor, budgetId: string, since: number):
 
   const changes: PullChange[] = [];
   for (const r of [...latest.values()].sort((a, b) => a.seq - b.seq)) {
-    if (!isReplicated(r.tableName)) continue;  
+    if (!isReplicated(r.tableName)) continue;
     if (r.op === "delete") {
       changes.push({ seq: r.seq, table: r.tableName, op: "delete", rowId: r.rowId });
       continue;
     }
     const row = currentByTable.get(r.tableName)?.get(r.rowId);
-    if (row === undefined) continue;  
+    if (row === undefined) continue;
     changes.push({ seq: r.seq, table: r.tableName, op: "upsert", row });
   }
   return changes;
@@ -290,7 +276,6 @@ syncRoutes.get("/sync/pull", async (c) => {
   const { budgetId, ...result } = await withCursorBarrier(c, async (tx, meta) => {
     const budgetId = meta.id;
     const cursor = await maxSeq(tx);
-    
 
     if (since > cursor || since < (await legacyChangesWatermark(tx))) {
       return { budgetId, cursor, resetRequired: true, changes: [] as PullChange[] };
@@ -448,7 +433,6 @@ async function applyOp(x: DbTransaction, budgetId: string, kind: OpKind, payload
       await applyPlaceDelete(x, budgetId, (payload as OpPayload<"place.delete">).id);
       return;
     case "budget.update": {
-       
       const p = payload as OpPayload<"budget.update">;
       ensure(p.id === budgetId ? await applyBudgetUpdate(x, budgetId, p.currency) : NOT_FOUND);
       return;
@@ -530,7 +514,7 @@ syncRoutes.post("/sync/push", async (c) => {
   }
 
   const results: PushResult[] = [];
-   
+
   for (const op of body.ops) {
     results.push(await applyPushOp(budgetId, body.clientId, op));
   }
@@ -557,7 +541,6 @@ export const replaceInput = z.object({
   userId: z.string().min(1).optional(),
 });
 
- 
 const chunk = <T>(arr: T[], n: number): T[][] => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, (i + 1) * n));
 
 async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerInput): Promise<void> {
@@ -566,7 +549,6 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
   // foreign UUID would otherwise attach restored rows to ANOTHER budget's
   // entities, bypassing assertBudgetFks through this door.
   if (findForeignLedgerRef(ledger) !== null) throw new ScopeViolation();
-  
 
   for (const part of chunk(ledger.groups, 500)) {
     await x.insert(s.envelopeGroups).values(part.map((g) => ({ id: g.id, budgetId, name: g.name, sort: g.sort })));
@@ -611,8 +593,6 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
   for (const part of chunk(ledger.places, 500)) {
     await x.insert(s.places).values(part.map((p) => ({ id: p.id, budgetId, name: p.name })));
   }
-  
-
 
   const ownEnvIds = new Set((await x.select({ id: s.envelopes.id }).from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId))).map((r) => r.id));
   const ownAllocs = ledger.allocations.filter((a) => ownEnvIds.has(a.envelopeId));
@@ -643,7 +623,7 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
         createdAt: t.createdAt,
       })),
     );
-     
+
     const items = part.flatMap((t) => t.items.map((it) => ({ transactionId: t.id, envelopeId: it.envelopeId, categoryId: it.categoryId, amount: it.amount })));
     for (const ipart of chunk(items, 500)) {
       if (ipart.length > 0) await x.insert(s.txnItems).values(ipart);
@@ -672,16 +652,12 @@ export async function restoreLedger(x: DbTransaction, budgetId: string, ledger: 
 syncRoutes.post("/sync/replace", async (c) => {
   const parsed = replaceInput.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
-     
     const detail = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     return c.json({ error: "backup_invalid", detail }, 400);
   }
   const { ledger, userId } = parsed.data;
 
   try {
-    
-
-
     const result = await withCursorBarrier(c, async (tx, meta) => {
       const budgetId = meta.id;
       // PER-REQUEST tenant assertion — BEFORE the wipe: the session may have been swapped in
@@ -694,11 +670,7 @@ syncRoutes.post("/sync/replace", async (c) => {
     if (result.mismatch) return c.json({ error: "budget_mismatch", budgetId: result.budgetId }, 409);
     return c.json({ budgetId: result.budgetId, cursor: result.cursor });
   } catch (e) {
-    
-
-
     if (e instanceof ScopeViolation || (e instanceof postgres.PostgresError && (e.code.startsWith("23") || e.code.startsWith("22")))) {
-       
       return c.json({ error: "foreign_ref" }, 400);
     }
     throw e;

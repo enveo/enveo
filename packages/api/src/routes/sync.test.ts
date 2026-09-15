@@ -1,22 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -362,7 +343,6 @@ describe.skipIf(!TEST_URL)("automatic envelope cursor order (DB-backed, forced b
 
 const REPLACE_CHILD = new URL("./sync.replace-recurrence.test-child.ts", import.meta.url).pathname;
 
- 
 const connect = (url: string) => {
   const client = postgres(url, { max: 2, onnotice: () => {} });
   return { client, db: drizzle(client, { schema: s }) };
@@ -424,11 +404,11 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
   it("a tenant's delta carries NOTHING of another tenant's — not even its deletions", async () => {
     const accA = await seedAccount(budgetA, "A's account");
     const accB = await seedAccount(budgetB, "B's account");
-    await db.delete(s.accounts).where(eq(s.accounts.id, accB));  
+    await db.delete(s.accounts).where(eq(s.accounts.id, accB));
 
     const deltaA = await pullChanges(db, budgetA, 0);
     const idsA = deltaA.map((ch) => (ch.op === "delete" ? ch.rowId : (ch.row as { id: string }).id));
-    expect(idsA).toContain(accA);  
+    expect(idsA).toContain(accA);
     expect(idsA).not.toContain(accB); // …and NOT B's deletion (the leak this closes)
     expect(deltaA.some((ch) => ch.op === "delete")).toBe(false);
 
@@ -446,12 +426,12 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
     const before = await legacyChangesWatermark(db); // no legacy rows here — just a cheap probe
     expect(before).toBe(0);
 
-    await db.delete(s.accounts).where(eq(s.accounts.id, acc));  
+    await db.delete(s.accounts).where(eq(s.accounts.id, acc));
 
     const delta = await pullChanges(db, budgetA, 0);
     expect(delta.some((ch) => ch.op === "delete" && ch.rowId === txn!.id)).toBe(true);
     const orphans = await db.select({ seq: s.changes.seq }).from(s.changes).where(isNull(s.changes.budgetId));
-    expect(orphans).toHaveLength(0);  
+    expect(orphans).toHaveLength(0);
   });
 
   it("un-attributable pre-0015 rows raise the watermark (→ the pull answers resetRequired)", async () => {
@@ -465,23 +445,11 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
       .returning({ seq: s.changes.seq });
     const mark = await legacyChangesWatermark(db);
     expect(mark).toBe(Number(row!.seq));
-    expect(mark).toBeGreaterThan(0);  
+    expect(mark).toBeGreaterThan(0);
 
     await db.delete(s.changes).where(eq(s.changes.seq, row!.seq));
-    expect(await legacyChangesWatermark(db)).toBe(0);  
+    expect(await legacyChangesWatermark(db)).toBe(0);
   });
-
-  
-
-
-
-
-
-
-
-
-
-
 
   it("POST /api/sync/replace (child process): a ledger with pre-3.2 recurrence fields imports cleanly — the unknown keys are silently dropped", async () => {
     const child = Bun.spawn([process.execPath, REPLACE_CHILD], {
@@ -526,9 +494,7 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
       { name: "Legacy", isSavings: false },
       { name: "Savings", isSavings: true },
     ]);
-    // GROUND TRUTH, not just "the code doesn't reference it": query information_schema
-    // directly, so a future re-introduction of `recurrences` fails this test loudly instead of
-    // the guard quietly losing its teeth (it did once — see migration 0018's fix-up commit).
+
     expect(out.recurrencesTableExists).toBe(false);
     expect(out.transactionsPlannedColumnExists).toBe(false);
     expect(out.transactionsRecurrenceIdColumnExists).toBe(false);

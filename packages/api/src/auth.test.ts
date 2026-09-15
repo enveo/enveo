@@ -1,30 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { betterAuth } from "better-auth";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -39,8 +12,6 @@ import * as s from "./db/schema";
  *  would pin db/client to the ambient DATABASE_URL — see auth.signup-race.test-child.ts. The
  *  drift guard below fails loudly if the two ever diverge. */
 const SIGNUP_GATE_LOCK = 815901;
-
-
 
 const BASE_URL = "http://127.0.0.1:8095";
 
@@ -114,8 +85,6 @@ describe.skipIf(!TEST_URL)("signup gate: two concurrent first registrations", ()
       migrationsFolder: new URL("../drizzle", import.meta.url).pathname,
     });
 
-    
-
     await client`delete from auth_accounts`;
     await client`delete from auth_verifications`;
 
@@ -137,7 +106,7 @@ describe.skipIf(!TEST_URL)("signup gate: two concurrent first registrations", ()
         EXPECT_DATABASE_URL: TEST_URL,
         BETTER_AUTH_URL: BASE_URL,
         BETTER_AUTH_SECRET: crypto.randomUUID().replaceAll("-", "").repeat(2),
-        DEPLOYMENT: "selfhost",  
+        DEPLOYMENT: "selfhost",
         ALLOW_SIGNUPS: "", // …and the operator has not re-opened them
         ALLOWED_ORIGINS: "",
         WEB_DIST: "",
@@ -191,7 +160,7 @@ describe.skipIf(!TEST_URL)("signup gate: two concurrent first registrations", ()
     const users = await client<{ id: string; email: string }[]>`
       select id, email from users where email in (${emailA}, ${emailB})`;
     expect(users).toHaveLength(1);
-     
+
     expect(users[0]!.email).toBe(winner()!.email);
     expect(accounts[0]!.userId).toBe(users[0]!.id);
   });

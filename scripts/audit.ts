@@ -33,7 +33,6 @@ export type AuditRunOptions = Readonly<{
   log?: (line: string) => void;
 }>;
 
- 
 export function sanitizeToolOutput(text: string, limit = 800): string {
   const plain = text
     // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes is the point

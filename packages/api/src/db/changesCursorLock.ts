@@ -1,7 +1,6 @@
 import { sql as dsql } from "drizzle-orm";
 import type { DbTransaction } from "./client";
 
- 
 export const CHANGES_CURSOR_LOCK_TEXT = "enveo:changes";
 
 /**

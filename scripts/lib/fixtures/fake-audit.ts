@@ -58,9 +58,6 @@ switch (MODE) {
     process.stderr.write("error: failed to resolve the registry: connection refused\n");
     process.exit(1);
   case "emptyfindings":
-    
-
-
     process.stderr.write("error: registry returned 503 for 3 packages\n");
     process.stdout.write("{}\n");
     process.exit(1);

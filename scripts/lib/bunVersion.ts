@@ -15,26 +15,21 @@
  * the complete gate. Never float the digest on its own.
  */
 
- 
 export const BUN_VERSION_FILE = ".bun-version";
 
 /** Exact `MAJOR.MINOR.PATCH` — a range or a floating major is not a pin. */
 const EXACT_VERSION = /^\d+\.\d+\.\d+$/;
 
- 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 
- 
 export type VersionRef = Readonly<{
-   
   file: string;
-   
+
   where: string;
-   
+
   version: string;
 }>;
 
- 
 export type Drift = Readonly<{
   file: string;
   where: string;
@@ -42,10 +37,9 @@ export type Drift = Readonly<{
   expected: string;
 }>;
 
- 
 export type BunBase = Readonly<{
   where: string;
-   
+
   version: string;
   /**
    * The image VARIANT — the tag suffix after the version (`alpine`), or `null` for the plain
@@ -53,7 +47,7 @@ export type BunBase = Readonly<{
    * for the pure-JS runtime. One digest per variant, one version across all of them.
    */
   variant: string | null;
-   
+
   digest: string | null;
 }>;
 
@@ -80,7 +74,7 @@ export function collectWorkflowBunVersions(file: string, yaml: string): VersionR
   for (const [pattern, where] of patterns) {
     for (const match of yaml.matchAll(pattern)) {
       const raw = (match[1] ?? "").replace(/^["']|["']$/g, "").trim();
-      if (raw.includes("${{")) continue;  
+      if (raw.includes("${{")) continue;
       refs.push({ file, where, version: raw });
     }
   }
@@ -139,7 +133,6 @@ export function collectTypesBunVersion(file: string, packageJson: string): Versi
   return [{ file, where: "@types/bun", version: range.replace(/^[\^~]/, "").trim() }];
 }
 
- 
 export function findBunVersionDrift(expected: string, refs: readonly VersionRef[]): Drift[] {
   return refs.filter((ref) => ref.version !== expected).map((ref) => ({ file: ref.file, where: ref.where, found: ref.version, expected }));
 }
@@ -181,7 +174,6 @@ export function findDockerBaseProblems(expected: string, bases: readonly BunBase
   return problems;
 }
 
- 
 export function formatDrift(drift: readonly Drift[]): string {
   return drift.map((d) => `  • ${d.file} (${d.where}): ${d.found} — expected ${d.expected}`).join("\n");
 }

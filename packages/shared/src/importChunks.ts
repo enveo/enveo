@@ -17,31 +17,23 @@
  */
 import type { ImportExtractBatch, ImportExtractRow } from "./importRecognition";
 
- 
 export const IMPORT_JOB_MAX_IMAGES = 30;
- 
+
 export const IMPORT_JOB_CHUNK_SIZE = 6;
- 
+
 export const IMPORT_SEAM_MAX_MODEL_PAIRS = 40;
- 
+
 export const IMPORT_ENRICH_BATCH_SIZE = 80;
-
-
-
-
-
-
-
 
 export const IMPORT_JOB_CHUNK_OVERLAP = 1;
 
 export interface ImportImageChunk {
   index: number;
-   
+
   start: number;
-   
+
   end: number;
-   
+
   leadOverlap: number;
 }
 
@@ -73,7 +65,6 @@ export function importChunkLayout(ranges: ReadonlyArray<{ index: number; start: 
   });
 }
 
- 
 export function importChunkIndexOf(imageIndex: number, chunks: ReadonlyArray<ImportImageChunk>): number {
   const owner = chunks.find((chunk) => imageIndex >= chunk.start + chunk.leadOverlap && imageIndex < chunk.end);
   return owner?.index ?? chunks.find((chunk) => imageIndex >= chunk.start && imageIndex < chunk.end)?.index ?? 0;
@@ -81,20 +72,12 @@ export function importChunkIndexOf(imageIndex: number, chunks: ReadonlyArray<Imp
 
 const CHUNK_ROW_PREFIX = /^c(\d+):/;
 
- 
 export function importChunkRowId(chunkIndex: number, rowId: string): string {
   return `c${chunkIndex}:${rowId}`;
 }
 
-
-
-
-
-
 export function rebaseChunkBatch(batch: ImportExtractBatch, chunk: ImportImageChunk, chunkCount: number): ImportExtractBatch {
   if (chunkCount <= 1 && chunk.start === 0) return batch;
-  
-
 
   const kept = batch.rows.filter((row) => row.imageIndex >= chunk.leadOverlap);
   const rowIds = new Set(kept.map((row) => row.rowId));
@@ -108,7 +91,6 @@ export function rebaseChunkBatch(batch: ImportExtractBatch, chunk: ImportImageCh
   };
 }
 
- 
 export function mergeChunkBatches(batches: ReadonlyArray<ImportExtractBatch>): ImportExtractBatch {
   const rows = batches.flatMap((batch) => batch.rows);
   const seen = new Set<string>();
@@ -127,7 +109,6 @@ export function mergeChunkBatches(batches: ReadonlyArray<ImportExtractBatch>): I
 const byScreenshotOrder = (left: { row: ImportExtractRow; inputOrder: number }, right: { row: ImportExtractRow; inputOrder: number }): number =>
   left.row.imageIndex - right.row.imageIndex || left.row.visualOrder - right.row.visualOrder || left.inputOrder - right.inputOrder;
 
- 
 export function isChunkRowId(rowId: string): boolean {
   return CHUNK_ROW_PREFIX.test(rowId);
 }
@@ -217,7 +198,6 @@ export function findImportSeamDatelessRepeats(rows: ReadonlyArray<ImportExtractR
   return repeats;
 }
 
- 
 export function partitionImportSeamPairs(
   pairs: ReadonlyArray<ImportSeamPair>,
   limit = IMPORT_SEAM_MAX_MODEL_PAIRS,
@@ -225,7 +205,6 @@ export function partitionImportSeamPairs(
   return { judged: pairs.slice(0, limit), overflow: pairs.slice(limit) };
 }
 
- 
 export function applyImportSeamVerdicts(
   batch: ImportExtractBatch,
   pairs: ReadonlyArray<ImportSeamPair>,
@@ -307,7 +286,6 @@ export function repairImportRelations(batch: ImportExtractBatch): ImportRelation
   const rows = batch.rows.map((row): ImportExtractRow => {
     if (row.relation?.kind !== "duplicate_of") return row;
     const target = rowsById.get(row.relation.rowId);
-    
 
     if (target?.relation?.kind === "duplicate_of" && target.relation.rowId === row.rowId && seamPair(row, target).earlierRowId === row.rowId) {
       return { ...row, relation: null };
@@ -335,13 +313,12 @@ export function repairImportRelations(batch: ImportExtractBatch): ImportRelation
 
 const isDateDivider = (row: ImportExtractRow): boolean => row.rowRole === "ui_metadata" && isCalendarDate(row.date);
 
- 
 interface ScreenshotLayout {
   imageIndex: number;
   rows: ImportExtractRow[];
-   
+
   leading: ImportExtractRow[];
-   
+
   trailing: ImportExtractRow[];
   lastDividerDate: string | null;
 }
@@ -364,12 +341,6 @@ const layoutScreenshots = (rows: ReadonlyArray<ImportExtractRow>): Map<number, S
   return layouts;
 };
 
-
-
-
-
-
-
 function screenshotAboveOffset(layouts: ReadonlyMap<number, ScreenshotLayout>, rows: ReadonlyArray<ImportExtractRow>): 1 | -1 | null {
   const twins = twinIndex(rows);
   let votes = 0;
@@ -387,20 +358,6 @@ function screenshotAboveOffset(layouts: ReadonlyMap<number, ScreenshotLayout>, r
   return votes > 0 ? 1 : votes < 0 ? -1 : null;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch {
   const rows = batch.rows.map((row) => ({ ...row }));
   const byId = new Map(rows.map((row) => [row.rowId, row]));
@@ -410,7 +367,6 @@ export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch 
     target.dateInferred = true;
   };
 
-   
   const twins = twinIndex(rows);
   for (const group of twins.values()) {
     for (const row of group) {
@@ -426,7 +382,6 @@ export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch 
     }
   }
 
-   
   const layouts = layoutScreenshots(rows);
   const fillLeading = (layout: ScreenshotLayout, date: string) => {
     for (const row of layout.leading) if (row.rowRole !== "ui_metadata" && row.date === null) set(row, date);
@@ -435,12 +390,6 @@ export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch 
     const known = new Set(layout.leading.filter((row) => row.rowRole !== "ui_metadata" && row.date !== null).map((row) => row.date));
     if (known.size === 1) fillLeading(layout, [...known][0]!);
   }
-
-  
-
-
-
-
 
   const above = screenshotAboveOffset(layouts, rows);
   if (above !== null) {
@@ -481,7 +430,6 @@ export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch 
       const anchor = matches[0]!;
       const target = byId.get(row.rowId)!;
       if (anchor.date !== null && target.date !== anchor.date) set(target, anchor.date);
-      
 
       if (anchor.relation?.kind === "duplicate_of" && anchor.relation.rowId === row.rowId) continue;
       if (target.relation?.kind === "fx_for") {

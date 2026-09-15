@@ -13,20 +13,9 @@ export const PRIVATE_DEVICE_DISCLOSURE = msg(
 );
 export const SHARED_DEVICE_DISCLOSURE = msg("No new local copy will be saved. This browser session ends when you close the app.");
 
-
-
-
-
-
-
-
-
 export function LoginScreen() {
   const C = useTheme();
   const { t } = useT();
-  
-
-
 
   const wide = useViewMode() !== "phone";
   const [meta, setMeta] = useState<AuthMeta | null>(null);
@@ -45,11 +34,9 @@ export function LoginScreen() {
         if (!alive) return;
         setMeta(m);
         cacheDeployment(m.deployment ?? "selfhost");
-        setPersistent(m.deployment !== "cloud");  
-        if (m.firstRun) setMode("signup");  
-      } catch {
-         
-      }
+        setPersistent(m.deployment !== "cloud");
+        if (m.firstRun) setMode("signup");
+      } catch {}
     })();
     return () => {
       alive = false;
@@ -69,7 +56,7 @@ export function LoginScreen() {
       if (!setDeviceStoragePolicy(persistent ? "persistent" : "session")) throw new Error("device_storage_unavailable");
       if (mode === "signup") await signUpEmail(email.trim(), password, persistent);
       else await signInEmail(email.trim(), password, persistent);
-      location.reload();  
+      location.reload();
     } catch (e) {
       fail(e);
       setBusy(false);
@@ -84,7 +71,7 @@ export function LoginScreen() {
       // origin. A failed/abandoned OAuth leaves the flag flipped with no session, which is
       // harmless: no session ⇒ Login, and the next successful login rewrites it.
       if (!setDeviceStoragePolicy(persistent ? "persistent" : "session")) throw new Error("device_storage_unavailable");
-      await signInGoogle();  
+      await signInGoogle();
     } catch (e) {
       fail(e);
       setBusy(false);
@@ -108,8 +95,6 @@ export function LoginScreen() {
     fontFamily: font,
   };
   const linkStyle: React.CSSProperties = {
-    // 0-padding measured ~15-16px tall — sub-floor in every mode. Deliberate exception to phone
-    // pixel-identity in both modes (Q2, pr7-task-2-brief.md): 8px of spacing, no visual redesign.
     padding: "8px 4px",
     border: "none",
     background: "transparent",

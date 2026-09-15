@@ -45,7 +45,6 @@ describe("fail-closed", () => {
     }
     expect(threw).toBe(true);
 
-     
     const lines: string[] = [];
     const code = runSourcePolicy((line) => lines.push(line), ["docs/definitely-not-here.md"]);
     expect(code).toBe(EXIT_FAILED_CLOSED);

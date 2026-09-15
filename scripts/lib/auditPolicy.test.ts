@@ -386,15 +386,12 @@ describe("parsePolicy", () => {
   });
 
   it("caps the REMAINING window, not `expires - addedOn`", () => {
-    
-
-
     const parsed = parsePolicy(
       JSON.stringify({
         schemaVersion: 1,
         exceptions: [{ ...policyWith().exceptions[0], addedOn: "2026-08-12", expires: "2026-11-10" }],
       }),
-      NOW,  
+      NOW,
     );
 
     expect(parsed.ok).toBe(false);
@@ -410,7 +407,7 @@ describe("parsePolicy", () => {
         schemaVersion: 1,
         exceptions: [{ ...policyWith().exceptions[0], addedOn: "2026-02-01", expires: "2026-08-30" }],
       }),
-      NOW,  
+      NOW,
     );
 
     expect(parsed.ok).toBe(false);
@@ -424,7 +421,7 @@ describe("parsePolicy", () => {
         schemaVersion: 1,
         exceptions: [{ ...policyWith().exceptions[0], addedOn: "2026-08-12", expires: "2026-11-08" }],
       }),
-      NOW,  
+      NOW,
     );
 
     expect(parsed.ok).toBe(true);

@@ -9,7 +9,7 @@ export const txnRoutes = new Hono();
 txnRoutes.post("/transactions", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const body = txnPayload.parse(await c.req.json());
-   
+
   const row = await db.transaction((tx) => applyTxnCreate(tx, budgetId, body));
   return c.json(row, 201);
 });
@@ -33,8 +33,6 @@ txnRoutes.delete("/transactions/:id", async (c) => {
   await applyTxnDelete(db, budgetId, c.req.param("id"));
   return c.body(null, 204);
 });
-
- 
 
 txnRoutes.put("/allocations", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;

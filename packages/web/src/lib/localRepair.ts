@@ -69,7 +69,6 @@ const realDeps: LocalRepairDeps = {
   broadcast: () => postMsg("updated"),
 };
 
- 
 export function rebuildLocalReplica(deps: LocalRepairDeps = realDeps): Promise<RepairResult> {
   return deps.runExclusive(async () => {
     if (deps.identityBlocked()) return { kind: "blocked", reason: "unproven" };

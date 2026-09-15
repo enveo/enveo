@@ -8,9 +8,6 @@ import { Glyph } from "../../lib/icons";
 import { matchesSearch, SEARCH_THRESHOLD } from "../../lib/search";
 import { TEAL, tint } from "../../lib/theme";
 
-
-
-
 export function AccountPickerSheet({
   show,
   onClose,
@@ -102,8 +99,6 @@ export function AccountPickerSheet({
     </Sheet>
   );
 }
-
-
 
 export function DestinationAccountSheet({
   show,

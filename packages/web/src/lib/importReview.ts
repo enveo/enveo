@@ -39,7 +39,6 @@ export function importMissingDetails(item: ImportDetails | null | undefined, onB
   return missing;
 }
 
- 
 export function isCompleteImportReviewItem(item: Pick<ImportReviewDraftItem, "date" | "amount" | "type"> | null | undefined): boolean {
   return (
     !!item && isCalendarDate(item.date) && Number.isSafeInteger(item.amount) && item.amount! > 0 && ["expense", "income", "transfer"].includes(item.type ?? "")
@@ -67,7 +66,6 @@ export interface ImportReviewRow {
   item: LocalImportReviewItem | null;
 }
 
- 
 export function reviewSelectionAfterRefresh(row: ImportReviewRow, previous: ImportReviewRow | undefined): boolean {
   if (row.duplicateStatus === "exists" || (row.duplicateStatus === "probable" && previous?.duplicateStatus !== "probable")) return false;
   return previous?.include ?? row.include;
@@ -119,7 +117,6 @@ export interface ImportReviewControlLabel {
   values: { n: number };
 }
 
- 
 export function reviewRowControlLabels(
   row: ImportReviewRow,
   index: number,
@@ -148,7 +145,6 @@ const dispositionBadge = (disposition: ImportReviewDisposition): ImportReviewBad
   }
 };
 
- 
 export function reviewBadges(row: ImportReviewRow, edit?: EditedImportItem): ImportReviewBadge[] {
   const badges: ImportReviewBadge[] = [];
   const disposition = row.duplicateStatus === "exists" ? null : dispositionBadge(edit ? "candidate" : row.disposition);
@@ -222,7 +218,6 @@ const effectiveDuplicateStatus = (
   return "new";
 };
 
- 
 export function buildImportReviewRows(args: {
   recognition: ReconciledImportRecognitionResult;
   ledger: ClientLedger;
@@ -308,7 +303,6 @@ export function buildImportReviewRows(args: {
   });
 }
 
- 
 export function reviewedImportRowsForApply(args: {
   rows: ImportReviewRow[];
   edited: Record<number, EditedImportItem>;
@@ -379,8 +373,6 @@ export function importBalanceEffect(args: {
     });
 }
 
-
-
 export function importReviewDoneStats(rows: ImportReviewRow[], result: { added: number; skipped: number }): { added: number; dup: number } {
   return {
     added: result.added,
@@ -388,7 +380,6 @@ export function importReviewDoneStats(rows: ImportReviewRow[], result: { added: 
   };
 }
 
- 
 function sourceAccountEffect(item: ImportApplyItem, defaultAccountId: string): number {
   const accountId = item.accountId ?? defaultAccountId;
   if (item.type === "income") return accountId === defaultAccountId ? item.amount : 0;
@@ -402,15 +393,9 @@ const reviewApplyItem = (row: ImportReviewRow, edit: EditedImportItem | undefine
 
 export interface ReviewBalanceMatchCandidate extends BalanceMatchCandidate {
   index: number;
-   
+
   doubtful: boolean;
 }
-
-
-
-
-
-
 
 export function balanceMatchCandidatesForReview(args: {
   rows: ImportReviewRow[];
@@ -441,7 +426,6 @@ export function balanceMatchCandidatesForReview(args: {
   return candidates.sort((left, right) => Number(right.doubtful) - Number(left.doubtful) || left.index - right.index);
 }
 
- 
 export function applyBalanceMatchToReview(args: {
   rows: ImportReviewRow[];
   edited: Record<number, EditedImportItem>;
@@ -482,10 +466,7 @@ export function applyBalanceMatchToReview(args: {
 const BALANCE_LABEL = /saldo|balance|dost[eę]pn|available|stan konta|kontostand|solde|saldo disponible/i;
 const NUMBER_TOKEN = /-?\d[\d\s\u00a0.,]*\d|-?\d/g;
 
- 
 export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLines: string[] }>): number | null {
-  
-
   for (const label of [CLOSING_BALANCE_LABEL, BALANCE_LABEL]) {
     for (const row of rows) {
       if (row.rowRole !== "ui_metadata") continue;
@@ -500,8 +481,6 @@ export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLi
 
 const CLOSING_BALANCE_LABEL = /closing balance|saldo (końcowe|zamknięcia|dostępne)|dost[eę]pn|available/i;
 
-
-
 function balanceFigure(line: string, next: string | undefined, label: RegExp): number | null {
   const own = (line.replace(label, "").match(NUMBER_TOKEN) ?? []).map(parseDisplayAmount).find((value) => value !== null);
   if (own !== undefined) return own;
@@ -513,12 +492,9 @@ function balanceFigure(line: string, next: string | undefined, label: RegExp): n
   return (cell?.match(NUMBER_TOKEN) ?? []).map(parseDisplayAmount).find((value) => value !== null) ?? null;
 }
 
- 
-
 export interface ImportBalanceDiagnosis {
-   
   reach: number;
-   
+
   manualEntries: Array<{ id: string; date: string; effect: number; name: string | null; transfer: boolean }>;
 }
 
@@ -559,7 +535,6 @@ export function importBalanceDiagnosis(args: {
   return { reach, manualEntries };
 }
 
- 
 export function importPeriodStart(rows: ReadonlyArray<{ date: string | null }>): string | null {
   let earliest: string | null = null;
   for (const row of rows) if (row.date && (earliest === null || row.date < earliest)) earliest = row.date;

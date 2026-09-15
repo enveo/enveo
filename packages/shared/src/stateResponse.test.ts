@@ -31,12 +31,7 @@ describe("computeStateResponse", () => {
   it("filters transactions to the month and sorts: date descending, then createdAt descending", () => {
     const resp = computeStateResponse(deepFreeze(fixture()), "2026-06");
     expect(resp.month).toBe("2026-06");
-    expect(resp.transactions.map((t) => t.id)).toEqual([
-      "T-recent",  
-      "T-evening",  
-      "T-morning",
-      "T-old",  
-    ]);
+    expect(resp.transactions.map((t) => t.id)).toEqual(["T-recent", "T-evening", "T-morning", "T-old"]);
   });
 
   it("flattens accounts and envelopes (entity fields + computed values side by side)", () => {
@@ -46,11 +41,11 @@ describe("computeStateResponse", () => {
 
     expect(resp.accounts).toHaveLength(2);
     const a1 = resp.accounts[0]!;
-     
+
     expect(a1.id).toBe("A1");
     expect(a1.initialBalance).toBe(100_00);
     expect(a1.onBudget).toBe(true);
-     
+
     expect(a1.balance).toBe(state.accounts[0]!.balance);
 
     const e1 = resp.envelopes[0]!;
@@ -61,9 +56,8 @@ describe("computeStateResponse", () => {
     expect(e1.available).toBe(50_00 - 13_00);
     expect(e1.carryIn).toBe(0);
 
-     
     expect(resp.toBeBudgeted).toBe(state.toBeBudgeted);
-    expect(resp.readyToAssign).toBe(50_00);  
+    expect(resp.readyToAssign).toBe(50_00);
     expect(resp.readyToAssign).toBe(state.readyToAssign);
     expect(resp.monthIncome).toBe(state.monthIncome);
     expect(resp.monthExpense).toBe(13_00);

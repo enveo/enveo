@@ -33,9 +33,9 @@ export const SENTINEL = "__SYNC_FIRST_USE_BARRIER__";
 export type FirstUseBarrierOutput = {
   /** All three routes parked on the OPERATION lock (not the changes lock) while the gate held it. */
   parkedBeforeBarrier: boolean;
-   
+
   changesLockFreeWhileParked: boolean;
-   
+
   gateInsertCompleted: boolean;
   gateBudgetId: string;
   snapshotStatus: number;
@@ -50,7 +50,7 @@ export type FirstUseBarrierOutput = {
 
 async function main(): Promise<void> {
   const { env } = await import("../env");
-   
+
   assertThrowawayDb(env.DATABASE_URL);
 
   const postgres = (await import("postgres")).default;
@@ -79,7 +79,6 @@ async function main(): Promise<void> {
     .returning({ id: s.users.id });
   const userId = user!.id;
 
-   
   const app = new Hono<{ Variables: { userId?: string } }>();
   app.use("*", async (c, next) => {
     c.set("userId", userId);
@@ -96,8 +95,6 @@ async function main(): Promise<void> {
     allocations: [],
     transactions: [],
   };
-
-   
 
   let releaseGate!: () => void;
   const gate = new Promise<void>((r) => (releaseGate = r));
@@ -144,7 +141,7 @@ async function main(): Promise<void> {
     await observer.begin(async (ptx) => {
       await ptx`set local statement_timeout = 2000`;
       await ptx`select pg_advisory_xact_lock(${changesCursorKey}::bigint)`;
-    });  
+    });
     changesLockFreeWhileParked = true;
   } catch {
     changesLockFreeWhileParked = false;

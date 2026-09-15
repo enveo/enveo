@@ -5,19 +5,6 @@ import { createElement, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type BudgetSheetEvent, type BudgetSheetState, type BudgetSheetView, budgetSheetAfter, useBudgetSheets } from "./budgetSheet";
 
-/**
- * Owner round 8 item 32 — regression suite for "Zasugeruj / Wypełnij wg celów sometimes do
- * nothing, especially when one is clicked after the other".
- *
- * The bug was NOT in what a sheet does once open; it was in whether the entry point reached the
- * Budget screen at all. The two sheets used to be one-shot deep-link booleans consumed by
- * `BudgetScreen` at MOUNT, so any entry point pressed while Budget was already mounted flipped a
- * prop nothing read — and left the flag armed for the next mount. These sequences are the owner's
- * own, replayed against the transition function App now routes every change through, where the
- * open sheet is state rather than an intent waiting for a mount to deliver it.
- */
-
- 
 const run = (events: BudgetSheetEvent[], from: BudgetSheetState = null): BudgetSheetState => events.reduce(budgetSheetAfter, from);
 
 const openSuggest: BudgetSheetEvent = { kind: "open", sheet: "suggest" };
@@ -54,9 +41,6 @@ describe("budgetSheetAfter — the owner's click sequences (round 8 item 32)", (
 
 describe("budgetSheetAfter — invariants that make the old failure modes unrepresentable", () => {
   test("pressing the other pill while a sheet is OPEN swaps sheets instead of stacking them", () => {
-    
-
-
     expect(run([openSuggest, openFill])).toBe("fillGoals");
     expect(run([openFill, openSuggest])).toBe("suggest");
   });
@@ -74,7 +58,6 @@ describe("budgetSheetAfter — invariants that make the old failure modes unrepr
   });
 
   test("navigating away clears the sheet, so returning to Budget never resurrects one", () => {
-     
     expect(run([openSuggest, leave])).toBe(null);
     expect(run([openFill, leave])).toBe(null);
     expect(run([openSuggest, leave, openFill])).toBe("fillGoals");
@@ -92,39 +75,6 @@ describe("budgetSheetAfter — invariants that make the old failure modes unrepr
   });
 });
 
-/* ══ The WIRING, not just the reducer (owner round 8 item 32, round 8b item A) ══════════════
- *
- * The reducer suite above proves what the open sheet SHOULD be after each press. It does not
- * prove that the Budget screen ever looks at the answer, and that gap was the actual bug: the
- * screen held `useState(!!initialSuggest)`, a value seeded from a prop at MOUNT, so every press
- * that arrived while the screen was already mounted moved a prop nothing read. Restoring that
- * shape leaves the reducer suite entirely green — verified by ablation — while the owner's bug
- * comes straight back in the browser. Hence the two guards below.
- *
- * ── Why the behavioural guard is shaped like this ──
- * Telling "read on every render" from "latched at mount" needs a SECOND render of the SAME
- * component instance with a different prop. This toolchain has no DOM (`bun test` provides no
- * `document`, and there is no happy-dom/jsdom/testing-library to add), so `react-dom/client` is
- * out and the repo's own component-test idiom — `renderToStaticMarkup` (see
- * screens/add/AutomaticEnvelopeEffect.test.ts) — renders each tree exactly once: a fresh mount,
- * where both shapes agree.
- *
- * React's server renderer does support ONE kind of update, though: a RENDER-PHASE state update
- * (a component calling its own setter during render) makes React re-invoke that component with
- * its hook list preserved — an update, not a mount. That is the whole mechanism of `renderThrough`
- * below, and it re-renders only the component that scheduled it, so the hook under test has to be
- * called BY the probe. That is why `useBudgetSheets` exists as a hook in budgetSheet.ts instead of
- * two inline expressions in Budget.tsx: it puts the wiring somewhere a real React update can reach
- * it. The screen's end of that contract is the source guard further down.
- */
-
-
-
-
-
-
-
-
 function renderThrough<P, R>(hook: (prop: P) => R, steps: readonly P[]): R[] {
   const seen: R[] = [];
   function Probe() {
@@ -137,17 +87,12 @@ function renderThrough<P, R>(hook: (prop: P) => R, steps: readonly P[]): R[] {
   return seen;
 }
 
- 
 const showing = (v: BudgetSheetView): string => (v.suggest ? "suggest" : v.fillGoals ? "fillGoals" : "none");
 
- 
 const bothOpen = (v: BudgetSheetView) => v.suggest && v.fillGoals;
 
 describe("useBudgetSheets — the screen reads the open sheet on EVERY render (item 32)", () => {
   test("a sheet asked for while the screen is ALREADY MOUNTED opens — the owner's actual bug", () => {
-    
-
-
     const seen = renderThrough(useBudgetSheets, [null, "suggest"]);
 
     expect(seen.map(showing)).toEqual(["none", "suggest"]);
@@ -221,22 +166,16 @@ describe("BudgetScreen never latches the open sheet into its own state (item 32)
   });
 
   test("no local state is seeded from the `sheet` prop", () => {
-    
-
     const seeded = [...code.matchAll(/use(?:State|Reducer)\([^)]*\bsheet\b[^)]*\)/g)].map((m) => m[0]);
     expect(seeded).toEqual([]);
   });
 
   test("`suggest`/`fillGoals` are not declared as local state", () => {
-     
     const declared = [...code.matchAll(/const\s*\[\s*(?:suggest|fillGoals)\b[^\]]*\]/g)].map((m) => m[0]);
     expect(declared).toEqual([]);
   });
 
   test("the one-shot deep-link props are gone for good", () => {
-    
-
-
     for (const dead of ["initialSuggest", "initialFillGoals", "onSuggestConsumed", "onFillGoalsConsumed"]) {
       expect(code).not.toContain(dead);
     }

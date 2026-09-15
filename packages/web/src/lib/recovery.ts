@@ -38,19 +38,17 @@ export function isUnprovenReplicaError(e: unknown): boolean {
   return e instanceof Error && e.message === "foreign_replica";
 }
 
- 
 export interface RecoverySteps {
-   
   fetchSessionUserId: () => Promise<string | null>;
-   
+
   budgetReset: (userId: string) => Promise<unknown>;
-   
+
   signOut: () => Promise<void>;
   /** Per-device state that must not outlive the account (the LogoutRow wipe set). */
   clearDeviceStoragePolicy: () => void;
   clearPersistedSettings: () => void;
   clearLastAccountId: () => void;
-   
+
   discardLocalReplica: () => Promise<void>;
   /** No session anymore → Login screen, replica intact (there is no tenant to delete for). */
   enterLogin: () => void;
@@ -92,10 +90,10 @@ export async function deleteEverythingAndStartFresh(steps: RecoverySteps = realS
     steps.enterLogin();
     return;
   }
-  await steps.budgetReset(userId);  
-  await steps.signOut();  
+  await steps.budgetReset(userId);
+  await steps.signOut();
   steps.clearDeviceStoragePolicy();
   steps.clearPersistedSettings();
   steps.clearLastAccountId();
-  await steps.discardLocalReplica();  
+  await steps.discardLocalReplica();
 }

@@ -46,31 +46,25 @@ const detailFor = (
 
 describe("durable screenshot import lifecycle", () => {
   it("moves a queued import through processing to a reviewable result", () => {
-     
     const queued = progress("queued", "queued");
 
-     
     const running = advanceImportJob(queued, { type: "claimed", at: "2026-08-24T12:00:01.000Z" });
     const ready = advanceImportJob(running, { type: "result_ready", at: "2026-08-24T12:00:02.000Z" });
 
-     
     expect(running).toMatchObject({ status: "running", phase: "extracting", attempt: 1 });
     expect(ready).toMatchObject({ status: "ready", phase: "ready" });
     expect(isTerminalImportJob(ready.status)).toBe(false);
   });
 
   it("keeps network and device waits as resumable running work", () => {
-     
     const running = progress("running", "extracting");
 
-     
     const offline = advanceImportJob(running, {
       type: "wait",
       phase: "waiting_for_network",
       at: "2026-08-24T12:00:01.000Z",
     });
 
-     
     expect(offline).toMatchObject({ status: "running", phase: "waiting_for_network", resumePhase: "extracting", errorCode: null });
   });
 
@@ -83,7 +77,6 @@ describe("durable screenshot import lifecycle", () => {
       at: "2026-08-24T12:00:01.000Z",
     });
 
-     
     const resumed = advanceImportJob(waiting, { type: "resume", at: "2026-08-24T12:00:02.000Z" });
 
     // then: it resumes reconciliation and cannot go back to extraction
@@ -98,7 +91,6 @@ describe("durable screenshot import lifecycle", () => {
   });
 
   it("rejects invalid event timestamps before persisting them as updatedAt", () => {
-     
     const queued = progress("queued", "queued");
 
     // when/then: an invalid wire timestamp cannot become its persisted update timestamp
@@ -106,14 +98,11 @@ describe("durable screenshot import lifecycle", () => {
   });
 
   it("records cancellation intent until a running upstream call can be discarded", () => {
-     
     const running = progress("running", "extracting");
 
-     
     const requested = advanceImportJob(running, { type: "cancel", at: "2026-08-24T12:00:01.000Z" });
     const cancelled = advanceImportJob(requested, { type: "cancelled", at: "2026-08-24T12:00:02.000Z" });
 
-     
     expect(requested).toMatchObject({ status: "running", cancelRequested: true });
     expect(cancelled).toMatchObject({ status: "cancelled", cancelRequested: true });
     expect(isTerminalImportJob(cancelled.status)).toBe(true);

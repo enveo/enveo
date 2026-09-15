@@ -7,7 +7,6 @@ import { Glyph, ICON_CATEGORIES, Ico } from "../lib/icons";
 import { EXT_PALETTE, font } from "../lib/theme";
 import { Sheet } from "./chrome";
 
- 
 export function normHex(raw: string): string | null {
   const s = raw.trim().replace(/^#/, "").toLowerCase();
   if (/^[0-9a-f]{6}$/.test(s)) return `#${s}`;
@@ -61,7 +60,7 @@ export function IconColorPicker({
             }}
           />
         ))}
-        { }
+        {}
         {!palette.includes(color) && (
           <button
             onClick={() => setColorSheet(true)}
@@ -192,10 +191,6 @@ export function IconColorPicker({
   );
 }
 
-
-
-
-
 function CustomColor({
   open,
   color,
@@ -229,7 +224,7 @@ function CustomColor({
             flexShrink: 0,
           }}
         >
-          { }
+          {}
           <input
             type="color"
             value={valid ?? "#4fa583"}
@@ -282,7 +277,6 @@ function CustomColor({
   );
 }
 
- 
 function PickSection({
   title,
   colors,

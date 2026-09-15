@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { describe, expect, test } from "bun:test";
 import { chartWidth } from "./useElementWidth";
 

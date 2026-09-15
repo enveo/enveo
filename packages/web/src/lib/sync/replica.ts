@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import * as outbox from "../outbox";
 import { store } from "../store";
 
@@ -31,13 +25,6 @@ export function replayOutbox(): void {
 export function e2eeReplicaBudgetId(): string {
   return store.getBudgetId() || store.getLedger()?.budgets?.[0]?.id || "";
 }
-
-
-
-
-
-
-
 
 export function isEmptyUnboundReplica(): boolean {
   if (store.getBudgetId()) return false;

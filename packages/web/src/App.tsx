@@ -5,19 +5,8 @@ import { LazyChunk, useOpenedOnce } from "./components/lazy";
 import { SignOutBoundary } from "./components/SignOutShield";
 import { StartupSplash } from "./components/StartupSplash";
 import { SyncBadge } from "./components/SyncBadge";
-// Type-only imports elsewhere in this file already keep the REST of `panel.ts` free of runtime
-// weight (see `backFallback`'s own comment below on why it does NOT import from here) —
-// `primaryScreenFor` (PR6 Task 5: decides what the wide primary pane shows while the Add takeover
-// is open) and `panelFallbacks` (Task 1, waveA-t1-brief.md: the panel's never-empty "first item"
-// per screen — computed here, once, and threaded into `WideShell`'s bag for `resolvePanel`) are
-// the only two runtime exports this eager module needs; `panel.ts` itself has zero runtime imports
-// of its own, so this only adds the two functions' own bytes to the eager chunk (measured in this
-// task's own verification notes — `resolvePanel`, the module's third runtime export, is NOT
-// referenced from here and stays tree-shaken out of the eager chunk).
+
 import { panelFallbacks, primaryScreenFor } from "./components/wide/panel";
-
-
-
 
 import type { RightSlot } from "./components/wide/WideShell";
 import { useLedgerVersion, useStateQuery } from "./lib/api";
@@ -73,8 +62,7 @@ const InstallSheet = lazy(() => import("./components/InstallSheet").then((m) => 
 const EnvActionsSheet = lazy(() => import("./components/EnvActionsSheet").then((m) => ({ default: m.EnvActionsSheet })));
 const InstallBanner = lazy(() => import("./components/InstallBanner").then((m) => ({ default: m.InstallBanner })));
 const WideShell = lazy(() => import("./components/wide/WideShell").then((m) => ({ default: m.WideShell })));
-// Wide boot shell (PR7 Task 1) — mount A only; the phone boot path (below) never imports this,
-// so it never fetches the chunk (proved in this task's verification notes).
+
 const BootShellWide = lazy(() => import("./components/BootShellWide"));
 
 const initialTransactionFilters = (): TransactionFilters => ({
@@ -86,21 +74,6 @@ const initialTransactionFilters = (): TransactionFilters => ({
   amount: null,
 });
 
-/**
- * `back()`'s entry-0 fallback chain (PR4), extended by PR6 Task 1 with the two rungs PR4 never
- * needed: closing the envelope-edit/-actions sheets that can now stack ABOVE the Add pane or the
- * envelope pane on wide. Pure and exported so `App.backFallback.test.ts` can pin every rung
- * without mounting the component — `panel.ts`'s `resolvePanel` deliberately does NOT own this
- * (it lives in the lazy wide chunk; `back()` is eager, and a static import from an eager module
- * into a lazy chunk module would drag the whole wide chunk into the eager bundle — the exact
- * "back-door" the wide chunk's own bundle ledger warns about). This is PR4's SAME fallback
- * switch, not a second reducer: `back()`'s `history.state === true` branch (`history.back()`) is
- * untouched by this function and is checked before it ever runs.
- *
- * Order (topmost wins, matching PR6 plan D2): close `envEdit` → close `envActions` → close the
- * Add pane (`doneEdit` semantics) → close the envelope pane → Reports subview back to the hub →
- * any other screen back to `start` → already at `start` with nothing open, do nothing.
- */
 export type BackFallback = "close-env-edit" | "close-env-actions" | "close-add" | "close-envelope" | "reports-overview" | "to-start" | null;
 
 export function backFallback(s: {
@@ -125,13 +98,9 @@ function AppContent() {
   // Task A5's Accounts band caption ("Balance {amount}") — discreet mode must mask it exactly
   // like every other on-screen amount (house rule).
   const M = useMask();
-  
 
   const mode = useViewMode();
-  // Deep-load restore: which screen/report/envelope a fresh page load should land on — read
-  // once (React ignores this argument after the initial render). `parseUrl` always resolves a
-  // full `Route`, so no `start`/`overview` fallback is needed here. `panelClosed` stays out of
-  // the URL (chrome, not navigation — pr4-context.md §12.2).
+
   const r0 = parseUrl(location.pathname, location.search);
   const [screen, setScreen] = useState<ScreenId>(r0.screen);
   const [month, setMonth] = useState(currentMonth());
@@ -139,41 +108,18 @@ function AppContent() {
   const [installSheet, setInstallSheet] = useState(false);
   const installSheetMounted = useOpenedOnce(installSheet);
   const [editTxn, setEditTxn] = useState<Transaction | null>(null);
-  // Start "quick actions" widget preset for a FRESH Add — read once at mount (AddScreen fully
-  // unmounts/remounts with `screen`, so this never leaks into an unrelated later Add). Reset
-  // by `nav` on every normal entry (FAB, menu) so it only ever applies to the quick action itself.
-  // `duplicateFrom` (design parity wave C task 3, owner rule 2): the wide txn panel's Duplicate
-  // action seeds a FRESH create form from an existing transaction — never a direct ledger write —
-  // riding this SAME one-shot preset bag `tab`/`importSheet` already use (`duplicateTxnFromPanel`
-  // below sets it, `PanelHost` threads it to `AddScreen`'s own `duplicateFrom` prop).
+
   const [addPreset, setAddPreset] = useState<{ tab?: AddTab; importSheet?: boolean; duplicateFrom?: Transaction }>({});
-  // Which of the Budget screen's two allocation sheets is open (owner round 8 item 32) — ONE
-  // App-owned value, moved here from `BudgetScreen`'s own local state and replacing the pair of
-  // one-shot deep-link booleans that used to carry "Zasugeruj"/"Wypełnij wg celów" into it. Those
-  // were consumed at MOUNT, so every entry point pressed while Budget was ALREADY mounted (any
-  // rail or fold-strip pill clicked from the Budget screen — and on wide from the Add pane too,
-  // since `primaryScreenFor` keeps the primary pane on `editReturn`) flipped a prop nothing read:
-  // the sheet never opened and the flag stayed armed for the next real mount, which then opened a
-  // sheet nobody asked for, both at once when both flags were stuck. Lifting it is the same move
-  // `editWidgetsOpen`/`manageOpen`/`wideBoardEdit` above already made for the sheets the wide
-  // chrome has to drive from outside their screen. Every transition goes through
-  // `budgetSheetAfter` (lib/budgetSheet.ts) — the single place the sequences are pinned.
+
   const [budgetSheet, setBudgetSheet] = useState<BudgetSheetState>(null);
   const onBudgetSheet = (event: BudgetSheetEvent) => setBudgetSheet((s) => budgetSheetAfter(s, event));
-  
-
 
   const [editWidgetsOpen, setEditWidgetsOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
-  // WideHome's own board edit-mode toggle (Task 6) — a THIRD controlled boolean pair, same shape
-  // as the two above, lifted here so the wide band's right-slot pencil can flip it (it drives no
-  // phone UI at all; `WideHome` never mounts on phone).
+
   const [wideBoardEdit, setWideBoardEdit] = useState(false);
-  // Wide shell's right-panel open/closed bit — chrome, not navigation (never in the URL/history,
-  // pr4-context.md §12.2). App-owned so it survives the `screen`/`reportsView` it is read
-  // alongside (WideShell's `resolvePanel`).
+
   const [panelClosed, setPanelClosed] = useState(false);
-  
 
   const [reportsView, setReportsView] = useState<ReportView>(r0.reportsView);
   // Month report's selected day, kept in App for the SAME reason as `reportsView`: opening a
@@ -184,59 +130,26 @@ function AppContent() {
   // could otherwise silently resurface once the user pages back to a month with that many days.
   const [monthDay, setMonthDay] = useState<string | null>(null);
   useEffect(() => setMonthDay(null), [month]);
-   
+
   const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(r0.envelopeId ? { envelopeId: r0.envelopeId, month } : null);
-  
-
-
 
   const [acctView, setAcctView] = useState<{ accountId: string } | null>(null);
-  // Task 4: editing a transaction from the account pane's recent list takes the SAME
-  // screen="addExpense" push-nav detour envelope/report edits use (`editTxnFrom` below), and
-  // `doneEdit`'s `history.back()` unwind fires the SAME `onPop` popstate handler that resets
-  // `acctView` on every pop. Unlike `envView`/`reportsView`, `acctView` is deliberately NOT in
-  // the URL (D2), so `onPop` has nothing to restore it FROM; this ref is the memory instead —
-  // stashed immediately before the edit (`editAccountTxn` below) and read by `onPop` for the
-  // ONE pop it was stashed for. Reproduced live before this ref existed: the primary pane
-  // flashed to Reports (the shared onEditTxn's editReturn) and the account pane reverted to its
-  // empty hint after Save.
-  //
-  // The edit can also be ABANDONED without ever reaching that pop: WideShell keeps a fully
-  // interactive Rail while Add covers the panel (`onNav={nav}`, not gated on
-  // `screen === "addExpense"`), so any other Rail item calls `nav()` directly; a rail quick
-  // action goes through `onQuickAdd`; `doneEdit` falls back to a plain `setScreen(editReturn)`
-  // when there is no history entry to pop; WideShell's panel-✕ funnels into `doneEdit` too. None
-  // of those fire a popstate, and patching each caller would leave the NEXT one stale. The effect
-  // below is the single choke point instead: the stash only lives while the edit it was taken for
-  // is on screen. Every abandonment moves `screen` off "addExpense" and the effect discards the
-  // stash right after that commit; the one legitimate consumer (`onPop`'s capture) runs
-  // synchronously inside the popstate handler, before effects, so consumption always wins by
-  // construction — and a later, unrelated pop landing on "accounts" finds nothing to resurrect.
-  // (A quick action swapping the open edit for a fresh Add keeps `screen === "addExpense"` and
-  // deliberately keeps the stash: `acctView` itself never changed, so the eventual unwind
-  // restores the same pane the whole detour started from — continuity, not staleness.)
+
   const acctViewBeforeEditRef = useRef<{ accountId: string } | null>(null);
   useEffect(() => {
     if (screen !== "addExpense") acctViewBeforeEditRef.current = null;
   }, [screen]);
-   
+
   const [editReturn, setEditReturn] = useState<ScreenId>("start");
-  // Wide-only txn-panel selection (design parity wave C task 3) — `acctView`'s pattern (a FRESH
-  // `{ txnId }` object per row tap, for the by-reference reopen effect in WideShell.tsx), but with
-  // a lighter reset story: unlike `acctView`, `nav()` below never touches this — its only reset
-  // path is WideShell's own vanish effect (a month/search/filter change, or a delete, dropping the
-  // id out of the CURRENT filtered list), so an edit-and-return round trip through the Add pane
-  // needs no restore-ref the way `acctViewBeforeEditRef` gives `acctView` above: this is simply
-  // never cleared by anything on that path, so it survives it for free.
+
   const [txnView, setTxnView] = useState<{ txnId: string } | null>(null);
-   
+
   const [txQuery, setTxQuery] = useState("");
   const [txFilters, setTxFilters] = useState<TransactionFilters>(initialTransactionFilters);
   const { data: state, isLoading, isError } = useStateQuery(month);
   const bootStatus = useSyncExternalStore(store.subscribe, store.getBootStatus);
   const importManagerStatus = useSyncExternalStore(importManagerBootstrap.subscribe, importManagerBootstrap.getSnapshot);
 
-   
   useEffect(() => {
     void bootOnce();
   }, []);
@@ -252,14 +165,7 @@ function AppContent() {
   }, [empty]);
   const onboarding = empty || wizard;
   const wide = mode !== "phone" && !!state && !onboarding;
-  // The EFFECTIVE screen the primary pane (and everything reading "which screen is this" —
-  // `screenEl` below, the band right-slot, and inside `WideShell`: Rail's active highlight, the
-  // band header's title/month-nav, the fold TBB strip's compact styling, the Start/Settings
-  // content switch, the widget-settings reset effect) should treat as current (PR6 Task 5).
-  // `primaryScreenFor` (panel.ts, Task 1) resolves this: while Add is open (`screen ===
-  // "addExpense"`) it stays whatever screen Add was opened FROM, so the primary pane never
-  // flashes to an "Add" title/content and back to `editReturn` — it just never left. On phone
-  // this is always `screen` unchanged (the full-screen Add takeover there IS the current screen).
+
   const primaryScreen = wide ? primaryScreenFor(screen, editReturn) : screen;
   // Accounts/Reports band captions ("Balance {amount}" / "Net worth {amount}", waveA-t5-brief.md
   // + design parity wave A close, item 9) — the SAME GLOBAL total backs both (design's own
@@ -277,8 +183,6 @@ function AppContent() {
       .reduce((s, a) => s + a.balance, 0);
   }, [ledgerVersion, wide, primaryScreen]);
 
-  
-
   const nav = (s: ScreenId) => {
     if (s !== "addExpense") setEditTxn(null);
     if (s === "addExpense") setAddPreset({});
@@ -289,9 +193,6 @@ function AppContent() {
     // so their write is the last one in the batch and still wins.
     onBudgetSheet({ kind: "leave" });
     setEnvView(null);
-    
-
-
 
     if (s !== "settings") setAcctView(null);
     // NO `acctViewBeforeEditRef` rung here — abandoning an account-pane edit is handled by the
@@ -300,16 +201,11 @@ function AppContent() {
     // `onQuickAdd`).
     setEditReturn("start");
     if (s === "reports") {
-      
-
-
       setReportsView("overview");
       setMonthDay(null);
     }
     setScreen(s);
   };
-  
-
 
   const onQuickAdd = (kind: "transfer" | "import" | "suggest") => {
     if (kind === "suggest") {
@@ -323,57 +219,31 @@ function AppContent() {
     setAddPreset(kind === "transfer" ? { tab: "transfer" } : { importSheet: true });
     setScreen("addExpense");
   };
-  
-
 
   const openReports = (tab: ReportTab) => {
     nav("reports");
     setReportsView(tab);
   };
-  // Heatmap widget's day click (Start's phone stack AND WideHome's board share this one function —
-  // Task 6 reuses it verbatim rather than re-deriving the same two-write sequence for the wide
-  // board): openReports("month") calls nav("reports") internally, which resets monthDay to null,
-  // then re-asserts reportsView after nav — same last-write-wins batch as openReports/
-  // openBudgetFillGoals. setMonthDay(d) must come AFTER openReports so it's the LAST write to
-  // monthDay in the batch, not the first (calling it before openReports let nav's reset win and
-  // silently dropped the day).
+
   const onOpenMonthDay = (d: string) => {
     openReports("month");
     setMonthDay(d);
   };
-  
-
 
   const openBudgetFillGoals = () => {
     nav("budget");
     onBudgetSheet({ kind: "open", sheet: "fillGoals" });
   };
-  
-
-
-
-
 
   const openAccount = (id: string) => {
     nav("accounts");
     setAcctView({ accountId: id });
   };
-  // Wide-only: the RAIL's own account row (owner round 3 item 20) — SELECT, don't navigate. Unlike
-  // `openAccount` above, this never touches `screen`/`nav()` at all: the rail is reachable from
-  // every screen except Accounts itself (Rail.tsx's `showAccounts`), and clicking a row there must
-  // highlight it in the rail and open the account panel on the right WITHOUT leaving whatever
-  // screen the user is already on (the Accounts nav row stays the only way to the Accounts
-  // screen). `resolvePanel` (panel.ts) now reads `acctView` on every screen for exactly this
-  // reason. `envView` is cleared explicitly — it is checked BEFORE `acctView` in `resolvePanel`
-  // (the same precedent that already lets an open envelope beat a selected account/widgets/txn),
-  // so a stale envelope pane from an earlier action on this same screen would otherwise keep
-  // winning over the account the user just clicked.
+
   const selectRailAccount = (id: string) => {
     setEnvView(null);
     setAcctView({ accountId: id });
   };
-  
-
 
   const openTxns = (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string; date?: string }) => {
     setTxQuery("");
@@ -390,22 +260,11 @@ function AppContent() {
     setEditReturn("start");
     setScreen("transactions");
   };
-   
+
   const [envActions, setEnvActions] = useState<{ envelopeId: string; month: string } | null>(null);
   const envActionsMounted = useOpenedOnce(envActions !== null);
   const [envEdit, setEnvEdit] = useState<string | null>(null);
-  // Phone: the action sheet (Transactions / Summary / Edit — EnvActionsSheet below). Wide: no
-  // sheet — `envView` wins `resolvePanel` on ANY screen (components/wide/panel.ts), so tapping an
-  // envelope opens its summary straight into the panel, like the phone's own push-nav summary.
-  // The sheet's other two actions survive on wide: "Transactions" already exists inside
-  // `EnvelopeScreen` (`onOpenTxns`); "Edit" arrives with PR6's `envForm` pane — interim, edit via
-  // Budget's own row editor, unchanged (pr4-task-7-brief.md).
-  // `setAcctView(null)` here (owner round 3 review fix) restores the invariant `resolvePanel`'s
-  // own doc comment already claims — "every setter that establishes one clears the other": every
-  // envelope tile lives on a screen the rail is ALSO reachable from, so a stale account pick from
-  // an earlier rail click must not survive tapping an envelope, or the `!acctView` guards on
-  // `budgetSelectedEnvelopeId`/the reports hub's `selected` prop below stay stuck reading a
-  // selection the panel itself has already moved past.
+
   const openEnvelope = (envelopeId: string, m: string) => {
     if (mode !== "phone") {
       setEnvView({ envelopeId, month: m });
@@ -430,31 +289,11 @@ function AppContent() {
     acctViewBeforeEditRef.current = acctView;
     editTxnFrom(t, "accounts");
   };
-  // Wide-only: the envelope pane's recent-list row → edit (PanelHost's `envelope` kind, design
-  // parity wave C task 2). Its OWN `editTxnFrom` binding, like `editAccountTxn` above — the
-  // shared `onEditTxn`'s hardcoded "reports" return screen would flash the primary pane to
-  // Reports here too. UNLIKE `editAccountTxn`, no restore-ref is needed: `envView` already
-  // round-trips through the URL (`routeToUrl`'s `?env=`), so `doneEdit`'s `history.back()` lands
-  // on the entry pushed just before this edit — whichever of "start"/"budget" (the only two
-  // screens `resolvePanel` ever shows the envelope pane on, per `envView` above) the user was
-  // actually on — and `onPop` restores `envView` from that entry's URL for free. `editReturn` is
-  // set to the CURRENT `screen` (not a fixed constant, since this pane is reachable from EITHER
-  // screen) purely so `primaryScreenFor` renders the right one behind the Add takeover while it
-  // is open; it plays no role in the eventual restore.
+
   const editEnvelopeTxn = (t: Transaction) => editTxnFrom(t, screen);
-  
-
-
 
   const editTxnFromList = (t: Transaction) => editTxnFrom(t, "transactions");
-  // Wide-only: the txn panel's Duplicate pill (design parity wave C task 3, owner rule 2) — opens
-  // the Add pane PREFILLED as a new transaction cloned from `t`, never a direct ledger write.
-  // `editTxn` stays null (unlike `editTxnFrom` above), so submit's existing `editTxn ? update :
-  // create` branch already does the right thing on an explicit Save; `addPreset.duplicateFrom`
-  // carries the source row through to `AddScreen`'s own prefill effect (Add.tsx). No restore-ref
-  // is needed for the SAME reason `txnView` itself needs none (its own comment above): this
-  // doesn't touch `txnView` at all, so the panel keeps showing the ORIGINAL row throughout —
-  // correct, since duplicating leaves it unmodified.
+
   const duplicateTxnFromPanel = (t: Transaction) => {
     setEditTxn(null);
     setEditReturn("transactions");
@@ -474,13 +313,7 @@ function AppContent() {
     if (history.state === true) history.back();
     else setScreen(editReturn);
   };
-  // Wide-only entry point for the band header's "+ Add" button (PR6 Task 5) — used ONLY by
-  // `WideShell`, never by phone's FAB (`nav("addExpense")`, unchanged there). `nav` resets
-  // `envView`, which would silently discard an open envelope pane every time Add is opened —
-  // breaking D2's push semantics (opening Add over an open envelope pane must NOT clear it, so
-  // closing Add derives back to the envelope for free). This leaves `envView` untouched instead.
-  // Re-clicking "+ Add" while Add is already open (`screen === "addExpense"`) keeps the EXISTING
-  // `editReturn` (it is not a valid return target itself) and just resets to a fresh, blank add.
+
   const openAddWide = () => {
     setEditTxn(null);
     setAddPreset({});
@@ -508,13 +341,7 @@ function AppContent() {
   // narrow window; the existing shadow on the card then separates it from the tint.
   const backdrop = { minHeight: "100dvh", background: framed ? "rgba(0,0,0,0.06)" : "transparent" } as const;
 
-  
-
-
-
   const unauthed = bootStatus === "unauthed";
-
-  
 
   const locked = bootStatus === "locked";
 
@@ -539,20 +366,10 @@ function AppContent() {
   const routingActive = state && !onboarding && !unauthed && !locked && !foreign;
   useEffect(() => {
     const onPop = () => {
-      // PR6 Task 1: `envEdit`/`envActions` are ephemeral sheet-open booleans that never
-      // serialise into the URL (same class as `panelClosed` — chrome, not navigation), so a
-      // browser-back that changes the URL has no way to know they were open. Force-close both,
-      // unconditionally, BEFORE applying the parsed route below — the entry-0 fallback's own
-      // top two rungs, reused here as plain setter calls rather than a second reducer.
       setEnvEdit(null);
       setEnvActions(null);
       justPopped.current = true;
       const r = parseUrl(location.pathname, location.search);
-      
-
-
-
-
 
       const acctRestore = r.screen === "accounts" ? acctViewBeforeEditRef.current : null;
       nav(r.screen);
@@ -565,10 +382,6 @@ function AppContent() {
       if (envView && !state?.envelopes.some((e) => e.id === envView.envelopeId)) setEnvView(null);
       else {
         const url = routeToUrl({ screen, reportsView, envelopeId: envView?.envelopeId ?? null });
-        
-
-
-
 
         const act = historyAction(url !== location.pathname + location.search, history.state != null, justPopped.current);
         if (act === "push") history.pushState(true, "", url);
@@ -582,11 +395,6 @@ function AppContent() {
   // Swipe right = go back (screens with a back arrow — pinned PWA has no Safari gesture).
   const canBack = envView !== null || screen === "addExpense" || screen === "settings";
   const back = () => {
-    
-
-
-
-
     if (history.state === true) {
       history.back();
       return;
@@ -627,46 +435,17 @@ function AppContent() {
     const dx = touch.clientX - st.x,
       dy = touch.clientY - st.y;
     if (canBack) {
-       
       if (dx > 60 && Math.abs(dy) < 45 && (st.x < 40 || dx > 110)) back();
       return;
     }
-     
+
     if (!drawer && !onboarding && st.x < 28 && dx > 60 && Math.abs(dy) < 45) setDrawer(true);
   };
 
-  // Task 1 (owner rule 1, waveA-t1-brief.md): the panel's never-empty "first item" per screen —
-  // computed ONCE here (state is truthy in both render paths that read it below) for the Accounts
-  // row highlight just below and Budget's `selectedEnvelopeId` further down. `firstTxnId` is
-  // deliberately given the RAW (unfiltered) `state.transactions` rather than `txQuery`/
-  // `txFilters`-filtered results: neither of THIS variable's own two consumers reads that field at
-  // all, and wiring the real `matchesTransactionQuery`/`matchesTransactionFilters` pipeline into
-  // this EAGER module for a value nothing here consumes would spend this build's very tight §3f
-  // headroom for nothing. Design parity wave C task 3 gave the `txn` kind its own, PROPERLY
-  // filtered call to this same function instead — inside `WideShell` (already in the lazy wide
-  // chunk, already importing that pipeline for the band's "{n} shown" caption) — rather than
-  // widen this one; this `fallbacks` value is therefore no longer threaded into `WideShell`'s bag
-  // at all (panel.ts's own comment has the full reasoning).
-  // Design parity wave A close, item 10: gated on `wide` — its only consumers are wide-only (the
-  // Accounts row highlight just below, Budget's `selectedEnvelopeId`, both already `wide`-gated) —
-  // so a phone render no longer pays for this sort+filter every time, only to discard the result.
   const fallbacks = wide && state ? panelFallbacks(state, month, state.transactions) : null;
-  // Design parity wave C1 (gap 5): the Budget table's own selected-row treatment reads the SAME
-  // envelope the panel is showing — never a second "what's selected" channel (owner rule 3, "one
-  // pane machine"). Mirrors `resolvePanel`'s own envelope resolution for the budget/start screens
-  // (explicit `envView`, else the never-empty fallback), gated to when the panel can actually be
-  // showing it (`wide`, panel open, and the real `screen` — not `primaryScreen`, so an open Add
-  // takeover, which steals the panel via `resolvePanel`'s `add` kind, clears the highlight too).
-  // `!acctView` (owner round 3 item 20): a rail account selection now wins `resolvePanel` on ANY
-  // screen, including Budget — without this the table kept highlighting its own fallback row while
-  // the panel showed an unrelated account, the exact list/panel desync gap 9 already fixed for
-  // envelope vs. everything-else; caught live (throwaway stack) selecting a rail account from Budget.
+
   const budgetSelectedEnvelopeId =
     wide && !panelClosed && (screen === "budget" || screen === "start") && !acctView ? (envView?.envelopeId ?? fallbacks?.firstEnvelopeId ?? null) : null;
-  
-
-
-
 
   const screenEl = state ? (
     <>
@@ -717,30 +496,7 @@ function AppContent() {
             setQuery={setTxQuery}
             filters={txFilters}
             setFilters={setTxFilters}
-            // Design parity wave C task 3 (owner rule 1's list/panel sync, gap 9): on wide a row
-            // click SELECTS (never edits) — the effective id (an explicit pick, else the SAME
-            // filtered-list fallback the panel itself falls back to) drives the row highlight.
-            // Gated exactly like `budgetSelectedEnvelopeId` above (one source of truth, no new
-            // state): only while the panel is open AND `resolvePanel` is actually showing the txn
-            // pane — the real `screen` (an Add takeover flips it off "transactions") and `!envView`
-            // (which wins `resolvePanel` on ANY screen) mirror that resolution. Outside the gate
-            // the prop is `null` ("no highlight at all", the prop's contract — a collapsed panel
-            // must not leave an accent/▸/selBg row no panel is showing); inside it, an absent
-            // explicit pick flows through as `undefined` so TransactionsScreen applies its own
-            // filtered first-row fallback. `null` off wide, unchanged (phone has no panel to stay
-            // in sync with, the `AccountsScreen`/`BudgetScreen` precedent above). `!acctView` (owner
-            // round 3 item 20) is the same addition `budgetSelectedEnvelopeId` needed above — a rail
-            // account pick now wins `resolvePanel` on the Transactions screen too, so without this
-            // the list kept a fallback row highlighted while the panel showed an unrelated account.
             selectedTxnId={wide && !panelClosed && screen === "transactions" && !envView && !acctView ? txnView?.txnId : null}
-            // `setAcctView(null)` here (owner round 3 review fix): `resolvePanel` checks `acctView`
-            // BEFORE the `transactions`/`txnView` rung (panel.ts), so a rail account pick made
-            // earlier on this same screen would otherwise permanently outrank every later row
-            // click — the panel stays stuck on the stale account and `selectedTxnId` above stays
-            // `null` (its own `!acctView` guard), no visible effect until the user leaves and
-            // returns. A transaction row click is exactly as explicit a selection as the rail's —
-            // it must win the same way `selectRailAccount`/`openEnvelope` clear the OTHER axis when
-            // establishing theirs.
             onSelectTxn={(id) => {
               setAcctView(null);
               setTxnView({ txnId: id });
@@ -754,11 +510,6 @@ function AppContent() {
             state={state}
             onMenu={() => setDrawer(true)}
             onOpenAccount={openAccount}
-            // Task 1: on wide, the panel ALWAYS shows an account now (the fallback, absent an
-            // explicit pick — `resolvePanel`'s `account` kind) — the list highlight must track the
-            // same EFFECTIVE id or the row that matches the panel's content would show as
-            // unselected. Phone has no side panel to stay in sync with (`acctView` never sets
-            // there), so this stays `null` off wide, unchanged.
             selectedAccountId={wide ? (acctView?.accountId ?? fallbacks?.firstAccountId ?? null) : null}
           />
         </LazyChunk>
@@ -774,14 +525,6 @@ function AppContent() {
             state={state}
             month={month}
             view={wide ? "overview" : reportsView}
-            
-
-
-
-
-
-
-
             onView={(v) => {
               setReportsView(v);
               setAcctView(null);
@@ -795,25 +538,6 @@ function AppContent() {
             onPrev={prev}
             onNext={next}
             onOpenTxns={openTxns}
-            // Wide only: `view` above is forced to "overview" so the primary pane always shows
-            // the hub (Task 6) — `selected` recovers what report is REALLY open (in the panel)
-            // purely so the hub can highlight its card; harmless on phone, where the hub only
-            // ever renders when `reportsView` already equals "overview" too (so this stays
-            // `undefined` whenever it could matter there). Design parity wave D task 1: when
-            // `reportsView` itself is still "overview", the panel does NOT show nothing — on wide
-            // `resolvePanel` (panel.ts) falls back to the SAME "spending" tab v3:2213 defaults to
-            // (`{ kind: "report", view: "spending", source: "fallback" }`) — so the hub must
-            // reflect THAT card as open too, or the open report would have no visible trace in the
-            // hub the moment nothing has been explicitly picked yet (the exact gap this task
-            // fixes). Phone has no panel to reconcile with, so this stays `undefined` there.
-            // `!acctView` (owner round 3 item 20): a rail account pick now wins `resolvePanel` on
-            // the Reports screen too — without this the hub kept a report card looking "open" while
-            // the panel actually showed an unrelated account (caught live: selecting a rail account
-            // from Reports, then tapping a hub card, moved the hub's highlight while the panel
-            // stayed WRONGLY on the account — a real bug, not the "same desync, already handled"
-            // read an earlier pass gave this comment; `onView` above now clears `acctView` on every
-            // tap for exactly this reason, the SAME fix `openEnvelope`/`selectRailAccount` already
-            // apply for Budget's `selectedEnvelopeId`/Transactions' `selectedTxnId`).
             selected={wide && !acctView ? (reportsView !== "overview" ? reportsView : "spending") : undefined}
           />
         </LazyChunk>
@@ -852,9 +576,7 @@ function AppContent() {
     // branch below adds its own outer LazyChunk around BootShellWide; this inner one is what
     // makes the PHONE branch safe, so keep every boot screen inside it.
     const bootInner = <LazyChunk>{unauthed ? <LoginScreen /> : foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}</LazyChunk>;
-    // Wide (fold/desktop): the boot shell replaces the phone card entirely — brand column +
-    // content region, both inside their OWN lazy chunk (PR7 Task 1). The phone branch below is
-    // untouched byte-for-byte, so a phone boot never fetches BootShellWide's chunk.
+
     if (mode !== "phone") {
       return (
         <LazyChunk>
@@ -889,17 +611,6 @@ function AppContent() {
     );
   }
 
-  // Wide (fold/desktop) onboarding (PR7 Task 3): the wizard is a BOOT state, not an app screen —
-  // it leaves the WideShell/rail entirely (no rail, no BottomNav, no SyncBadge, no InstallBanner),
-  // the same way mount A above already leaves it for Login/Unlock/ForeignReplica. `wide` (below)
-  // is deliberately false while `onboarding` is true (its own definition), so this must be its own
-  // early return BEFORE the `if (wide)` branch — otherwise wide+onboarding would fall through to
-  // the phone-card return at the bottom of this component and render the narrow card on a
-  // fold/desktop viewport. `OnboardingScreen` hosts itself inside `BootShellWide` (statically
-  // imported there — Task 3's own comment), so nothing but the lazy chunk boundary is needed here;
-  // the phone branch inside the final return (`state && onboarding`, further down) stays untouched
-  // byte-for-byte, and is only ever reached once `mode === "phone"` is already guaranteed by this
-  // early return not having fired.
   if (state && onboarding && mode !== "phone") {
     return (
       <LazyChunk>
@@ -908,31 +619,6 @@ function AppContent() {
     );
   }
 
-  // Wide: rail + band + panel replace the phone card entirely, on EVERY screen including Add
-  // (PR6 Task 5 — this used to except `screen === "addExpense"` and fall through to the
-  // phone-column takeover below, "interim by design" per pr4-task-4-brief.md §4e; that branch is
-  // now gone). The primary pane renders `screenEl`, built off `primaryScreen` above, so while Add
-  // is open it keeps showing `editReturn`'s screen — the Add takeover itself lives ONLY in the
-  // panel (`PanelHost`'s `add` kind, resolved from the real `screen` by `resolvePanel`).
-  //
-  // §13's per-screen band right-slot ("Edit widgets" on Start / "Manage envelopes" on Budget) —
-  // restored now that the widget-edit-sheet extraction (pr4-context.md header; the pull-forward
-  // of PR5 Task 1) bought back the §3f headroom this needed. Budget's slot reuses the SAME lifted
-  // manageOpen state Budget's own phone pencil drives, so opening from the band and opening from
-  // the phone header stay one piece of state. Start's slot is the documented PR5 Task 6 handoff
-  // point (plan-pr4-shell.md §13, verbatim in pr5-task-6-brief.md): on wide it no longer opens
-  // the phone `EditWidgetsSheet` (`editWidgetsOpen` stays exclusively the phone pencil's own
-  // state — the sheet never mounts on wide, see WideShell's start-screen branch) but instead
-  // toggles `WideHome`'s own board edit mode, with the label flipping to "Done" while active —
-  // one slot, one computed VALUE, no fork in WideShell's header code.
-  //
-  // Design-parity wave A, task A5 (waveA-t5-brief.md; design v3:4351's `headerRight`): widened to
-  // the two-`kind` `RightSlot` union — Start/Budget stay clickable ("action"), Accounts/Reports/
-  // Settings are inert captions (Reports added in wave A close, item 9 — Transactions' own "{n}
-  // shown" caption lives in `WideShell.tsx` instead, since it needs `lib/transactionSearch`'s
-  // filtering helpers, which this EAGER module must not pull in — see that file's own comment).
-  // Settings' version/build string follows the SAME untranslated convention Settings.tsx/Rail.tsx
-  // already use for it (a technical build stamp, not a phrase) — not wrapped in `t()`.
   const wideRightSlot: RightSlot =
     primaryScreen === "start"
       ? {
@@ -981,53 +667,35 @@ function AppContent() {
               setAcctView,
               setReportsView,
               setPanelClosed,
-              
 
               state: state!,
-              
-
-
 
               txQuery,
               txFilters,
               onQuickAdd,
               onFillGoals: openBudgetFillGoals,
               onInstall: () => setInstallSheet(true),
-              // Task 6: the panel's own `ReportsScreen` instance needs the exact same entry points
-              // the primary pane's already uses, so opening an envelope / editing a transaction /
-              // picking a day from a report inside the panel behaves identically to doing it from
-              // the hub in the primary pane — same functions, not a wide-only fork of them.
+
               onOpenEnvelope: openEnvelope,
               onEditTxn: (t) => editTxnFrom(t, "reports"),
               monthDay,
               onSelectDay: setMonthDay,
-              
 
               onOpenReport: openReports,
               onOpenMonthDay,
               boardEdit: wideBoardEdit,
-              
-
-
 
               editTxn,
               addPreset,
               onDoneEdit: doneEdit,
-              // PR6 Task 5: the band header's "+ Add" button opens Add through this entry point,
-              // not `nav("addExpense")` — see `openAddWide`'s own comment above for why.
+
               onAddWide: openAddWide,
-              // Owner round 3 item 20: Rail's own account rows SELECT (never navigate) — see
-              // `selectRailAccount`'s own comment above for why this is a different function from
-              // `openAccount` (which `AccountsScreen`'s own rows still use, below).
+
               onSelectAccount: selectRailAccount,
-              // PR6b Task 4: the account pane's own recent-list edit entry point — NOT the
-              // report-panel instance's `onEditTxn` above (see `editAccountTxn`'s comment).
+
               onEditAccountTxn: editAccountTxn,
-              
 
               onEditEnvelopeTxn: editEnvelopeTxn,
-              
-
 
               txnView,
               setTxnView,
@@ -1039,18 +707,7 @@ function AppContent() {
             {screenEl}
           </WideShell>
         </LazyChunk>
-        {/* Task 8's overlay audit: on phone these two render inside the phone card's own tree
-            below (SAME app-owned state — `installSheet`, no separate instance, M7); the wide
-            branch returns above that point, so it had never rendered them at all — Rail's
-            `onInstall` (bag above) and Settings' own install card (inside `screenEl`) could flip
-            `installSheet` to true with nothing to show it. Siblings of `WideShell` here, never
-            nested inside its transformed panel (house rule — a `position:fixed` Sheet/banner
-            under a `transform` ancestor breaks). No BottomNav exists on wide (the rail replaces
-            it), so the banner's clearance drops to the plain safe-area inset. `UpdatePrompt` is
-            NOT a third sibling here any more (PR6 Task 6): its wide instance now renders from
-            inside `WideShell`'s primary-pane provider, where `useWideHost()` can anchor it clear
-            of the rail/panel — see that component's own comment. The phone instance below is
-            unaffected. */}
+        {}
         <LazyChunk variant="silent">
           <InstallBanner offsetForNav={false} />
         </LazyChunk>
@@ -1101,7 +758,7 @@ function AppContent() {
             {state && !onboarding && !envView && screenEl}
           </div>
           {!["addExpense", "settings"].includes(screen) && !onboarding && !envView && <BottomNav active={screen} onNav={nav} />}
-          { }
+          {}
           {screen !== "addExpense" && <SyncBadge onOpenSync={() => nav("settings")} />}
           {importManagerStatus === "error" && (
             <div role="status" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 13px)", right: 104, zIndex: 62 }}>
@@ -1183,13 +840,6 @@ export default function App() {
     </SignOutBoundary>
   );
 }
-
-
-
-
-
-
-
 
 function BootSkeleton() {
   const C = useTheme();

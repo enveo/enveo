@@ -1,4 +1,3 @@
- 
 export type DeviceStoragePolicy = "persistent" | "session";
 export type Deployment = "selfhost" | "cloud";
 
@@ -42,14 +41,11 @@ export function setDeviceStoragePolicy(value: DeviceStoragePolicy): boolean {
   }
 }
 
- 
 export function clearDeviceStoragePolicy(): void {
   try {
     localStorage.removeItem(POLICY_KEY);
     localStorage.removeItem(LEGACY_TRUST_KEY);
-  } catch {
-     
-  }
+  } catch {}
 }
 
 export function getCachedDeployment(): Deployment {
@@ -63,7 +59,5 @@ export function getCachedDeployment(): Deployment {
 export function cacheDeployment(deployment: Deployment): void {
   try {
     localStorage.setItem(DEPLOYMENT_KEY, deployment);
-  } catch {
-     
-  }
+  } catch {}
 }

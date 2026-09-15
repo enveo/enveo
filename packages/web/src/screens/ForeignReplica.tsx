@@ -34,7 +34,6 @@ import { useViewMode } from "../lib/viewMode";
 export function ForeignReplicaScreen() {
   const C = useTheme();
   const { t } = useT();
-  
 
   const wide = useViewMode() !== "phone";
   const [busy, setBusy] = useState(false);
@@ -50,7 +49,7 @@ export function ForeignReplicaScreen() {
   const doExport = () => {
     setError(null);
     try {
-      exportBackup();  
+      exportBackup();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -60,7 +59,7 @@ export function ForeignReplicaScreen() {
     setBusy(true);
     setError(null);
     try {
-      await discardLocalReplica();  
+      await discardLocalReplica();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -75,7 +74,7 @@ export function ForeignReplicaScreen() {
     setError(null);
     try {
       await endSession();
-      enterLoginPreservingReplica();  
+      enterLoginPreservingReplica();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

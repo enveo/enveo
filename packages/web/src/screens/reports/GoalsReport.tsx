@@ -32,78 +32,6 @@ interface PendingGoalFill {
 
 const GOAL_UNDO_TIMEOUT_MS = 6000;
 
-/**
- * "Goals" tab (Gabinet grammar, no dedicated mockup frame — follows A2/A3): envelopes with a
- * monthly goal (monthlyTarget > 0), sorted ascending by %, then name — math EXCLUSIVELY via
- * `goalProgress`, zero duplication in the component. Eyebrow reads "Monthly goals" rather than
- * "Goals", which just repeated the screen title above it.
- *
- * Task P1 fix: the hero used to be the whole SENTENCE ("All goals funded ✓") at 30px, which wraps
- * to two clunky lines on the band for anything but the shortest locale. The hero is now the bare
- * aggregate NUMBER (`{pctTotal}%`); the verdict sentence moved to the sub — "All goals funded ✓"
- * in pos colors when every goal is funded, else the existing "{amount} to go". The `rows.length >
- * 0` guard keeps a budget with zero goals from reading as a false "All funded ✓".
- *
- * Reports-3f Task 1 (this rebuild): each row is now a bordered card, display-only — the per-card
- * "Fill" write + undo toast is Task 2, not here.
- * - Leads with a `GoalRing` (40px) + envelope name + a bare `{funded} of {target}` line (no
- *   "this month" suffix — the screen is month-navigable via `onPrev`/`onNext`, so a trailing
- *   "this month"/hardcoded month name would go stale the instant the viewer moves off the live
- *   month; the screen's own header already names the viewed month).
- * - A progress track (`Bar`) whose tooltip DOES name the viewed month via `monthLabel` (nominative,
- *   no case-governing preposition — "so far" is a label, not "in {month}").
- * - Six month chips built from `computeGoalHistory` (oldest→newest, always the last 6 months
- *   ending at the viewed one) — met ⇒ pos-tinted "✓", the current (last) chip ⇒ accent-tinted
- *   with its live %, everything else ⇒ neutral chip fill with its ended-at %. Each chip's tooltip
- *   is one whole phrase per state (met / current / past-unmet) rather than glued fragments.
- * - A "Met in N of 5 months …" caption (the 6th, current, chip is excluded — it hasn't ended yet)
- *   and, once for the whole list (not per card), the mandatory basis caption: past months are
- *   judged against TODAY's target (`computeGoalHistory`'s `basis: "current-target"`), so editing a
- *   goal rewrites its own history rather than only affecting months going forward.
- *
- * `computeGoalHistory` needs the raw ledger (`ClientLedger`), not `state: StateResponse` — it
- * re-derives `computeBudgetState` per past month, which the state prop's single month cannot give
- * it. `store.getLedger()` is nullable (replica not yet booted); the whole per-card section derives
- * from a single `ledger !== null` check up front (mirrors `BudgetsReport`'s `coverStep`), and each
- * row ALSO guards `computeGoalHistory`'s own `| null` return (an envelope whose live ledger view
- * has diverged from the `state` snapshot this render started from) by skipping just that card
- * rather than crashing — both cases degrade to the existing empty-state copy / a shorter list,
- * never a thrown error. `gp` (`goalProgress(e)`, sourced from `state`, unchanged) still drives the
- * ring/track/status — `history.points.at(-1)` is proven to agree with it
- * (`reports.test.ts`: "agrees with goalProgress for the current month"), so the current chip is
- * never a second, potentially-divergent computation of the same number.
- *
- * Ring/track colour is PER-GOAL, the envelope's own identity colour (`e.color`), matching the
- * design mockup exactly (v3.dc.html:3411/1574 `gh.color`, used for both the ring and the track
- * fill). Owner round 3 item 18 REVERSES the wave-B "report convention" this comment used to
- * document — a funded-status scheme (`C.pos` once funded, `TEAL`/accent otherwise), on the theory
- * that `BudgetRow`'s bars are status-colored too and envelope colour should stay reserved for
- * small identity swatches. That call is overridden by direct owner order for Goals specifically;
- * it is not relitigated for any other report by this change. Fill affordances/labels (the "Fill
- * {amount} ›" button, its TEAL border) are unchanged — only the ring/track colour moved.
- *
- * The aggregate "fill everything" action moves out of the band `sub` and into the body, after the
- * card list and before the no-goal footer, per the design's own placement — and its copy changes
- * from "Fill ›" to "Fill all goals ›" to match. That rename orphans the old key's existing Polish
- * translation, so `pl.ts` carries BOTH the removal of the stale entry and a fresh translation of
- * the new one in this same commit (the other nine new keys this rebuild introduces are brand-new
- * copy with no prior translation to protect, and ship untranslated per the slice's own ruling — a
- * consolidated pass covers them before the next prod deploy).
- *
- * Reports-3f Task 2 (this commit): a per-card "Fill {amount} ›" quick action, mirroring
- * `BudgetsReport.coverStep`/`undoStep` exactly — immediate write + local undo toast, no
- * confirmation sheet (the controller ruling rejected a pre-scoped `FillGoalsSheet` for this).
- * - The amount shown ON the button is capped at the render-scope pool (`state.readyToAssign`,
- *   same as this file's existing `fillPossible` gate) so the label never promises more than the
- *   pool can currently cover, and the button doesn't render at all once `fillable <= 0` — same
- *   "hidden, not merely disabled" rule as the aggregate action.
- * - The WRITE itself re-reads both `allocated` and `readyToAssign` fresh off the live ledger at
- *   press time (`store.getLedger()` → `computeStateResponse`), never the `state`/`gp` closure —
- *   the same rule `coverStep` already applies to `previousAllocated`, extended here to the pool
- *   cap too, since a card can sit rendered for a while before it's tapped.
- * - The undo toast is the shared `UndoBar` (`components/reportKit.tsx`) — this report's second
- *   consumer, promoted out of `BudgetsReport` in the prior commit on this branch.
- */
 export function GoalsReport({
   state,
   M,
@@ -164,11 +92,8 @@ export function GoalsReport({
   const pctTotal = targetSum > 0 ? Math.round((fundedSum / targetSum) * 100) : 0;
   const missSum = rows.reduce((s, { gp }) => s + gp.missing, 0);
   const allFunded = rows.length > 0 && missSum === 0;
-  
-
 
   const fillPossible = canFillGoals(state);
-  
 
   const canRenderCards = ledger !== null && rows.length > 0;
 
@@ -182,8 +107,6 @@ export function GoalsReport({
     }
     setPendingFills((prev) => prev.filter((u) => u.id !== id));
   };
-  
-
 
   useEffect(() => {
     return () => {
@@ -205,9 +128,9 @@ export function GoalsReport({
     const live = ledger ? computeStateResponse(ledger, state.month) : null;
     if (!live) return;
     const envFresh = live.envelopes.find((x) => x.id === envelopeId);
-    if (!envFresh || envFresh.archived) return;  
+    if (!envFresh || envFresh.archived) return;
     const fillable = Math.max(0, Math.min(missing, live.readyToAssign));
-    if (fillable <= 0) return;  
+    if (fillable <= 0) return;
     const previousAllocated = envFresh.allocated;
     local.setDisplayedAllocation({ envelopeId, month: state.month, amount: previousAllocated + fillable });
     haptic([10, 30, 14]);
@@ -251,10 +174,9 @@ export function GoalsReport({
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {rows.map(({ e, gp }) => {
                 const history = histories.get(e.id);
-                if (!history) return null;  
+                if (!history) return null;
                 const fundedAmt = Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0);
-                // Owner round 3 item 18 — per-goal identity colour, not funded status; see this
-                // file's header comment for the reversal this replaces.
+
                 const barColor = e.color;
                 // Pool-capped display amount only — the WRITE re-reads both sides of this `Math.min`
                 // fresh at press time (see `fillOne`'s own comment). Hidden entirely (not disabled)

@@ -35,7 +35,7 @@ beforeEach(() => {
   scheduledTimers = 0;
   globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
     fetches.push(String(input));
-    throw new TypeError("no network in this suite");  
+    throw new TypeError("no network in this suite");
   }) as typeof fetch;
   globalThis.setTimeout = ((..._args: Parameters<typeof setTimeout>) => {
     scheduledTimers++;
@@ -53,7 +53,7 @@ beforeEach(() => {
   __resetIdentity();
   __resetBackoff();
   e2ee.setTierMeta({ tier: "plain", epoch: 0 });
-   
+
   store.replace(emptyLedger(), 0, "");
   store.setBootStatus("ready");
 });
@@ -69,15 +69,15 @@ afterEach(() => {
 describe("sync/cycle: single-flight with dirty coalescing", () => {
   it("a second syncNow while one is running joins the SAME promise (no interleaved cycles)", async () => {
     const p1 = syncNow("first");
-    const p2 = syncNow("second");  
+    const p2 = syncNow("second");
     expect(p2).toBe(p1);
     await p1;
   });
 
   it("awaitInFlightCycle resolves immediately when idle and after the running cycle otherwise", async () => {
-    await awaitInFlightCycle();  
+    await awaitInFlightCycle();
     const p = syncNow("flight");
-    await awaitInFlightCycle();  
+    await awaitInFlightCycle();
     await p;
   });
 
@@ -172,6 +172,6 @@ describe("sync/cycle: gates that stop a cycle before any request", () => {
 
   it("an unbound pre-bootstrap replica: the cycle is a no-op (no session read, no push)", async () => {
     await syncNow("gate");
-    expect(fetches).toEqual([]);  
+    expect(fetches).toEqual([]);
   });
 });

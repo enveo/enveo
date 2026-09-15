@@ -1,7 +1,5 @@
- 
 export type ImportDupStatus = "new" | "exists" | "probable";
 
- 
 export type ImportMoneyDirection = "in" | "out";
 
 export interface ExistingImportRow {
@@ -22,7 +20,7 @@ export interface ImportCandidate {
   date: string;
   amount: number;
   rawPlace?: string | null;
-   
+
   direction?: ImportMoneyDirection;
 }
 
@@ -44,9 +42,9 @@ const transferKey = (date: string, amount: number, direction: ImportMoneyDirecti
 export interface ImportDupIndex {
   strong: Set<string>;
   weak: Set<string>;
-   
+
   transfers: Set<string>;
-   
+
   markSeen(item: ImportCandidate): void;
 }
 
@@ -83,8 +81,6 @@ export function classifyImportDup(item: ImportCandidate, index: ImportDupIndex):
   return "new";
 }
 
-
-
 export function existingImportRowsForAccount(
   transactions: ReadonlyArray<{ accountId: string; toAccountId: string | null; type: string; date: string; amount: number; sourceRef: string | null }>,
   accountId: string,
@@ -105,7 +101,6 @@ export function existingImportRowsForAccount(
   return rows;
 }
 
- 
 export function importCandidateDirection(
   item: { type: "expense" | "income" | "transfer"; isRefund?: boolean; accountId?: string | null; toAccountId?: string | null },
   accountId: string,

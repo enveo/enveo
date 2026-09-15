@@ -12,7 +12,7 @@ const ORIGINAL = { ...operatorAiDeps };
 afterEach(() => Object.assign(operatorAiDeps, ORIGINAL));
 
 const USAGE = { prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100 };
-const USAGE_COST = 1000n * 200n + 100n * 1_200n;  
+const USAGE_COST = 1000n * 200n + 100n * 1_200n;
 
 const okBody = (over: Record<string, unknown> = {}) => ({
   model: "gpt-5.6-luna",
@@ -27,7 +27,6 @@ function jsonRes(body: unknown, status = 200, headers: Record<string, string> = 
 
 type Calls = { check: number; record: Array<{ policy: string; userId: string; periodKey: string; actualNanoUsd: bigint }>; fetch: number };
 
- 
 function wire(opts: {
   metering?: boolean;
   check?: SpendCheck | "throws";
@@ -86,7 +85,7 @@ describe("meteredOperatorChat — admission", () => {
     const out = await attempt();
     expect(out.kind).toBe("ok");
     expect(calls.fetch).toBe(1);
-    expect(calls.record).toEqual([]);  
+    expect(calls.record).toEqual([]);
   });
 
   it("a STALLED counter read is cut by the bounded deadline and fails OPEN (decision 7: no counter problem may degrade the AI path)", async () => {
@@ -97,9 +96,9 @@ describe("meteredOperatorChat — admission", () => {
     };
     const started = Date.now();
     const out = await attempt();
-    expect(out.kind).toBe("ok");  
+    expect(out.kind).toBe("ok");
     expect(calls.fetch).toBe(1);
-    expect(calls.record).toEqual([]);  
+    expect(calls.record).toEqual([]);
     expect(Date.now() - started).toBeLessThan(10_000);
   }, 15_000);
 

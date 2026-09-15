@@ -12,22 +12,15 @@ import { env } from "./env";
 
 type OriginEnv = Pick<typeof env, "ALLOWED_ORIGINS" | "BETTER_AUTH_URL" | "WEB_DIST">;
 
-
-
 export function staticAllowedOrigins(e: OriginEnv = env): Set<string> {
   return new Set<string>([
     ...e.ALLOWED_ORIGINS.split(",")
       .map((s) => s.trim())
       .filter(Boolean),
     ...(e.BETTER_AUTH_URL ? [new URL(e.BETTER_AUTH_URL).origin] : []),
-    ...(e.WEB_DIST ? [] : ["http://localhost:5173"]),  
+    ...(e.WEB_DIST ? [] : ["http://localhost:5173"]),
   ]);
 }
-
-
-
-
-
 
 export function isSameHostOrigin(origin: string | null | undefined, host: string | null | undefined): boolean {
   if (!origin || !host) return false;
@@ -37,11 +30,6 @@ export function isSameHostOrigin(origin: string | null | undefined, host: string
     return false;
   }
 }
-
-
-
-
-
 
 export function authTrustedOrigins(request?: Request): string[] {
   const trusted = [...staticAllowedOrigins()];

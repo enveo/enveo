@@ -7,7 +7,6 @@ import { useWideHost } from "../../lib/shellContext";
 import { SAGE_BG, TEAL } from "../../lib/theme";
 import { type Mask, TITLES } from "./types";
 
- 
 export function AssetsReport({
   netWorth,
   state,
@@ -60,13 +59,7 @@ export function AssetsReport({
     >
       {netWorth.length > 1 && (
         <div style={{ fontSize: 10.5, color: C.mute, textAlign: "center", marginBottom: 12, fontVariantNumeric: "tabular-nums" }}>
-          {
-
-
-
-
-
-}
+          {}
           {inWide && <>{netWorthRangeLabel(netWorth, lang, tp)} · </>}
           {t("range {min}–{max}", { min: M(Math.min(...nwTotals)), max: M(Math.max(...nwTotals)) })}
         </div>

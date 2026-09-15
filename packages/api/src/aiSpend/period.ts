@@ -9,17 +9,14 @@
  */
 
 export interface SpendPeriod {
-   
   key: string;
-   
+
   startMs: number;
-   
+
   endMs: number;
 }
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
-
-
 
 export function periodAtUtc(utcMs: number): SpendPeriod {
   if (!Number.isFinite(utcMs)) throw new Error("periodAtUtc: not a finite timestamp");
@@ -30,8 +27,6 @@ export function periodAtUtc(utcMs: number): SpendPeriod {
 }
 
 const KEY_RE = /^(\d{4})-(\d{2})$/;
-
-
 
 export function periodForKey(key: string): SpendPeriod {
   const m = KEY_RE.exec(key);

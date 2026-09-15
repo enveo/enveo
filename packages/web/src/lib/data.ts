@@ -20,7 +20,6 @@ const APP = "enveo";
 const LEGACY_APP = ["4", "grosze"].join("");
 const SCHEMA = 1;
 
- 
 export interface Backup {
   app: string;
   schema: number;
@@ -32,10 +31,6 @@ export interface Backup {
 export function hasExportableBackup(): boolean {
   return store.getLedger() !== null;
 }
-
-
-
-
 
 export function exportBackup(): void {
   const ledger = store.getLedger();
@@ -61,7 +56,7 @@ export function downloadJson(value: unknown, filename: string): void {
   document.body.appendChild(a);
   a.click();
   a.remove();
-   
+
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
@@ -101,16 +96,15 @@ export async function importBackup(file: File): Promise<void> {
     throw new Error(translate(uiLang(), "The backup is corrupted and was not loaded: {detail}", { detail }));
   }
 
-   
   const ledger = res.data as ClientLedger;
   const budgetId = typeof env.budgetId === "string" ? env.budgetId : (store.getBudgetId() ?? "");
 
   // Durable replace obligation BEFORE swapping the mirror (the same serial persist
   // chain ⇒ durable-mirror implies durable-flag): the import must REPLACE the server.
   markReplacePending();
-  store.replace(ledger, 0, budgetId);  
-  outbox.clearAll();  
-  await persist.persistLedger(store.snapshotForPersist());  
+  store.replace(ledger, 0, budgetId);
+  outbox.clearAll();
+  await persist.persistLedger(store.snapshotForPersist());
 
   // Path per tier: e2ee → encrypted checkpoint to /sync2/reset (plaintext NEVER
   // leaves the device; /sync/replace would bounce with a 409 tier_mismatch),
@@ -118,11 +112,10 @@ export async function importBackup(file: File): Promise<void> {
   if (getTierMeta().tier === "e2ee") {
     await resetServerE2ee(); // server := ciphertext of the imported replica
   } else {
-    await pushLocalToServer();  
+    await pushLocalToServer();
   }
 }
 
- 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).__data = { exportBackup, importBackup };
 }

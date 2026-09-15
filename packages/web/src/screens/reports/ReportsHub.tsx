@@ -20,10 +20,6 @@ const SPENDING_FALLBACK_COLORS = ["#8f84a8", "#aed6ea", "#ccd9b6", "#f0c84f"];
  *  rather than sharing one constant. */
 const DELTA_MARK = "\u0000";
 
-
-
-
-
 export function netWorthDeltaPct(netWorth: { month: string; total: number }[]): string | null {
   if (netWorth.length < 2) return null;
   const last = netWorth.at(-1)!.total;
@@ -32,19 +28,6 @@ export function netWorthDeltaPct(netWorth: { month: string; total: number }[]): 
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
 }
 
-/**
- * Reports hub (frame A1, "Gabinet" direction): the global Header, then a tappable net-worth
- * band hero (eyebrow, 30px masked amount, ▲/▼ m/m delta, 12-mo sparkline — on `C.headerBg`
- * when the theme paints a Duet band, plain otherwise, exactly like every other screen's header),
- * then a 2-column grid of six mini-cards, one per subscreen, each showing just its essence.
- * Every card is a `<button>` → `onView(id)`.
- *
- * WIDE only (design parity wave D task 2, v3:624-655): the delta line also carries the m/m
- * PERCENTAGE ("▲ +€X · +9.7% m/m", previously silently dropped), plus a "last N months · start–
- * end" range caption and a "wealth details ›" accent CTA — both new lines `ReportShell` didn't
- * have room for before. `ReportShell` itself puts the whole hero in a `flex-direction:row` with
- * a fixed 216px info column at the `desktop` bucket (fold stays column, same as phone below).
- */
 export function ReportsHub({
   state,
   month,
@@ -70,10 +53,6 @@ export function ReportsHub({
   onMenu: () => void;
   onPrev: () => void;
   onNext: () => void;
-  
-
-
-
 
   selected?: ReportTab;
 }) {
@@ -86,26 +65,15 @@ export function ReportsHub({
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
   const deltaColor = nwDelta > 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg);
-  
-
-
-
-
-
-
-
-
 
   const pctText = inWide ? netWorthDeltaPct(netWorth) : null;
   const [deltaBefore, deltaAfter] =
     inWide && nwDelta !== 0 && pctText !== null ? splitAround(t("{delta} · {pct} m/m", { delta: DELTA_MARK, pct: pctText }), DELTA_MARK) : ["", ""];
   const deltaText = (nwDelta > 0 ? "▲ +" : "▼ ") + M(Math.abs(nwDelta));
-  
 
   const rangeLabel = inWide ? netWorthRangeLabel(netWorth, lang, tp) : null;
   const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
 
-   
   const goalRows = state.envelopes
     .filter((e) => !e.archived)
     .flatMap((e) => {
@@ -164,14 +132,7 @@ export function ReportsHub({
         }
         bandChart={<NetWorthChart points={netWorth} height={130} onBand={band} />}
       >
-        {/* Fixed 2-up at every width (mockup inconsistency 4, pr4-context.md §0b/§12 — CLOSED,
-            do not relitigate): the mock's fold column drops to a single simplified card per row,
-            but that is a property of ITS stripped-down cards, not of this layout — these minis
-            are fluid (`useElementWidth` throughout) and already read fine well under a phone's
-            own width. At the wide breakpoints this shell actually ships (task 4's `geometry.ts`),
-            the 804px desktop primary gives each card ≈385px and the 484px fold primary ≈229px —
-            both comfortably above the ~190px this grid already renders at on a phone, so nothing
-            here needs the fold's 1-column fallback the mock draws. */}
+        {}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <CashflowMini cashflow={cashflow} onView={onView} M={M} selected={selected === "cashflow"} />
           <SpendingMini rows={hubSpending} envColor={envColor} cashflow={cashflow} onView={onView} M={M} selected={selected === "spending"} />
@@ -184,22 +145,6 @@ export function ReportsHub({
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 function MiniCard({ title, onClick, selected, children }: { title: string; onClick: () => void; selected?: boolean; children: ReactNode }) {
   const C = useTheme();
@@ -234,8 +179,6 @@ function MiniCard({ title, onClick, selected, children }: { title: string; onCli
     </button>
   );
 }
-
-
 
 function CashflowMini({
   cashflow,
@@ -291,8 +234,6 @@ function CashflowMini({
   );
 }
 
-
-
 function SpendingMini({
   rows,
   envColor,
@@ -318,7 +259,7 @@ function SpendingMini({
     ...top.map((r, i) => ({ weight: Math.max(0, r.amount), color: colorOf(r, i) })),
     ...(restAmt > 0 ? [{ weight: restAmt, color: C.line }] : []),
   ];
-   
+
   const baseline = median(cashflow.slice(-4, -1).map((p) => p.expense));
   const deltaPct = baseline > 0 ? (total - baseline) / baseline : null;
   return (
@@ -331,10 +272,6 @@ function SpendingMini({
     </MiniCard>
   );
 }
-
-
-
-
 
 function BudgetsMini({
   envelopes,
@@ -367,8 +304,6 @@ function BudgetsMini({
   );
 }
 
-
-
 function GoalsMini({
   pctTotal,
   missSum,
@@ -398,9 +333,6 @@ function GoalsMini({
   );
 }
 
-
-
-
 function MonthMini({ days, onView, M, selected }: { days: { date: string; total: number }[]; onView: (v: ReportView) => void; M: Mask; selected?: boolean }) {
   const C = useTheme();
   const { t } = useT();
@@ -419,21 +351,6 @@ function MonthMini({ days, onView, M, selected }: { days: { date: string; total:
   );
 }
 
-/** Trends mini-card: the top-2 biggest-moving envelopes (already sorted by computeEnvelopeTrends),
- *  a mini TrendSpark (red rising / green falling / muted flat) and an arrow per row.
- *
- *  TrendSpark waiver (pr4-context.md §6, recorded): `TrendSpark`'s `w` is normally caller-fixed —
- *  it draws inside a row shared with text, where measuring the row itself would be wrong (see its
- *  own doc comment in reportKit.tsx). On a wide pane this card is much wider than a phone's ~150,
- *  so instead of leaving the spark phone-width-fixed forever, the ref measures an inner row div
- *  passed as `MiniCard`'s `children` — a normal flex child of the button's `alignItems: "stretch"`
- *  column, so it already fills the button's own padded content box with no padding math needed
- *  (`useElementWidth`'s usual "no padding between the ref and the chart" invariant holds as-is).
- *  The ref must stay on a div INSIDE the button, not one wrapping `MiniCard` itself: a wrapping
- *  div would become the grid's direct child instead of the button, and a plain block div does not
- *  propagate the grid's `align-items: stretch` to a child, leaving the visible card short of the
- *  row height whenever a sibling in the same row is taller. `Math.max(120, …)` keeps a
- *  collapsed/unmeasured frame from ever drawing narrower than the phone's own historical 150. */
 function TrendsMini({ trends, onView, selected }: { trends: EnvelopeTrend[]; onView: (v: ReportView) => void; selected?: boolean }) {
   const C = useTheme();
   const { t } = useT();

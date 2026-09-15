@@ -109,14 +109,11 @@ describe("v2 import-job ciphertext", () => {
 
 describe("E2EE import apply row identity", () => {
   it("derives an opaque domain-separated token without exposing model row text", async () => {
-     
     const dek = generateDek();
     const sensitiveRowId = "Coffee Shop Warsaw 2026-08-24 12.34 EUR";
 
-     
     const token = await importApplyRowToken(dek, BUDGET_A, 4, JOB_1, sensitiveRowId);
 
-     
     expect(token).toBe(await importApplyRowToken(dek, BUDGET_A, 4, JOB_1, sensitiveRowId));
     expect(token).not.toContain(sensitiveRowId);
     expect(token).not.toBe(await importApplyRowToken(dek, BUDGET_A, 4, JOB_2, sensitiveRowId));

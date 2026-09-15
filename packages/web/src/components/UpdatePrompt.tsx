@@ -128,44 +128,16 @@ export function useAppUpdate(): { needRefresh: boolean; incomingVersion: string 
   };
 }
 
-/**
- * Phone (and fold) presentation: a fixed, viewport/pane-anchored banner shown while an update is
- * waiting. Desktop no longer mounts this — design-parity wave A, task A4 moved the desktop
- * surface into the rail (`Rail.tsx`'s update card, between the TBB card and the user block,
- * owner-requirements.md #3).
- *
- * Styling (owner round 4, item 23): the app's own card grammar — `C.card` surface, 1px `C.line`
- * border, `C.text` title, a filled-CTA "Refresh" button and a muted × — NOT a saturated
- * theme-colored fill. The previous `background: TEAL` banner painted `var(--accent)` edge to
- * edge, which resolved to lavender/navy on Duet and a loud green on Cisza; the owner rejected
- * all four. Card tokens keep the banner legible on every theme (Duet dark's navy `card` keeps
- * its audited light `text` ink), the small CTA dot + filled CTA button carry the "update
- * waiting" signal the fill used to, and CTA is the one theme-stable accent (coral in every
- * theme, same `background: CTA, color: #fff` grammar as the app's primary sheet buttons).
- * Behaviour (refresh/dismiss, anchoring) is untouched; the rail's own update card is separate.
- */
 export function UpdatePrompt() {
   const { t } = useT();
   const C = useTheme();
   const { needRefresh, refresh, dismiss } = useAppUpdate();
-  // Wide anchor (PR6 Task 6 — sheet triage sweep measured this): mirrors DockedNumpad's own
-  // anchor (Task 3). `null` on phone (no provider) and on fold (WideShell only renders this
-  // instance from the PRIMARY pane, so `useWideHost()` is never null there while mounted) —
-  // kept `?? null` defensive rather than assumed, matching DockedNumpad's own style. Anchoring
-  // to `rects.primary` (not a static rail-width constant) is what makes this correct whether the
-  // panel is open or closed: WideShell's own ResizeObserver already grows `rects.primary` to
-  // fill the reclaimed space when the panel collapses, so this needs no separate branch for that.
+
   const pane = useWideHost();
   const anchor = pane?.rects.primary ?? null;
 
   if (!needRefresh) return null;
-  // Measured (PR6 Task 6 — sheet triage sweep): at 1440x900 (desktop) a viewport-centered banner
-  // never reaches the rail or panel, so that geometry is untouched. At 1104x992 (fold) with the
-  // panel open, centering across the FULL viewport put the banner ~220px into the panel's own
-  // column (panel starts at x=552 there; the pill's right edge reached ~774) — a real collision,
-  // not a hypothetical one. Anchoring to the primary pane's measured rect (`anchor` above) fixes
-  // both sizes at once and costs nothing on phone (`anchor` is `null` there, same fixed centering
-  // as before).
+
   return (
     <div
       style={{
@@ -184,8 +156,6 @@ export function UpdatePrompt() {
           display: "flex",
           alignItems: "center",
           gap: 8,
-          
-
 
           boxSizing: "border-box",
           maxWidth: PHONE_COL,

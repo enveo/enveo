@@ -1,14 +1,5 @@
-
-
-
-
-
-
-
 import { computeBudgetState, monthOf } from "./budget";
 import type { Account, Category, ClientLedger, Envelope, EnvelopeGroup, Place, Transaction } from "./types";
-
- 
 
 export interface AccountView extends Account {
   balance: number;
@@ -24,7 +15,7 @@ export interface EnvelopeView extends Envelope {
 export interface StateResponse {
   month: string;
   toBeBudgeted: number;
-   
+
   readyToAssign: number;
   monthIncome: number;
   monthExpense: number;
@@ -36,11 +27,9 @@ export interface StateResponse {
   places: Place[];
 }
 
- 
 export function computeStateResponse(ledger: ClientLedger, month: string): StateResponse {
   const state = computeBudgetState(ledger, month);
 
-   
   const txns = ledger.transactions
     .filter((t) => monthOf(t.date) === month)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.createdAt < b.createdAt ? 1 : -1));

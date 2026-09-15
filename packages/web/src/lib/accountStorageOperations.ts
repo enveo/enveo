@@ -33,7 +33,6 @@ export function configureAccountStorageGenerationFence(fence: AccountStorageGene
   generationFence = fence;
 }
 
- 
 export function configurePersistenceAccountStorageDrain(allowed: (() => boolean) | null): void {
   persistenceDrainAllowed = allowed;
 }
@@ -51,7 +50,6 @@ export function runPersistenceAccountStorageWrite<T>(operation: () => Promise<T>
   }
   persistenceAdmissionDepth++;
   try {
-     
     return operation();
   } finally {
     persistenceAdmissionDepth--;

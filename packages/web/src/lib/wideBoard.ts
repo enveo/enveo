@@ -1,18 +1,5 @@
 import { createDefaultWideWidgets, type WideWidgetConfig, type WideWidgetId } from "@enveo/shared";
 
-
-
-
-
-
-
-
-/** Render-time column clamp for a stored (desktop-truth) span — NEVER mutates storage: a tile
- *  authored at `w:3` on desktop still stores 3 while rendering at `min(cols, 3)` on the fold's
- *  2-column grid, so switching back to desktop later restores the wider span ("Clamp at render,
- *  persist desktop-truth" — pr5-task-6-brief.md). Also the cap applied to a live resize gesture
- *  (mock :3628-3641): dragging a tile on the fold can only ever WRITE up to `cols`, exactly like
- *  the approved mock's own `Math.min(homeColsN, …)`. */
 export function clampSpan(w: number, cols: number): number {
   return Math.max(1, Math.min(cols, w));
 }
@@ -74,14 +61,6 @@ export function reorderEnabled(widgets: WideWidgetConfig[], from: number, to: nu
  *  other widget omits the field and the design reads that as `true`. */
 const SCROLL_CLIPPED_BY_DEFAULT: ReadonlySet<WideWidgetId> = new Set(["reportNetWorth", "reportCashflow"]);
 
-/**
- * Resolves the wide tile gear panel's "Scroll inside the tile" toggle (owner round 3 item 14) to
- * an effective boolean — the ONE place the `scroll` field's absent-value default lives, so a
- * pre-existing replica row with no `scroll` key at all (every board stored before this field
- * existed) keeps rendering exactly as it did before the field was added: `WideHome`'s tile body
- * used to hardcode this same {reportNetWorth, reportCashflow} set directly (`CLIPPED_TILE_BODIES`)
- * before the toggle existed, so an absent key must resolve to that identical outcome.
- */
 export function resolveWidgetScroll(widget: Pick<WideWidgetConfig, "id" | "scroll">): boolean {
   return widget.scroll ?? !SCROLL_CLIPPED_BY_DEFAULT.has(widget.id);
 }

@@ -19,7 +19,6 @@ import { join } from "node:path";
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 const read = (rel: string): string => readFileSync(join(REPO_ROOT, rel), "utf8");
 
- 
 const TRANSPORT_FILES = [
   "packages/api/src/openaiHttp.ts",
   "packages/web/src/lib/openai.ts",
@@ -41,15 +40,13 @@ describe("AI transport timeout parity (api ↔ web via @enveo/shared)", () => {
   });
 
   it("operator and vaulted-BYOK import share the server vision pipeline and the browser outwaits both cycles", () => {
-    
-
     const sharedPipeline = read("packages/shared/src/aiPrompts.ts");
     const credentialRoute = read("packages/api/src/routes/aiCredentials.ts");
     const webApi = read("packages/web/src/lib/api.ts");
     expect(sharedPipeline).toContain("AI_VISION_TIMEOUT_MS");
     expect(credentialRoute).toContain("extractImportForBudget");
     expect(credentialRoute).toContain("timeoutMs");
-    expect(webApi.match(/AI_IMPORT_EXTRACT_TIMEOUT_MS/g)?.length).toBeGreaterThanOrEqual(3);  
+    expect(webApi.match(/AI_IMPORT_EXTRACT_TIMEOUT_MS/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
   it("no transport file hardcodes a timeout amount — the shared module is the only place the numbers exist", () => {

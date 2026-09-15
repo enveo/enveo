@@ -1,4 +1,3 @@
- 
 import type { Dict } from "../index";
 
 export const nl: Dict = {
@@ -648,7 +647,6 @@ export const nl: Dict = {
       one: "{n} item samenvoegen tot één met de naam ‘{name}’? Al zijn transacties verhuizen mee.",
       other: "{n} items samenvoegen tot één met de naam ‘{name}’? Al hun transacties verhuizen mee.",
     },
-  
 
   "Needs attention": "Vraagt aandacht",
   "Recent activity": "Recente activiteit",
@@ -681,13 +679,12 @@ export const nl: Dict = {
   "total {amount} this month": "totaal {amount} deze maand",
   "No spending this month.": "Geen uitgaven deze maand.",
   "Not enough history yet — trends appear after two months of spending.": "Nog niet genoeg geschiedenis — trends verschijnen na twee maanden met uitgaven.",
-   
+
   "Add widget": "Widget toevoegen",
   "Every widget is already on the grid.": "Elke widget staat al op het raster.",
   "Widget settings": "Widgetinstellingen",
   "latest transactions": "laatste transacties",
 
-   
   "+ {n} more | + {n} more": { one: "+ nog {n}", other: "+ nog {n}" },
   "A local copy means the app opens instantly and keeps working on a plane.":
     "Een lokale kopie betekent dat de app meteen opent en blijft werken, zelfs in het vliegtuig.",

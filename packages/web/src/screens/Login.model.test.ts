@@ -9,8 +9,6 @@ describe("login device storage disclosure", () => {
   });
 
   it("renders the lazy login screen inside a Suspense boundary on the phone branch", async () => {
-    
-
     const app = await Bun.file(`${import.meta.dir}/../App.tsx`).text();
     expect(app).toContain("<LazyChunk>{unauthed ? <LoginScreen /> :");
     expect(app).not.toContain("unauthed ? <LoginScreen /> : <LazyChunk>");

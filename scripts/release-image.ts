@@ -92,7 +92,6 @@ type Options = Readonly<{
   source: string;
 }>;
 
- 
 function checkIdentity(reference: string, options: Options): string[] {
   const violations: string[] = [];
 
@@ -185,15 +184,12 @@ function aliasPlan(image: string, version: string, aliases: readonly string[]): 
   const move = decisions.filter((d) => d.action === "move").map((d) => d.alias);
   const skipped = decisions.filter((d) => d.action === "skip");
   if (skipped.length > 0) {
-    
-
     for (const decision of skipped) console.log(`::warning::alias not moved — ${decision.reason}`);
   }
   emit({ move: move.join(","), skipped: skipped.map((d) => d.alias).join(",") });
   return 0;
 }
 
- 
 function versionLabelOf(imageJson: unknown): string | null {
   const root = (imageJson ?? {}) as Record<string, unknown>;
   const entries = "config" in root ? [root] : Object.values(root);
@@ -205,7 +201,6 @@ function versionLabelOf(imageJson: unknown): string | null {
   return null;
 }
 
- 
 function platforms(reference: string): number {
   const raw = inspect(reference);
   if (raw.code !== 0) {

@@ -18,12 +18,10 @@
 import { type Allocation, applyOp, type ClientLedger, type ReplicatedTable, type SyncOp } from "@enveo/shared";
 import { idbGet } from "./idb";
 
- 
 export type PullChange =
   | { seq: number; table: ReplicatedTable; op: "upsert"; row: unknown }
   | { seq: number; table: ReplicatedTable; op: "delete"; rowId: string };
 
- 
 const TABLE_KEY: Record<ReplicatedTable, keyof ClientLedger> = {
   accounts: "accounts",
   envelope_groups: "groups",
@@ -50,8 +48,6 @@ export type BootStatus = "booting" | "ready" | "error" | "unauthed" | "locked" |
  */
 const allocPendingKey = (a: Pick<Allocation, "envelopeId" | "month">): string => `allocations:${a.envelopeId}|${a.month}`;
 
- 
-
 let ledger: ClientLedger | null = null;
 let cursor = 0;
 let budgetId: string | null = null;
@@ -63,8 +59,6 @@ function bump(): void {
   version++;
   for (const fn of listeners) fn();
 }
-
- 
 
 /**
  * Backfills collections added AFTER the replica was saved (old blob in IDB / old
@@ -88,11 +82,6 @@ async function doHydrate(): Promise<"ready" | "empty"> {
 }
 
 export const store = {
-  
-
-
-
-
   hydrate(): Promise<"ready" | "empty"> {
     if (!hydratePromise) {
       const p = doHydrate();
@@ -104,18 +93,9 @@ export const store = {
     return hydratePromise;
   },
 
-  
-
-
-
-
   snapshotForPersist(): { ledger: ClientLedger | null; cursor: number; budgetId: string | null } {
     return { ledger, cursor, budgetId };
   },
-
-  
-
-
 
   replace(next: ClientLedger, nextCursor: number, nextBudgetId: string): void {
     ledger = normalizeLedger(next);
@@ -124,26 +104,13 @@ export const store = {
     bump();
   },
 
-  
-
-
-
-
-
-
-
-
-
-
-
   applyPulled(changes: PullChange[], nextCursor: number, pendingKeys?: ReadonlySet<string>): void {
-    if (!ledger) return;  
+    if (!ledger) return;
     const next = { ...ledger };
     const copied = new Map<keyof ClientLedger, Array<{ id: string }>>();
     const arrFor = (k: keyof ClientLedger): Array<{ id: string }> => {
       let a = copied.get(k);
       if (!a) {
-         
         a = [...((next[k] as Array<{ id: string }> | undefined) ?? [])];
         copied.set(k, a);
       }
@@ -152,17 +119,15 @@ export const store = {
 
     for (const ch of changes) {
       const key = TABLE_KEY[ch.table];
-      
-
 
       if (!key) continue;
       const arr = arrFor(key);
       if (ch.op === "delete") {
         const i = arr.findIndex((r) => r.id === ch.rowId);
-        if (i < 0) continue;  
+        if (i < 0) continue;
         if (pendingKeys) {
           const pk = ch.table === "allocations" ? allocPendingKey(arr[i] as unknown as Allocation) : `${key}:${ch.rowId}`;
-          if (pendingKeys.has(pk)) continue;  
+          if (pendingKeys.has(pk)) continue;
         }
         arr.splice(i, 1);
         continue;
@@ -170,11 +135,10 @@ export const store = {
       const row = ch.row as { id: string };
       if (pendingKeys) {
         const pk = ch.table === "allocations" ? allocPendingKey(row as unknown as Allocation) : `${key}:${row.id}`;
-        if (pendingKeys.has(pk)) continue;  
+        if (pendingKeys.has(pk)) continue;
       }
       let i = arr.findIndex((r) => r.id === row.id);
       if (i < 0 && ch.table === "allocations") {
-         
         const a = row as unknown as Allocation;
         i = (arr as unknown as Allocation[]).findIndex((r) => r.envelopeId === a.envelopeId && r.month === a.month);
       }
@@ -200,10 +164,10 @@ export const store = {
    * ONLY memory + version++ — durability is done by the caller (persist.persistLedger).
    */
   applyRemoteOps(ops: readonly SyncOp[], nextCursor: number, skipOpIds?: ReadonlySet<string>): void {
-    if (!ledger) return;  
+    if (!ledger) return;
     let next = ledger;
     for (const op of ops) {
-      if (skipOpIds?.has(op.opId)) continue;  
+      if (skipOpIds?.has(op.opId)) continue;
       try {
         next = applyOp(next, op);
       } catch (e) {
@@ -214,14 +178,6 @@ export const store = {
     cursor = nextCursor;
     bump();
   },
-
-  
-
-
-
-
-
-
 
   async rehydrateFromIdb(): Promise<void> {
     const [l, c, b] = await Promise.all([idbGet<ClientLedger>("meta", "ledger"), idbGet<number>("meta", "cursor"), idbGet<string>("meta", "budgetId")]);
@@ -260,7 +216,6 @@ export const store = {
   getVersion: (): number => version,
   getBootStatus: (): BootStatus => bootStatus,
 
-   
   clearMemory(): void {
     ledger = null;
     cursor = 0;

@@ -8,9 +8,6 @@ import { Glyph } from "../../lib/icons";
 import { matchesSearch, SEARCH_THRESHOLD } from "../../lib/search";
 import { tint } from "../../lib/theme";
 
-
-
-
 export function EnvelopePickerSheet({
   show,
   onClose,
@@ -23,7 +20,7 @@ export function EnvelopePickerSheet({
   onClose: () => void;
   envelopes: StateResponse["envelopes"];
   groups: StateResponse["groups"];
-   
+
   title?: string;
   onSelect: (id: string) => void;
 }) {

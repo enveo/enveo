@@ -16,18 +16,18 @@ describe("viewModeFor", () => {
 
   test("fold band starts exactly at FOLD_MIN and ends below DESKTOP_MIN", () => {
     expect(viewModeFor(900, 1200)).toBe("fold");
-    expect(viewModeFor(1104, 992)).toBe("fold");  
+    expect(viewModeFor(1104, 992)).toBe("fold");
     expect(viewModeFor(1279, 1200)).toBe("fold");
   });
 
   test("desktop starts exactly at DESKTOP_MIN", () => {
     expect(viewModeFor(1280, 800)).toBe("desktop");
-    expect(viewModeFor(1440, 900)).toBe("desktop");  
+    expect(viewModeFor(1440, 900)).toBe("desktop");
     expect(viewModeFor(2560, 1440)).toBe("desktop");
   });
 
   test("a short viewport is phone however wide it is", () => {
-    expect(viewModeFor(844, 390)).toBe("phone");  
+    expect(viewModeFor(844, 390)).toBe("phone");
     expect(viewModeFor(1440, 499)).toBe("phone");
     expect(viewModeFor(2560, 300)).toBe("phone");
   });

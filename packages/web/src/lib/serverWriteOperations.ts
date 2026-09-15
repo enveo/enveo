@@ -24,7 +24,6 @@ function assertAllowed(permit?: SignOutPermit): void {
   if (isSignOutBlocking() && !isSignOutPermitActive(permit)) throw new Error("sign_out_in_progress");
 }
 
- 
 export async function runServerWriteOperation<T>(kind: ServerWriteOperationKind, operation: () => Promise<T>, permit?: SignOutPermit): Promise<T> {
   assertAllowed(permit);
   const id = ++nextId;

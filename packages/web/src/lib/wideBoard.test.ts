@@ -1,9 +1,3 @@
-/**
- * Pure bits of the wide Home board's edit mode (pr5-task-6-brief.md Step 1) — span clamp,
- * draft-commit shapes the patch schema accepts, and add/remove toggles that never touch spans.
- * Pointer gestures themselves (the resize/reorder handlers that call these) are exercised in the
- * Step 5 browser pass, not here.
- */
 import { describe, expect, test } from "bun:test";
 import { budgetPreferencesPatchSchema, createDefaultWideWidgets, type WideWidgetConfig } from "@enveo/shared";
 import { applyResize, clampRow, clampSpan, commitResetLayout, reorderEnabled, resolveWidgetScroll, toggleEnabled } from "./wideBoard";
@@ -37,7 +31,7 @@ describe("applyResize (draft-commit)", () => {
     const cashflow = next.find((w) => w.id === "reportCashflow")!;
     expect(cashflow.w).toBe(2);
     expect(cashflow.h).toBe(3);
-     
+
     for (const before of defaults) {
       if (before.id === "reportCashflow") continue;
       const after = next.find((w) => w.id === before.id);
@@ -95,7 +89,7 @@ describe("reorderEnabled", () => {
     const next = reorderEnabled(defaults, 0, 2);
     const after = ids(next);
     expect(after).not.toEqual(before);
-     
+
     expect(after[2]).toBe(before[0]);
     expect(after).toHaveLength(before.length);
     expect(new Set(after)).toEqual(new Set(before));
@@ -161,7 +155,6 @@ describe("commitResetLayout (the edit-mode 'Reset layout' escape hatch)", () => 
     commitResetLayout((patch) => first.push(patch));
     commitResetLayout((patch) => second.push(patch));
     expect(first[0]!.wideWidgets).toEqual(second[0]!.wideWidgets);
-    
 
     expect(first[0]!.wideWidgets).not.toBe(second[0]!.wideWidgets);
   });

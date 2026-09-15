@@ -4,11 +4,8 @@ import { budgetedPlusToBeBudgeted, computeBudgetState, nextMonth, prevMonth, tot
 import { acc, alloc, env, grp, ledgerArb, MONTHS, tx } from "./ledger.test-support";
 import type { Ledger } from "./types";
 
- 
-
 describe("computeBudgetState — scenarios", () => {
   it("an expense without an envelope spends unassigned money until an envelope is chosen", () => {
-     
     const account = acc({ initialBalance: 100_00 });
     const group = grp();
     const envelope = env(group.id);
@@ -20,7 +17,7 @@ describe("computeBudgetState — scenarios", () => {
       allocations: [alloc(envelope.id, "2026-06", 50_00)],
       transactions: [transaction],
     };
-     
+
     const unassigned = computeBudgetState(ledger, "2026-06");
     // then: the money leaves the unassigned pool, not an arbitrary envelope
     expect(unassigned.accounts[0]!.balance).toBe(70_00);
@@ -28,16 +25,15 @@ describe("computeBudgetState — scenarios", () => {
     expect(unassigned.toBeBudgeted).toBe(20_00);
     expect(unassigned.readyToAssign).toBe(20_00);
     expect(budgetedPlusToBeBudgeted(unassigned)).toBe(totalOnBudget(unassigned));
-     
+
     const assigned = computeBudgetState({ ...ledger, transactions: [{ ...transaction, envelopeId: envelope.id }] }, "2026-06");
-     
+
     expect(assigned.toBeBudgeted).toBe(50_00);
     expect(assigned.envelopes[0]!.available).toBe(20_00);
     expect(budgetedPlusToBeBudgeted(assigned)).toBe(totalOnBudget(assigned));
   });
 
   it("an unassigned refund returns money to the pool, with the same month and account scope as other expenses", () => {
-     
     const account = acc({ initialBalance: 100_00 });
     const offBudget = acc({ onBudget: false, initialBalance: 100_00 });
     const ledger: Ledger = {
@@ -50,10 +46,10 @@ describe("computeBudgetState — scenarios", () => {
         tx({ accountId: offBudget.id, envelopeId: null, amount: 90_00 }),
       ],
     };
-     
+
     const june = computeBudgetState(ledger, "2026-06");
     const july = computeBudgetState(ledger, "2026-07");
-     
+
     expect(june.toBeBudgeted).toBe(100_00);
     expect(june.readyToAssign).toBe(130_00);
     expect(july.toBeBudgeted).toBe(130_00);
@@ -126,7 +122,7 @@ describe("computeBudgetState — scenarios", () => {
     const s = computeBudgetState(ledger, "2026-06");
     expect(s.accounts[0]!.balance).toBe(60_00);
     expect(s.accounts[1]!.balance).toBe(40_00);
-    expect(s.toBeBudgeted).toBe(100_00);  
+    expect(s.toBeBudgeted).toBe(100_00);
   });
 
   it("carry-over Variant A: negative available carries into the next month", () => {
@@ -141,10 +137,10 @@ describe("computeBudgetState — scenarios", () => {
       transactions: [tx({ accountId: a.id, envelopeId: e.id, amount: 80_00, date: "2026-06-15" })],
     };
     const june = computeBudgetState(ledger, "2026-06");
-    expect(june.envelopes[0]!.available).toBe(-30_00);  
+    expect(june.envelopes[0]!.available).toBe(-30_00);
     const july = computeBudgetState(ledger, "2026-07");
-    expect(july.envelopes[0]!.carryIn).toBe(-30_00);  
-    expect(july.envelopes[0]!.available).toBe(-30_00);  
+    expect(july.envelopes[0]!.carryIn).toBe(-30_00);
+    expect(july.envelopes[0]!.available).toBe(-30_00);
   });
 
   it("split: items sum to the amount and charge the right envelopes", () => {
@@ -377,12 +373,12 @@ describe("computeBudgetState — readyToAssign (month-independent)", () => {
       accounts: [a],
       groups: [g],
       envelopes: [e],
-      allocations: [alloc(e.id, "2026-08", 30_00)],  
+      allocations: [alloc(e.id, "2026-08", 30_00)],
       transactions: [],
     };
     const june = computeBudgetState(ledger, "2026-06");
-    expect(june.toBeBudgeted).toBe(100_00);  
-    expect(june.readyToAssign).toBe(70_00);  
+    expect(june.toBeBudgeted).toBe(100_00);
+    expect(june.readyToAssign).toBe(70_00);
   });
 
   it("a FUTURE automatic allocation lowers readyToAssign but not the selected month's toBeBudgeted", () => {

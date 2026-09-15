@@ -15,7 +15,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runChild } from "../api.test-support";
 import { recordSpend, SPEND_POLICY, type SpendCheck, spendAllowed, spendThresholdNanoUsd } from "./counter";
- 
+
 import { type CounterChildOutput, SENTINEL } from "./counter.concurrency.test-child";
 
 describe("spend policy registry (pure)", () => {
@@ -93,11 +93,9 @@ describe("no reservation machinery exists (the design the spec rejects)", () => 
       }
     }
     expect(offenders).toEqual([]);
-    expect(readFileSync(MIGRATION, "utf8")).toContain("ai_user_monthly_spend");  
+    expect(readFileSync(MIGRATION, "utf8")).toContain("ai_user_monthly_spend");
   });
 });
-
- 
 
 const TEST_URL = process.env.TEST_DATABASE_URL ?? "";
 if (TEST_URL && TEST_URL === process.env.DATABASE_URL) {

@@ -72,7 +72,6 @@ export interface ImportExtractRow {
   relation: ImportRowRelation | null;
   confidence: "low" | "medium" | "high";
   reviewReasons: ImportReviewReason[];
-  
 
   suspiciousText?: boolean;
   /** The date was filled in deterministically from overlapping screenshots, not read from the row. */
@@ -127,11 +126,10 @@ export interface ImportEnrichmentRow {
   semanticKind: ImportSemanticKind;
   relation: ImportRowRelation | null;
   reviewReasons: ImportReviewReason[];
-   
+
   factCorrectionAttempt?: boolean;
 }
 
- 
 export interface ImportEnrichmentAnswer {
   rows: ImportEnrichmentRow[];
   allowedEnvelopeIds: readonly string[];
@@ -144,7 +142,6 @@ export interface ReconciledImportProposal extends ImportProposal {
   sourceAccountInvalid: boolean;
 }
 
- 
 export interface ReconciledImportRecognitionResult extends Omit<ImportRecognitionResult, "proposals"> {
   proposals: ReconciledImportProposal[];
 }
@@ -163,7 +160,6 @@ const addReasons = (current: ImportReviewReason[], ...added: ImportReviewReason[
   return [...unique];
 };
 
- 
 export function needsImportEnrichment(result: ImportRecognitionResult, categories: readonly Category[] = []): boolean {
   return result.proposals.some(
     (proposal) =>
@@ -203,11 +199,6 @@ const ENRICHMENT_ROW_KEYS = new Set([
   "reviewReasons",
   "factCorrectionAttempt",
 ]);
-
-
-
-
-
 
 export function applyImportEnrichment(result: ImportRecognitionResult, answer: ImportEnrichmentAnswer): ImportRecognitionResult {
   const envelopeIds = new Set(answer.allowedEnvelopeIds);
@@ -274,8 +265,6 @@ const hasComparablePostingFacts = (row: ImportExtractRow): boolean =>
 const isTransferKind = (kind: ImportSemanticKind): boolean =>
   kind === "incoming_transfer" || kind === "outgoing_transfer" || kind === "account_topup" || kind === "internal_transfer";
 
-
-
 const relationSupportedByFacts = (row: ImportExtractRow, target: ImportExtractRow): boolean => {
   switch (row.relation?.kind) {
     case "fx_for":
@@ -291,8 +280,6 @@ const relationSupportedByFacts = (row: ImportExtractRow, target: ImportExtractRo
         row.currency !== target.currency
       );
     case "duplicate_of":
-      
-
       return (
         isCalendarDate(row.date) &&
         row.date === target.date &&
@@ -405,7 +392,6 @@ const proposalFrom = (row: ImportExtractRow, overrides: Partial<ImportProposal> 
   ...overrides,
 });
 
- 
 export function validateImportExtraction(input: { batch: ImportExtractBatch; budgetCurrency: string }): ImportRecognitionResult {
   const { batch, budgetCurrency } = input;
   const rows = batch.rows.map((row) => ({ ...row, reviewReasons: [] }));
@@ -428,7 +414,6 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     if (!relationSupportedByFacts(row, target)) continue;
     acceptedRelations.set(row.rowId, row.relation);
     shapeChangingRelations.add(row.rowId);
-    
 
     if (row.relation.kind !== "duplicate_of") shapeChangingRelations.add(target.rowId);
   }
@@ -507,12 +492,6 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
   return { rows, proposals };
 }
 
-
-
-
-
-
-
 function foreignAmountsInBudgetCurrency(
   rows: ReadonlyArray<ImportExtractRow>,
   rowsById: ReadonlyMap<string, ImportExtractRow>,
@@ -533,7 +512,6 @@ function foreignAmountsInBudgetCurrency(
   return converted;
 }
 
- 
 export function reconcileImportProposals(input: {
   proposals: ImportProposal[];
   transactions: Transaction[];

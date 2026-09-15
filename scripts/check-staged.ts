@@ -20,7 +20,6 @@ import { statSync } from "node:fs";
 import { constants } from "node:os";
 import { join } from "node:path";
 
- 
 export const BIOME_EXTENSIONS = [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".json", ".jsonc", ".css"] as const;
 
 /**
@@ -32,11 +31,6 @@ export const BIOME_EXTENSIONS = [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", "
 export function selectBiomePaths(rawNulList: Uint8Array, exists: (path: string) => boolean): string[] {
   const raw = new TextDecoder().decode(rawNulList);
   if (raw.length === 0) return [];
-
-  
-
-
-
 
   const records = raw.split("\0");
   if (records[records.length - 1] === "") records.pop();

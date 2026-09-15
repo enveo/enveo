@@ -24,13 +24,11 @@ export function Row({ label, children }: { label: ReactNode; children: ReactNode
   );
 }
 
- 
 export function Helper({ children }: { children: ReactNode }) {
   const C = useTheme();
   return <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.5, marginTop: 8 }}>{children}</div>;
 }
 
- 
 const WORD_MARK = "\u0000";
 
 /**
@@ -75,7 +73,6 @@ export function ConfirmWordHint({ word }: { word: string }) {
   );
 }
 
- 
 export function Collapsible({ title, children }: { title: string; children: ReactNode }) {
   const C = useTheme();
   const [open, setOpen] = useState(false);
@@ -96,18 +93,6 @@ export function Collapsible({ title, children }: { title: string; children: Reac
   );
 }
 
-/** Segmented control (Theme / Language) — one active button from the list. The active pill is
- *  the design's dark ink fill (`C.text`/`C.card`, v3:709-713 `modeBtns`), NOT the accent color —
- *  the same treatment the design gives the AI provider segment (v3:4236-4239 `aiBtns`), so this
- *  is one correct value for every `Seg` consumer, not an Appearance-only override.
- *
- *  `fill` (owner round 4, item 25): the segments split the container's full width evenly instead
- *  of hugging their labels. A `Seg` outside a `Row` is a block-level flex container, so it
- *  stretches to the content column while its buttons stay content-sized — at 390px that painted
- *  a full-width pill track with a dead tail after the last label (the phone theme-scope control's
- *  complaint). Default (unset) keeps every existing consumer byte-identical; the reduced side
- *  padding only applies when filling, so the longest translated label ("Wszystkie urządzenia")
- *  still fits its half of a 358px column. */
 export function Seg<T extends string>({
   value,
   options,
@@ -147,7 +132,6 @@ export function Seg<T extends string>({
   );
 }
 
- 
 export function ActionGroup({ children }: { children: ReactNode }) {
   const C = useTheme();
   const items = Children.toArray(children);
@@ -162,7 +146,6 @@ export function ActionGroup({ children }: { children: ReactNode }) {
   );
 }
 
- 
 export function ActionIcon({ paths, size = 19 }: { paths: string[]; size?: number }) {
   return (
     <svg
@@ -182,7 +165,6 @@ export function ActionIcon({ paths, size = 19 }: { paths: string[]; size?: numbe
   );
 }
 
- 
 export function ActionRow({
   icon,
   label,
@@ -235,9 +217,6 @@ export function ActionRow({
     </button>
   );
 }
-
-
-
 
 export function ActionButton({
   label,

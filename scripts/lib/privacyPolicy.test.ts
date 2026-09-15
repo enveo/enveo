@@ -70,7 +70,8 @@ describe("checkPrivacy", () => {
 });
 
 describe("isAllowedBinaryAsset", () => {
-  it("allows only the established app icons", () => {
+  it("allows only the established app icons and reviewed demo screenshot", () => {
+    expect(isAllowedBinaryAsset("docs/assets/app-demo.png")).toBe(true);
     expect(isAllowedBinaryAsset("packages/web/public/icon-192.png")).toBe(true);
     expect(isAllowedBinaryAsset("packages/web/public/icon-new.png")).toBe(false);
     expect(isAllowedBinaryAsset("docs/assets/test-evidence.png")).toBe(false);

@@ -73,7 +73,6 @@ function scan() {
 
 describe("amount pads under a Surface/Sheet body", () => {
   it("never nest their AmountPadHost inside the always-transformed sheet content", () => {
-     
     const { violations } = scan();
 
     // then: none nests a pad without hoisting it out (the ancestor-transform pitfall)
@@ -81,10 +80,8 @@ describe("amount pads under a Surface/Sheet body", () => {
   });
 
   it("still sees the two reference call sites, so the scan cannot silently rot", () => {
-     
     const { hoistedCallSites } = scan();
 
-     
     expect(hoistedCallSites).toContain("components/ReconcileSheet.tsx");
     expect(hoistedCallSites).toContain("screens/Accounts.tsx");
   });

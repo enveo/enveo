@@ -1,28 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 
@@ -33,12 +8,9 @@ export type ReplaceRecurrenceOutput = {
   budgetId: string;
   responseBudgetId: string | undefined;
   transactionRows: Array<{ amount: number; accountId: string }>;
-  
 
   envelopeRows: Array<{ name: string; isSavings: boolean }>;
-  // information_schema ground truth — proves the recurrence objects are GONE from the database,
-  // not merely unused by this code path (a future re-introduction of `recurrences` must fail
-  // this loudly instead of silently importing pre-3.2 backups into a resurrected table).
+
   recurrencesTableExists: boolean;
   transactionsPlannedColumnExists: boolean;
   transactionsRecurrenceIdColumnExists: boolean;
@@ -47,7 +19,6 @@ export type ReplaceRecurrenceOutput = {
 async function main(): Promise<void> {
   const expected = process.env.EXPECT_DATABASE_URL ?? "";
   const { env } = await import("../env");
-  
 
   if (!expected || env.DATABASE_URL !== expected) {
     throw new Error(`refusing to run: env.DATABASE_URL is not the throwaway database given by the test ` + `(EXPECT_DATABASE_URL=${expected || "<unset>"})`);
@@ -63,8 +34,6 @@ async function main(): Promise<void> {
     .returning({ id: s.users.id });
   const [budget] = await db.insert(s.budgets).values({ userId: user!.id, name: "backup-compat" }).returning({ id: s.budgets.id });
   const budgetId = budget!.id;
-
-  
 
   const app = new Hono<{ Variables: { userId?: string } }>();
   app.use("*", async (c, next) => {
@@ -136,13 +105,7 @@ async function main(): Promise<void> {
         items: [],
         createdAt: "2026-01-01T00:00:00.000Z",
       },
-      // A `confirmed: false` row (the transaction-confirmation flag, removed from the domain in
-      // API task 2). This is the OPPOSITE case from `planned: true` above: `confirmed` never
-      // excluded a row from any ledger computation — every transaction always counted in account
-      // balances regardless of its confirmed state — so once the field is gone from
-      // `transactionEntity`, zod silently strips the now-unrecognized key and the row must still
-      // import as an ORDINARY transaction (present in `transactionRows` below), not be dropped
-      // like the `planned` template.
+
       {
         id: crypto.randomUUID(),
         type: "expense",
@@ -187,8 +150,6 @@ async function main(): Promise<void> {
     .where(eq(s.envelopes.budgetId, budgetId))
     .orderBy(s.envelopes.name);
 
-  // The DB ground truth (not just "no code references it"): the `recurrences` table and the
-  // `transactions.planned`/`recurrence_id` columns must actually be absent (migration 0018).
   const [tableRow] = await sql<{ exists: boolean }[]>`
     select exists (
       select 1 from information_schema.tables

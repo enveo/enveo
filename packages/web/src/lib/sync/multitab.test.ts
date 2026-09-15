@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { createDefaultBudgetPreferences } from "@enveo/shared";
 import { accountPreferences } from "../accountPreferences";
@@ -26,18 +19,16 @@ let receiver: BroadcastChannel | null = null;
 let savedLocation: unknown;
 let reloads = 0;
 
-const flush = () => new Promise((r) => setTimeout(r, 20));  
+const flush = () => new Promise((r) => setTimeout(r, 20));
 
 beforeAll(async () => {
-  
-
   await installMultiTab();
 });
 
 beforeEach(() => {
   __resetSignOutBarrierForTests();
   received = [];
-  broadcastUpdatedIfPending();  
+  broadcastUpdatedIfPending();
   reloads = 0;
   savedLocation = (globalThis as { location?: unknown }).location;
   (globalThis as { location?: { reload: () => void } }).location = {
@@ -60,7 +51,7 @@ afterEach(() => {
 });
 
 afterAll(() => {
-  __resetMultiTabForTests();  
+  __resetMultiTabForTests();
 });
 
 describe("sync/multitab", () => {
@@ -69,14 +60,14 @@ describe("sync/multitab", () => {
   });
 
   it("broadcastUpdatedIfPending posts 'updated' exactly once per noted change (consume-once)", async () => {
-    broadcastUpdatedIfPending();  
+    broadcastUpdatedIfPending();
     await flush();
     expect(received).toEqual([]);
 
     notePeersMayNeedUpdate();
-    notePeersMayNeedUpdate();  
+    notePeersMayNeedUpdate();
     broadcastUpdatedIfPending();
-    broadcastUpdatedIfPending();  
+    broadcastUpdatedIfPending();
     await flush();
     expect(received).toEqual(["updated"]);
   });
@@ -158,8 +149,8 @@ describe("sync/multitab", () => {
     await idbPut("meta", "value", "wipe-probe");
     await wipeLocalData();
     await flush();
-    expect(await idbGet("meta", "wipe-probe")).toBeUndefined();  
-    expect(received).toEqual(["wipe"]);  
+    expect(await idbGet("meta", "wipe-probe")).toBeUndefined();
+    expect(received).toEqual(["wipe"]);
     expect(reloads).toBe(1);
   });
 });

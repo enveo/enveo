@@ -1,7 +1,3 @@
- 
-
-
-
 export function parseDisplayAmount(token: string): number | null {
   const compact = token.replace(/[\s ]/g, "");
   const decimal = /[.,](\d{2})$/.exec(compact);
@@ -11,7 +7,6 @@ export function parseDisplayAmount(token: string): number | null {
   return Number.isSafeInteger(minor) ? minor : null;
 }
 
- 
 export function printedAmountIn(lines: readonly string[], currency: string): number | null {
   const pattern = new RegExp(`(-?\\d[\\d\\s\\u00a0.,]*\\d|\\d)\\s*${currency}(?![A-Z])`, "i");
   for (const line of lines) {

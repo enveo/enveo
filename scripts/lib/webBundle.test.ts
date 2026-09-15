@@ -1,13 +1,3 @@
-
-
-
-
-
-
-
-
-
-
 import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,7 +19,6 @@ import {
 
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 
- 
 const chunk = (file: string, extra: Partial<{ isEntry: boolean; imports: string[]; dynamicImports: string[] }> = {}) => JSON.stringify({ file, ...extra });
 
 const manifestOf = (records: Record<string, string>): ViteManifest =>
@@ -39,7 +28,6 @@ const manifestOf = (records: Record<string, string>): ViteManifest =>
       .join(",")}}`,
   );
 
- 
 const readerOf =
   (files: Record<string, string>) =>
   (file: string): Uint8Array | null =>
@@ -264,9 +252,7 @@ describe("the real build output", () => {
     expect(app).toContain('const BudgetScreen = lazy(() => import("./screens/Budget").then((m) => ({ default: m.BudgetScreen })));');
     expect(app).toContain('const EnvEdit = lazy(() => import("./screens/Budget").then((m) => ({ default: m.EnvEdit })));');
     expect(app).not.toContain('import { BudgetScreen, EnvEdit } from "./screens/Budget";');
-    // PR6 Task 5 keys this switch off `primaryScreen` (the effective screen — `editReturn` while
-    // the Add pane is open) rather than raw `screen`; the LazyChunk boundary this test pins is
-    // otherwise unchanged.
+
     expect(app).toContain('{primaryScreen === "budget" && (\n        <LazyChunk onDismiss={() => nav("start")}>');
     expect(app).toMatch(/\{envEdit && \(\s*<LazyChunk variant="overlay" onDismiss=\{\(\) => setEnvEdit\(null\)\}>/);
   });

@@ -48,8 +48,6 @@ afterEach(async () => {
 
 describe("E2EE provider recovery invariant", () => {
   it("appends one terminal rules op after lost-success pending work is replayed", () => {
-    
-
     outbox.add(preferenceOp("old-enveo", "enveo"));
 
     expect(replayPendingWithE2eeProviderPreference()).toBe(true);

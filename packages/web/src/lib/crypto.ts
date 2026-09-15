@@ -65,24 +65,15 @@ export async function deriveKek(passphrase: string, salt: Uint8Array, p: Omit<Kd
  * never object-property iteration, string concatenation or locale-dependent formatting.
  */
 export type E2eeAadContext =
-  | readonly ["enveo-e2ee", 2, "op", string  , number /* epoch */, string  ]
-  | readonly ["enveo-e2ee", 2, "snapshot", string  , number /* epoch */, number  ]
-  | readonly ["enveo-e2ee", 2, "dek-wrap", string  , number /* epoch */]
-  | readonly ["enveo-e2ee", 2, "budget-secret", string  , number /* epoch */, "openai"]
-  | readonly ["enveo-e2ee", 2, "import-job", string  , number /* epoch */, string  , ImportJobAadPart];
+  | readonly ["enveo-e2ee", 2, "op", string, number /* epoch */, string]
+  | readonly ["enveo-e2ee", 2, "snapshot", string, number /* epoch */, number]
+  | readonly ["enveo-e2ee", 2, "dek-wrap", string, number /* epoch */]
+  | readonly ["enveo-e2ee", 2, "budget-secret", string, number /* epoch */, "openai"]
+  | readonly ["enveo-e2ee", 2, "import-job", string, number /* epoch */, string, ImportJobAadPart];
 
- 
 export type ImportJobAadPart = "input" | "checkpoint" | "result" | "chunks" | "receipt";
 
-type ImportApplyRowContext = readonly [
-  "enveo-e2ee",
-  2,
-  "import-apply-row",
-  string  ,
-  number /* epoch */,
-  string  ,
-  string  ,
-];
+type ImportApplyRowContext = readonly ["enveo-e2ee", 2, "import-apply-row", string, number /* epoch */, string, string];
 
 /** Canonical lowercase textual UUID — validated, never normalized silently. */
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -154,8 +145,6 @@ export async function plainImportApplyRowToken(budgetId: string, jobId: string, 
   return `d1.${b64(digest)}`;
 }
 
- 
-
 async function aesKey(raw: Uint8Array): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", raw as BufferSource, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
@@ -192,15 +181,12 @@ async function aesDecrypt(payload: string, keyRaw: Uint8Array, ctx: E2eeAadConte
   );
 }
 
- 
-
 export const wrapDek = (dek: Uint8Array, kek: Uint8Array, ctx: E2eeAadContext) => aesEncrypt(dek, kek, ctx);
 export const unwrapDek = async (wrapped: string, kek: Uint8Array, ctx: E2eeAadContext) => aesDecrypt(wrapped, kek, ctx);
 
 export const encryptPayload = (plaintext: string, dek: Uint8Array, ctx: E2eeAadContext) => aesEncrypt(enc.encode(plaintext), dek, ctx);
 export const decryptPayload = async (ciphertext: string, dek: Uint8Array, ctx: E2eeAadContext) => dec.decode(await aesDecrypt(ciphertext, dek, ctx));
 
- 
 export function freshKdfParams(salt: Uint8Array): string {
   const kp: KdfParams = { ...DEFAULT_KDF_PARAMS, saltB64: b64(salt) };
   return JSON.stringify(kp);

@@ -19,7 +19,6 @@ import {
   runnablePlatforms,
 } from "./releaseImage";
 
- 
 const INDEX = {
   schemaVersion: 2,
   mediaType: "application/vnd.oci.image.index.v1+json",
@@ -37,7 +36,6 @@ const INDEX = {
   ],
 };
 
- 
 const ATTESTED = {
   manifests: [
     ...INDEX.manifests,
@@ -62,7 +60,6 @@ const ATTESTED = {
   ],
 };
 
- 
 const labelsFor = (revision: string, version: string) => ({
   "linux/amd64": {
     config: {
@@ -97,8 +94,6 @@ describe("runnablePlatforms", () => {
   });
 
   it("ignores attestation referrers — they are metadata, not architectures", () => {
-    
-
     expect(runnablePlatforms(ATTESTED)).toEqual(["linux/amd64", "linux/arm64"]);
   });
 
@@ -250,7 +245,6 @@ describe("checkAttachment", () => {
   });
 
   it("fails on the empty object buildx returns when nothing is attached", () => {
-     
     expect(checkAttachment("SBOM", {}, EXPECTED.platforms)).toHaveLength(2);
   });
 

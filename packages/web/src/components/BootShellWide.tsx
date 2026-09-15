@@ -1,17 +1,3 @@
-/**
- * Wide boot shell (PR7 Task 1) — the lazy layout host for every boot-decision surface on a
- * fold/desktop viewport: Login (unauthenticated), Unlock (E2EE locked), ForeignReplica (replica
- * stamp mismatch) and the onboarding wizard/install steps (mount B, wired by a later task). Pure
- * layout: it renders AROUND the screen the caller already decided to show — it reads no boot
- * state itself and makes no auth/tenant decision (that stays in App.tsx and each screen).
- *
- * Lazy by construction: this module (and its brand copy) lives in its OWN chunk, loaded only when
- * `mode !== "phone"` — the phone boot path never fetches it (App.tsx's mount A keeps today's
- * phone-card JSX byte-identical). TRANSFORM-FREE on purpose: AmountPadSheet/Sheet descendants
- * (rendered by Unlock's E2eeUpgradePanel and the wizard's amount pad) are `position: fixed`, and a
- * CSS transform on an ancestor breaks fixed descendants (house pitfall) — nothing in this tree
- * animates with a transform.
- */
 import type { ReactNode } from "react";
 import { useTheme } from "../lib/contexts";
 import { getCachedDeployment } from "../lib/deviceStoragePolicy";
@@ -25,9 +11,9 @@ export type BootView = "login" | "unlock" | "foreign" | "wizard" | "install";
 interface BootShellWideProps {
   mode: Exclude<ViewMode, "phone">;
   view: BootView;
-   
+
   wizardStep?: 0 | 1 | 2;
-   
+
   formMax?: number;
   children: ReactNode;
 }
@@ -98,11 +84,6 @@ function brandContent(view: BootView, t: Translate, cloud: boolean): BrandConten
   }
 }
 
-
-
-
-
-
 function StepRail({ fold, active }: { fold: boolean; active: 0 | 1 | 2 }) {
   const C = useTheme();
   const { t } = useT();
@@ -137,7 +118,6 @@ function StepRail({ fold, active }: { fold: boolean; active: 0 | 1 | 2 }) {
   );
 }
 
- 
 function Facts({ facts }: { facts: string[] }) {
   const C = useTheme();
   if (facts.length === 0) return null;
@@ -153,7 +133,6 @@ function Facts({ facts }: { facts: string[] }) {
   );
 }
 
- 
 export default function BootShellWide({ mode, view, wizardStep, formMax, children }: BootShellWideProps) {
   const C = useTheme();
   const { t } = useT();
@@ -161,7 +140,6 @@ export default function BootShellWide({ mode, view, wizardStep, formMax, childre
   const cloud = getCachedDeployment() === "cloud";
   const brand = brandContent(view, t, cloud);
   return (
-     
     <div
       style={{
         height: "100dvh",
@@ -174,9 +152,7 @@ export default function BootShellWide({ mode, view, wizardStep, formMax, childre
       }}
     >
       <StyleInjector />
-      {
-
-}
+      {}
       <div
         style={{
           boxSizing: "border-box",

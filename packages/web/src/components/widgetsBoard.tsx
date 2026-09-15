@@ -1,24 +1,3 @@
-/**
- * The six report-backed Start widgets — attention/recent/spending/goals/trends/heatmap — split out
- * of `widgets.tsx` into their own lazy chunk (§3f, PR5): unlike the six original widgets, these
- * pull in `reportKit`'s chart primitives and `@enveo/shared`'s reports math, which the eager
- * closure's fixed byte budget cannot absorb. `widgets.tsx` mounts them via `lazy()` + `LazyChunk`
- * (its own `renderWidget`/`LAZY_WIDGETS`) — this module is never imported eagerly by anything.
- *
- * Every body reuses the SAME pure functions the full report screens use — `budgetSteps`/
- * `budgetPace` (via `homeAttention.attentionRows`), `computeSpendingByDimension`,
- * `computeEnvelopeTrends`, `computeDailySpending`, `goalProgress` — never a fresh, parallel
- * derivation that could drift from what the report itself shows.
- *
- * Every tile action NAVIGATES (F7 in pr5-context.md, ratified by the controller): none of these
- * bodies allocates money or opens a write sheet. `onOpenReport`/`onOpenMonthDay` deep-link into the
- * existing Reports screen (App.tsx's `openReports`/`setMonthDay`, already wired before this PR);
- * `onNav`/`onQuickAdd` are the same callbacks the original six widgets already use.
- *
- * `chromeless` (from `WidgetProps`) skips the phone SectionEyebrow+CardBox chrome for a future wide
- * board tile that owns its own title+card chrome (Task 6) — default `false`/absent renders exactly
- * the phone chrome below, so Start's own rendering is unaffected by this file existing.
- */
 import {
   computeDailySpending,
   computeEnvelopeTrends,
@@ -48,8 +27,6 @@ import { CardBox, GoalRing, SectionEyebrow } from "./kit";
 import { Bar, CalendarHeatmap, dimNullLabel, heatColor, heatWeeks, SegBar, TrendRow, TrendSpark } from "./reportKit";
 import type { WidgetProps } from "./widgets";
 
-
-
 function WidgetShell({ title, chromeless, children }: { title: string; chromeless?: boolean; children: ReactNode }) {
   if (chromeless) return <>{children}</>;
   return (
@@ -59,8 +36,6 @@ function WidgetShell({ title, chromeless, children }: { title: string; chromeles
     </div>
   );
 }
-
-
 
 function rowBtnStyle(C: Theme, last: boolean): CSSProperties {
   return {
@@ -78,7 +53,6 @@ function rowBtnStyle(C: Theme, last: boolean): CSSProperties {
   };
 }
 
- 
 export function AttentionWidget({ state, month, onNav, onOpenReport, onQuickAdd, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
@@ -166,8 +140,7 @@ export function AttentionWidget({ state, month, onNav, onOpenReport, onQuickAdd,
                 {label(row)}
               </span>
               <span style={{ textAlign: "right", flexShrink: 0 }}>
-                {
-}
+                {}
                 <span
                   style={{
                     display: "block",
@@ -188,9 +161,6 @@ export function AttentionWidget({ state, month, onNav, onOpenReport, onQuickAdd,
     </WidgetShell>
   );
 }
-
-
-
 
 export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
   const C = useTheme();
@@ -240,17 +210,7 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
     const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
     return tx.name || tx.note || env?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
   };
-  // v3.dc.html:440/3738's grammar is `t.env && envById[t.env] ? envById[t.env].color : T.mute` —
-  // in the design's flat mock data a transfer row can carry an `env` directly (its own synthetic
-  // "Checking → Savings" example, v3:2079, sets `env: "emrg"`). The real domain never puts an
-  // envelopeId on an income/transfer transaction (Add.tsx: "income has no envelope selection …
-  // transfer likewise has none") — what the design is modelling there is money landing in an
-  // envelope-LINKED account, captured on the real transaction as `allocationToEnvelopeId`/
-  // `allocationFromEnvelopeId` (`captureAllocationFlow`, shared/automaticEnvelope.ts). Resolving
-  // through that link is the faithful real-domain equivalent of the design's literal `t.env`, not
-  // a new rule — an unlinked transfer/income still falls through to the same neutral `C.mute` as
-  // before. Shared with `metaLabel` below (owner round 3 item 15) so the dot and the meta text
-  // never disagree about which envelope a row belongs to.
+
   const resolvedEnvelope = (tx: Transaction) => {
     if (tx.envelopeId) return envById.get(tx.envelopeId) ?? null;
     if (tx.type === "income") return tx.allocationToEnvelopeId ? (envById.get(tx.allocationToEnvelopeId) ?? null) : null;
@@ -261,12 +221,7 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
     return null;
   };
   const dotColor = (tx: Transaction): string => resolvedEnvelope(tx)?.color ?? C.mute;
-  // Owner round 3 item 15 — the wide meta line names the category/envelope, not just the date
-  // (his crop: "July 14 · Groceries"; income falls back to a literal "July 13 · Income", transfer
-  // to "July 13 · Emergency Fund" once a linked account resolves an envelope — v3.dc.html:3737's
-  // `t.env && envById[t.env] ? envById[t.env].name : t.cat`). `t("Income")`/`t("Transfer")`/
-  // `t("No category")`/`t("Split transaction")` are all pre-existing keys (TxnPanel.tsx/
-  // reportKit.tsx) — no new i18n strings for this row. Phone's meta stays date-only, untouched.
+
   const metaLabel = (tx: Transaction): string => {
     const env = resolvedEnvelope(tx);
     if (env) return env.name;
@@ -284,22 +239,10 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
       ) : (
         rows.map((tx, i) => {
           const s = signed(tx);
-          
 
           const rowStyle = chromeless ? { ...rowBtnStyle(C, true), padding: "7px 0" } : rowBtnStyle(C, i === rows.length - 1);
           const headline = descOf(tx);
-          // Owner round 3 item 15 wants the meta line to name the category/envelope, but
-          // descOf() ITSELF falls back to that same envelope/"Split transaction" label whenever
-          // a transaction has no payee name and no note (Add.tsx stores a blank payee as
-          // `name: null`, so this is a reachable state, not a hypothetical one). Repeating the
-          // identical string on both lines ("Groceries" / "Jul 14 · Groceries") would tell the
-          // user nothing the headline didn't already say — the design never hits this because
-          // its mock payees are always distinct from the envelope/category name — so the wide
-          // meta line drops the label and falls back to date-only (the phone's existing grammar)
-          // whenever the two would collide.
-          // Owner round 7 item 30: the wide row has the width for place AND category, so the meta
-          // line carries every part that says something new — the place is dropped when it already
-          // IS the headline (descOf falls back to the place name), same collision rule as `meta`.
+
           const meta = metaLabel(tx);
           const place = tx.placeId ? (placeById.get(tx.placeId)?.name ?? null) : null;
           const metaParts = chromeless
@@ -321,9 +264,6 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
         })
       )}
       <button
-        
-
-
         onClick={chromeless ? () => onOpenTxns() : () => onNav("transactions")}
         style={{
           display: "block",
@@ -346,7 +286,6 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
   );
 }
 
- 
 export function SpendingWidget({ state, month, onOpenReport, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
@@ -373,27 +312,6 @@ export function SpendingWidget({ state, month, onOpenReport, chromeless }: Widge
       {rows.length === 0 ? (
         <div style={{ padding: "10px 2px", fontSize: 12, color: C.mute }}>{t("No spending this month.")}</div>
       ) : chromeless ? (
-        // Owner round 3 item 16 — the design's compact grammar (v3.dc.html:451-464), not the
-        // phone's bordered/padded row list: rows are spaced by the tile body's own 8px flex gap
-        // (WideHome's `gsh` container) rather than a per-row border+padding, each row is a tight
-        // name/share%/amount line (`gap:3`) over a slim 4px bar (design: `hint-size="100%,4px"`),
-        // and the segmented header bar matches the design's 9px (`hint-size="100%,9px"`) instead
-        // of the phone's default 8px. This is the actual height drop behind "ładniej i bardziej
-        // kompaktowo" — not just a font tweak.
-        //
-        // Row content is ~22px tall — under the house's usual ≥30×30 glyph-button floor — but
-        // unlike an isolated icon control (chromeBtn/fillOne) this row sits in the tile's own 8px
-        // flex gap (WideHome's `gsh` container) with a sibling above and below on EVERY side, so
-        // the floor is met with the padding+negative-margin hit-slop technique instead of a plain
-        // `minHeight` bump: 4px of padding top/bottom grows the button's own border box to
-        // 22+8=30px, and an equal negative margin pulls it back so the MARGIN box — what the flex
-        // column actually spaces siblings by — still measures 22px, unchanged. Padding and margin
-        // cancel exactly, so the rendered text/bar sit at the identical pixel position as before;
-        // only the invisible hit area grows, spilling 4px into the gap on each side (two adjacent
-        // rows' expanded boxes meet exactly at the middle of their shared gap, so a click anywhere
-        // in it always lands on one row or the other, never nothing). This keeps the design's
-        // literal compact height — the whole point of "ładniej i bardziej kompaktowo" — while
-        // still clearing the 30px floor, rather than trading one off against the other.
         <>
           <SegBar segments={top.map((r) => ({ weight: Math.max(0, r.amount), color: rowColor(r.key) }))} height={9} />
           {top.map((r) => (
@@ -499,16 +417,15 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
     const live = ledger ? computeStateResponse(ledger, month) : null;
     if (!live) return;
     const envFresh = live.envelopes.find((x) => x.id === envelopeId);
-    if (!envFresh || envFresh.archived) return;  
+    if (!envFresh || envFresh.archived) return;
     const fillable = Math.max(0, Math.min(missing, live.readyToAssign));
-    if (fillable <= 0) return;  
+    if (fillable <= 0) return;
     local.setDisplayedAllocation({ envelopeId, month, amount: envFresh.allocated + fillable });
     haptic([10, 30, 14]);
   };
 
   const missSum = rows.reduce((s, { gp }) => s + gp.missing, 0);
   const allFunded = rows.length > 0 && missSum === 0;
-  
 
   const fillPossible = canFillGoals(state);
 
@@ -519,10 +436,6 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
       ) : chromeless ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
           {rows.map(({ e, gp }) => {
-            // Owner round 3 item 18: the ring is colored PER GOAL from the envelope's own
-            // identity color (v3.dc.html:506's `g.color`), not the funded-status convention this
-            // used to share with GoalsReport.tsx (`C.pos` once funded, `TEAL` otherwise) — see
-            // that file's own comment for the fuller reversal rationale.
             const ringColor = e.color;
             const fundedAmt = Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0);
             const fillable = Math.max(0, Math.min(gp.missing, state.readyToAssign));
@@ -583,9 +496,7 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
                         fontFamily: "inherit",
                       }}
                     >
-                      {
-
-}
+                      {}
                       {t("Fill {amount}", { amount: M(fillable) })}
                     </button>
                   )}
@@ -646,51 +557,9 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
   );
 }
 
-/** How many movers each host lists — they differ because the ROW does.
- *
- *  The phone body keeps its own compact grammar and its five, unchanged. The wide tile renders the
- *  REPORT's row (owner round 7 item 29), which measures 49px — 20px of padding, the 8px dot beside
- *  a 15px name over a 12px "{now} · median {median}" sub-line, and the hairline — and 61px wherever
- *  that sub-line takes a SECOND line, which at the default tile's 127px text column happens to any
- *  four-figure amount, in English as much as in Polish. Five of those plus the caption is ~272px of
- *  content; the mock's 2-high tile has 150px of body, so the tile opened already scrolled past two
- *  of the five movers it promised.
- *
- *  THREE is the design's own count for this widget (v3.dc.html:548, `hint-placeholder-count="3"`),
- *  and `createDefaultWideWidgets` now starts this tile 3 high so the three always fit (measured:
- *  198px of content in a 252px body at 1440 with the panel open, English and Polish, all four
- *  themes). A board SAVED before that — the height is the user's to keep — still shows three rows
- *  and scrolls a little; resizing the tile or "Reset layout" ends that, and five rows would have
- *  scrolled four times as far. Nothing is lost by the shorter list either: the caption below counts
- *  the FULL set of movers, not the rows drawn, and any row opens the Trends report, which lists
- *  every one of them. */
 const WIDE_TREND_ROWS = 3;
 const PHONE_TREND_ROWS = 5;
 
-/* ── Trends: the biggest movers over 6 months (`WIDE_TREND_ROWS`/`PHONE_TREND_ROWS` of them), same
- * computeEnvelopeTrends/trendColor as the Trends report. TrendSpark's width is MEASURED (the
- * caller-supplied-width waiver — never the fixed 64/72 probe the report row uses), so a wide tile
- * draws a proportionally wider chart.
- *
- * Owner round 7 item 29 (his side-by-side of this tile against the Trends report preview) makes
- * the WIDE board tile (`chromeless`) render the REPORT's own row, `TrendRow` from reportKit: colour
- * dot + name over a "{now} · median {median}" sub-line, the spark in the middle, the signed delta
- * over "{arrow} {pct}% vs median" on the right. It is the same component the Trends subscreen
- * renders, not a lookalike, so the two cannot drift — and every figure in it (avg/median/pct, the
- * arrow glyph and its colour rule) stays where it already was, in `computeEnvelopeTrends`/
- * `trendColor`/`DeltaTag`. That supersedes round 3 item 17's compact design-html grammar (a 44×20
- * spark in the envelope's colour + a bare signed amount), which this branch rendered before.
- * The phone body (chromeless falsy) is untouched: measured-width spark, name+amount on one line,
- * chart underneath.
- *
- * v3.dc.html:558-559's trailing `home.trendsHero` caption ("{n} rising · {m} falling") is counted
- * over the FULL trend list (`trendRows`, before its `.slice(0,3..8)` for display) — never just the
- * rows the tile happens to show — so `allTrends` stays unsliced for this count and only `trends`
- * (the sliced head) feeds the rows. That is also what makes the tile's shorter list honest: the
- * caption still says how many envelopes are moving, whichever three are drawn. Reuses
- * TrendsReport.tsx's own `"{n} rising · {m} falling"` key and its
- * ±10% `deltaPct` threshold (a null `deltaPct` — no positive baseline — counts as neither) rather
- * than inventing a second copy of the same rising/falling classification. ── */
 export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
@@ -716,7 +585,7 @@ export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
           {trends.map((tr, i) => (
             <TrendRow key={tr.id} tr={tr} M={M} last={i === trends.length - 1} onClick={() => onOpenReport?.("trends")} />
           ))}
-          { }
+          {}
           <span style={{ fontSize: 10.5, color: C.mute, paddingTop: 4 }}>{t("{n} rising · {m} falling", { n: rising, m: falling })}</span>
         </div>
       ) : (
@@ -759,37 +628,6 @@ export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
   );
 }
 
-/* ── Heatmap: daily spending calendar, same computeDailySpending/CalendarHeatmap as the Month
- * report — day click deep-links to the Month report with that day's panel already open.
- *
- * Owner round 3 item 19: the WIDE board tile (`chromeless`) forks to the design's compact
- * home-board grammar (v3.dc.html:556-587) instead of the phone/report `CalendarHeatmap` below —
- * small fixed-height cells (17px tall, 4px gap/radius, no per-cell day number) built from the
- * SAME `heatWeeks`/`heatColor` primitives `CalendarHeatmap` itself uses (so the color ramp never
- * drifts from the phone widget or the Month report), an avg/peak caption reusing MonthReport's
- * own string verbatim ("avg {avg}/day · peak: {date} ({peak})" — `date` via `shortDate`, the
- * app's nominative short-date formatter, same one the wide Recent-activity row already uses), and
- * the design's two companion lists SCALED BY TILE WIDTH exactly like its own `sizeOf` (v3.dc.html
- * :3588-3590, :3792-3797): S (`tile.w<=1`) shows neither list at all, M (`w===2`) shows only
- * "Most frequent places" (top 3, `topPlaces` — shared/reports.ts, the same visit-count-led
- * function MonthReport's own places table calls, so rank/count/sum here never disagrees with the
- * Month report), and L (`w>=3`) widens that to the top 5 AND adds a second "Largest expenses"
- * table (`largestExpenses`, shared/reports.ts — the same amount-led function MonthReport's own
- * report-level table calls, top 3), matching the design's `heatPlaces`/`heatPlacesDisplay`/
- * `heatLargest`/`heatLargestDisplay`. `tile` is always supplied alongside `chromeless` today
- * (WideHome.tsx) — the `?? 2` fallback below only matters if that contract ever changes, and picks
- * the M bucket (the catalog's own default size for this widget, shared/preferences.ts). Both
- * tables are OMITTED entirely (not rendered empty) when there is nothing to show, the same rule
- * MonthReport's own header comment documents, and neither table's rows are click targets — same
- * as MonthReport's own equivalent rows, which are informational only. Row styling matches the
- * design's HOME-BOARD grammar specifically (name inherits the row's own text color, meta muted, no
- * bold) — a deliberately different arrangement from MonthReport's own already-shipped report-level
- * tables (soft name, bold text meta): the design gives the home tile and the full report two
- * different ROW treatments for the SAME underlying lists (v3.dc.html:571-586 vs 1614-1619), not two
- * different sets of lists — both lists exist at the tile level too, just gated by size. The
- * "{count}× · {amount}", "Most frequent places" and "Largest expenses" strings are pre-existing
- * i18n keys (MonthReport.tsx) — zero new translations. The phone body (chromeless falsy) is
- * untouched — plain `CalendarHeatmap`, no caption, no tables. ── */
 export function HeatmapWidget({ month, onOpenMonthDay, chromeless, tile }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
@@ -828,23 +666,7 @@ export function HeatmapWidget({ month, onOpenMonthDay, chromeless, tile }: Widge
     const cells = heatWeeks(days).flat();
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {/* Cells paint 17px tall (the design's literal compact size, v3.dc.html:562-565) — a
-         *  7-column calendar sized up to the house's usual ≥30×30 floor would no longer read as a
-         *  compact monthly grid, the whole point of this task (owner round 3 item 19: "small
-         *  cells"). Unlike the Spending tile's rows (item 16), which sit in a single-axis flex
-         *  column with an 8px gap and fully cancel padding against an equal negative margin to
-         *  reach 30px without ever overlapping a neighbor, this grid has a neighbor on ALL FOUR
-         *  sides sharing a 4px gap in BOTH directions — the identical technique only has 2px of
-         *  slack per side before two cells' invisible hit areas would overlap (meeting exactly at
-         *  the middle of the shared gap, same rule as item 16, just scaled to this grid's smaller
-         *  gap). That caps the safe, non-overlapping hit box at 21×21 (17 + 2 + 2): real growth
-         *  over the bare 17px swatch, but a KNOWING, DOCUMENTED shortfall against the 30×30 floor —
-         *  not a claimed match to item 16's fully-compensated outcome. The outer `<div>` below
-         *  carries the padding/negative-margin (transparent — it never grows the VISIBLE swatch)
-         *  plus the click/role/aria wiring; the inner `<div>` is the literal 17px colored cell,
-         *  sized and positioned exactly as before. A mis-tap can still open an adjacent DAY, but
-         *  every day's own panel lands inside the SAME Month report the tile deep-links to, and
-         *  the wide cursor/keyboard user gets a per-cell `aria-label` naming the exact date. */}
+        {}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
           {cells.map((cell, i) =>
             cell ? (
@@ -893,10 +715,7 @@ export function HeatmapWidget({ month, onOpenMonthDay, chromeless, tile }: Widge
             ))}
           </div>
         )}
-        {
-
-
-}
+        {}
         {largest.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${C.line}`, paddingTop: 7 }}>
             <span style={{ fontSize: 9.5, fontWeight: 750, letterSpacing: "0.14em", textTransform: "uppercase", color: C.mute, paddingBottom: 3 }}>

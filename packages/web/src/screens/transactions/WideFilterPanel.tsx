@@ -14,28 +14,9 @@ import { activeFilterCount, amountSummary, selectionSummary } from "./Transactio
 
 type Named = { id: string; name: string; color?: string };
 
-/**
- * Design parity wave C task 5 (waveC-t5-brief.md, v3:310-364) — the inline filter body that
- * appears directly under the search bar on wide, welding the two into one bordered card
- * (`Transactions.tsx` owns the corner/border welding — this component is only the body). Lazy
- * from `Transactions.tsx` (§0.8): that screen module is shared by phone and wide alike (one
- * chunk, `App.tsx`'s own `lazy()`), so the column grid + amount UI lives in its OWN chunk, fetched
- * only the first time a wide user opens Filters — a phone user never requests it. The grid itself
- * is 2-column on fold / 6-column on desktop (v3:2408 vs v3:2415, `filterCols`/`filterOptMax`
- * below) — this component mounts on both breakpoints, so it reads `useWideHost()?.mode` itself
- * rather than hardcoding the desktop numbers.
- *
- * Reuses `TransactionFilters`/`activeFilterCount`'s model and the option lists `Transactions.tsx`
- * already builds (archived-but-referenced envelopes/accounts included) — NOT
- * `TransactionFilterSheet`'s drill-down UI. Every toggle/edit here writes `filters` directly
- * (live apply, v3:2606-2620's `amountRule` recomputed from the raw text on every change) instead
- * of the sheet's draft+Apply flow: there is no "Show N" step on wide, the list below reacts
- * immediately (owner rule 2 territory — no phone-sheet chrome bleeding into this surface).
- */
 export interface WideFilterPanelProps {
   filters: TransactionFilters;
   setFilters: (filters: TransactionFilters) => void;
-  
 
   matchCount: number;
   envelopes: ReadonlyArray<Named>;

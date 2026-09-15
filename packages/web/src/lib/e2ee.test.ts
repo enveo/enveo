@@ -181,11 +181,8 @@ describe("e2ee: encrypting ops and snapshots (v2 authenticated context)", () => 
   });
 });
 
- 
-
- 
 async function reload(): Promise<void> {
-  await persist.flushed();  
+  await persist.flushed();
   __resetDekForTests();
   await hydrate();
 }
@@ -197,20 +194,20 @@ describe("e2ee: DEK provenance survives a reload", () => {
   });
 
   it("a key persisted by an older build (no origin recorded) came WITH the replica → store", async () => {
-    await idbPut("meta", generateDek(), "e2eeDek");  
+    await idbPut("meta", generateDek(), "e2eeDek");
     await hydrate();
     expect(getDek()).not.toBeNull();
-    expect(isDekFromStore()).toBe(true);  
+    expect(isDekFromStore()).toBe(true);
   });
 
   it("setDek (Unlock / enable / password change) is NOT a proof — not now, not after a reload", async () => {
-    await hydrate();  
-    setDek(generateDek(), 1);  
+    await hydrate();
+    setDek(generateDek(), 1);
     expect(isDekFromStore()).toBe(false);
 
-    await reload();  
+    await reload();
     expect(getDek()).not.toBeNull(); // the key IS persisted (Unlock must survive a refresh)…
-    expect(isDekFromStore()).toBe(false);  
+    expect(isDekFromStore()).toBe(false);
   });
 
   it("a hydrate() that re-runs after setDek (transient IDB → retryBoot) does not launder the key", async () => {
@@ -232,7 +229,7 @@ describe("e2ee: DEK provenance survives a reload", () => {
     expect(getDek()).toBeNull();
     expect(isDekFromStore()).toBe(false);
     await reload();
-    expect(getDek()).toBeNull();  
+    expect(getDek()).toBeNull();
     expect(isDekFromStore()).toBe(false);
   });
 });
@@ -255,10 +252,10 @@ describe("e2ee: DEK validity is per-epoch", () => {
     setTierMeta({ tier: "e2ee", epoch: 1 });
     setDek(generateDek(), 1);
     expect(isDekValidForEpoch(1)).toBe(true);
-    setTierMeta({ tier: "e2ee", epoch: 2 });  
-    expect(getDek()).not.toBeNull();  
+    setTierMeta({ tier: "e2ee", epoch: 2 });
+    expect(getDek()).not.toBeNull();
     expect(isDekValidForEpoch(2)).toBe(false); // …but it may not touch the new epoch
-    expect(isDekValidForEpoch(1)).toBe(true);  
+    expect(isDekValidForEpoch(1)).toBe(true);
   });
 
   it("returns a defensive copy only for the current E2EE epoch and otherwise fails locked", async () => {
@@ -289,7 +286,7 @@ describe("e2ee: DEK validity is per-epoch", () => {
   });
 
   it("a key persisted WITHOUT a validation epoch (pre-lifecycle install) is NOT validated", async () => {
-    await idbPut("meta", generateDek(), "e2eeDek");  
+    await idbPut("meta", generateDek(), "e2eeDek");
     await hydrate();
     expect(getDek()).not.toBeNull();
     expect(isDekValidForEpoch(0)).toBe(false); // never trusted until an authenticated use
@@ -299,10 +296,9 @@ describe("e2ee: DEK validity is per-epoch", () => {
   it("rehydrateKeysFromPeer drops this tab's in-memory key state and re-reads IDB (F7)", async () => {
     await hydrate();
     const oldDek = generateDek();
-    setDek(oldDek, 1);  
+    setDek(oldDek, 1);
     await persist.flushed();
 
-     
     const newDek = generateDek();
     await idbPut("meta", newDek, "e2eeDek");
     await idbPut("meta", "session", "e2eeDekOrigin");
@@ -310,7 +306,7 @@ describe("e2ee: DEK validity is per-epoch", () => {
     await idbPut("meta", 2, "e2eeEpoch");
     await idbPut("meta", "e2ee", "e2eeTier");
 
-    await rehydrateKeysFromPeer();  
+    await rehydrateKeysFromPeer();
     expect(Buffer.from(getDek()!).toString("hex")).toBe(Buffer.from(newDek).toString("hex"));
     expect(isDekValidForEpoch(2)).toBe(true);
     expect(getTierMeta()).toEqual({ tier: "e2ee", epoch: 2 });
@@ -318,15 +314,15 @@ describe("e2ee: DEK validity is per-epoch", () => {
 
   it("R3: setDek with a NULL epoch installs the key UNVALIDATED (pairing on a checkpoint-less budget)", async () => {
     await hydrate();
-    setDek(generateDek(), null);  
+    setDek(generateDek(), null);
     expect(getDek()).not.toBeNull();
     expect(isDekValidForEpoch(0)).toBe(false);
     expect(isDekValidForEpoch(1)).toBe(false);
     await persist.flushed();
     __resetDekForTests();
     await hydrate();
-    expect(getDek()).not.toBeNull();  
-    expect(isDekValidForEpoch(1)).toBe(false);  
+    expect(getDek()).not.toBeNull();
+    expect(isDekValidForEpoch(1)).toBe(false);
   });
 
   it("R4: clearDek destroys the pending upgrade-ceremony record (it holds a RAW candidate DEK)", async () => {
@@ -335,7 +331,7 @@ describe("e2ee: DEK validity is per-epoch", () => {
     setDek(generateDek(), 1);
     clearDek(); // "forget the key" — disable, a rotation-detected drop, sign-out flows
     await persist.flushed();
-    expect(await idbGet("meta", "e2eePendingUpgrade")).toBeNull();  
+    expect(await idbGet("meta", "e2eePendingUpgrade")).toBeNull();
   });
 
   it("clearDek forgets the validation epoch too", async () => {
@@ -357,7 +353,7 @@ describe("store.applyRemoteOps (e2ee journal → mirror)", () => {
     const ops = [catOp(U1, U3, "Zdalna"), catOp(U2, U4, "Własna-pending")];
     store.applyRemoteOps(ops, 7, new Set([U2]));
     const cats = store.getLedger()!.categories;
-    expect(cats.map((c) => c.id)).toEqual([U3]);  
+    expect(cats.map((c) => c.id)).toEqual([U3]);
     expect(store.getCursor()).toBe(7);
   });
 

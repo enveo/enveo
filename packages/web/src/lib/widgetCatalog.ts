@@ -17,19 +17,15 @@ import { type Message, msg } from "./i18n";
 
 export interface WidgetCatalogEntry {
   id: WidgetId;
-   
+
   title: Message;
-  /** One line saying what the widget SHOWS, for a surface that offers a widget the user has never
-   *  seen: the wide board's add-widget picker (owner round 6 item 28). Present for exactly the
-   *  `wide` ids — that picker is the only consumer, and `widgetCatalog.test.ts` pins the pairing so
-   *  a future wide id cannot land in the picker as a bare title. Phone-only ids (quickActions,
-   *  accounts) omit it: the phone's Edit-widgets sheet lists a fixed, already-familiar stack. */
+
   description?: Message;
-   
+
   phone: true;
-   
+
   wide: boolean;
-   
+
   configurable: boolean;
 }
 
@@ -49,8 +45,6 @@ export const WIDGET_CATALOG: Record<WidgetId, WidgetCatalogEntry> = {
   accounts: entry("accounts", msg("Accounts")),
   envelopes: entry("envelopes", msg("Envelopes"), msg("Every envelope with what is left this month.")),
   envelopesSavings: entry("envelopesSavings", msg("Envelopes · Savings"), msg("Only the envelopes you marked as savings.")),
-  
-
 
   reportCashflow: entry("reportCashflow", msg("Cash flow · 12 months"), msg("Money in and out over the last twelve months.")),
   reportNetWorth: entry("reportNetWorth", msg("Net worth"), msg("What you own minus what you owe, month by month.")),

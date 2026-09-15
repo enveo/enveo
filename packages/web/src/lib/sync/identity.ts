@@ -79,38 +79,32 @@ import { e2eeReplicaBudgetId } from "./replica";
 import { setOwnerUnproven, setState } from "./status";
 import { fetchServerBudgetId, fetchServerE2eeIdentity, sessionBudgetIsEmpty, unauthorized } from "./transport";
 
- 
 export function decideIdentity(sessionUserId: string | null, stamped: string | undefined): IdentityVerdict {
   if (!sessionUserId) return "unauthed";
   if (stamped && stamped !== sessionUserId) return "foreign";
-  return "ok";  
+  return "ok";
 }
 
- 
 let identityVerifiedFor: string | null = null;
-let identityBlocked = false;  
+let identityBlocked = false;
 
 /** Injected by the facade at composition time (identity cannot import sync.ts back). */
 let identityDeps: IdentityDeps | null = null;
 
- 
 export function configureIdentity(deps: IdentityDeps | null): IdentityDeps | null {
   const prev = identityDeps;
   identityDeps = deps;
   return prev;
 }
 
- 
 export function invalidateIdentityVerdict(): void {
   identityVerifiedFor = null;
 }
 
- 
 export function isIdentityBlocked(): boolean {
   return identityBlocked;
 }
 
- 
 export function __resetIdentity(): void {
   identityVerifiedFor = null;
   identityBlocked = false;
@@ -130,8 +124,8 @@ export function __resetIdentity(): void {
  */
 export function enterUnauthed(): void {
   identityVerifiedFor = null;
-  accountPreferences.dehydrate();  
-  setOwnerUnproven(false);  
+  accountPreferences.dehydrate();
+  setOwnerUnproven(false);
   store.setBootStatus("unauthed");
   setState("unauthed"); // no retry loop — a 401 does not clear on its own
 }
@@ -156,7 +150,7 @@ export function enterUnauthed(): void {
  * not add safety, only loss.
  */
 export function enterForeignReplica(): void {
-  identityBlocked = true;  
+  identityBlocked = true;
   accountPreferences.dehydrate(); // the signed-in account is not the cache owner
   setOwnerUnproven(false); // a PROVEN foreign stamp supersedes "unproven" (ForeignReplicaScreen)
   // CLOUD: silently discard instead. Every argument for the human decision above is a SELFHOST
@@ -181,7 +175,7 @@ export function enterForeignReplica(): void {
     return;
   }
   console.warn("sync: the local replica belongs to a different account — every server write is refused");
-  store.setBootStatus("foreign");  
+  store.setBootStatus("foreign");
   setState("error"); // honest: sync is not happening (no retry loop of its own)
 }
 
@@ -198,7 +192,7 @@ export function enterForeignReplica(): void {
 export function enterLoginPreservingReplica(): void {
   identityVerifiedFor = null;
   identityBlocked = false; // a NEW session must be verified from scratch — see ensureIdentity
-  enterUnauthed();  
+  enterUnauthed();
 }
 
 /**
@@ -217,7 +211,7 @@ export function enterLoginPreservingReplica(): void {
  */
 function enterUnverified(): void {
   console.warn("sync: cannot establish the local replica's owner — no server write will be made");
-  setOwnerUnproven(true);  
+  setOwnerUnproven(true);
   setState("unverified");
 }
 
@@ -296,16 +290,12 @@ async function proveOwnership(): Promise<Ownership> {
             store.replace(ledger, store.getCursor(), server.budgetId);
             void persist.persistLedger(store.snapshotForPersist());
           }
-          return "ours";  
+          return "ours";
         } catch {
           return "unknown"; // …it does not: a stale key OR another budget — indistinguishable
         }
       }
       const localBudgetId = store.getBudgetId();
-      
-
-
-
 
       if (!localBudgetId) return !bornE2ee && (await sessionBudgetIsEmpty()) ? "ours" : "unknown";
       const server = await fetchServerBudgetId();
@@ -313,10 +303,10 @@ async function proveOwnership(): Promise<Ownership> {
       return localBudgetId === server ? "ours" : "unknown";
     } catch (err) {
       if (err instanceof TierMismatchError) {
-        if (attempt === 0) continue;  
-        return "unknown";  
+        if (attempt === 0) continue;
+        return "unknown";
       }
-      throw err;  
+      throw err;
     }
   }
 }
@@ -330,8 +320,7 @@ async function proveOwnership(): Promise<Ownership> {
  * the normal backoff — being offline is NOT being signed out.
  */
 export async function ensureIdentity(): Promise<string | null> {
-  const sessionUserId = await fetchSessionUserId(); 
-
+  const sessionUserId = await fetchSessionUserId();
 
   if (!sessionUserId) throw unauthorized();
   if (identityVerifiedFor !== sessionUserId) {
@@ -347,22 +336,20 @@ export async function ensureIdentity(): Promise<string | null> {
       return null;
     }
     if (!stamped && (await proveOwnership()) === "unknown") {
-      enterUnverified();  
+      enterUnverified();
       return null;
     }
-    await persist.putMeta("userId", sessionUserId);  
+    await persist.putMeta("userId", sessionUserId);
     identityVerifiedFor = sessionUserId;
   }
   // Proved (or adopted): the replica's owner is no longer in question — clear the sticky fact, so
   // the badge, the Settings dot and the Sync section stop saying "not sending".
   setOwnerUnproven(false);
-  
 
   if (store.getBootStatus() === "unauthed" && store.getLedger()) store.setBootStatus("ready");
   return sessionUserId;
 }
 
- 
 export function verifiedIdentityUserId(): string | null {
   return identityVerifiedFor;
 }
@@ -416,14 +403,11 @@ export interface BootOwnerVerdict {
 export async function bootOwnerOk(): Promise<BootOwnerVerdict> {
   const stamped = await idbGet<string>("meta", "userId").catch(() => undefined);
   if (!stamped) {
-    
-
-
     let sessionUser: string | null;
     try {
       sessionUser = await fetchSessionUserId();
     } catch {
-      return { ok: true, preferenceUserId: null };  
+      return { ok: true, preferenceUserId: null };
     }
     if (!sessionUser) {
       enterUnauthed();
@@ -444,9 +428,9 @@ export async function bootOwnerOk(): Promise<BootOwnerVerdict> {
     return { ok: false, preferenceUserId: null };
   }
   if (!sessionUser) {
-    enterUnauthed();  
+    enterUnauthed();
     return { ok: false, preferenceUserId: null };
   }
-  identityVerifiedFor = sessionUser;  
+  identityVerifiedFor = sessionUser;
   return { ok: true, preferenceUserId: sessionUser };
 }

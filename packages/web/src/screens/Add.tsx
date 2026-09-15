@@ -58,7 +58,6 @@ function withPinned<T extends { id: string }>(ranked: T[], pinnedId: string | nu
   return base;
 }
 
- 
 const padExpr = (minor: number): string => (minor / 100).toFixed(2).replace(".", ",");
 
 export function AddScreen({
@@ -74,16 +73,11 @@ export function AddScreen({
   onDone: () => void;
   editTxn: Transaction | null;
   draft?: AddDraft;
-  
 
   initialTab?: Tab;
-   
+
   initialImport?: boolean;
-  /** Design parity wave C task 3, owner rule 2 (the wide txn panel's Duplicate pill): seeds the
-   *  form as a NEW transaction — `editTxn` stays null, so this is a create, never an update — from
-   *  an existing one, via the SAME transform `local.duplicateTxn`'s phone-only instant copy uses
-   *  (`txnToDuplicatePayload`: today's date, no tag/sourceRef, allocation ids cleared, orphaned-
-   *  split handling) instead of writing to the ledger directly. */
+
   duplicateFrom?: Transaction | null;
 }) {
   const C = useTheme();
@@ -105,8 +99,6 @@ export function AddScreen({
 
   const [typeChosen, setTypeChosen] = useState(!draft || !!draft.initial || draft.item.type !== null);
   const [tab, setTab] = useState<Tab>(initialTab ?? "expense");
-  
-
 
   const [pad, setPad] = useState<PadState>({ expr: "", fresh: true });
   const amount = pad.expr;
@@ -131,7 +123,6 @@ export function AddScreen({
   });
   const envelopeId = expenseEnvelope.envelopeId;
   const [items, setItems] = useState<Array<{ envelopeId: string; amount: number }>>([]);
-  
 
   const [activeSplit, setActiveSplit] = useState<number | null>(null);
   const [splitPad, setSplitPad] = useState<PadState>({ expr: "", fresh: true });
@@ -154,16 +145,14 @@ export function AddScreen({
   const [showAcc, setShowAcc] = useState(false);
   const [showTo, setShowTo] = useState(false);
   const [showDate, setShowDate] = useState(false);
-   
+
   const [showEnv, setShowEnv] = useState<null | "target" | "split">(null);
   const [showImport, setShowImport] = useState(!!initialImport);
-  
 
   const importOpened = useOpenedOnce(showImport);
   const [splitMode, setSplitMode] = useState(false);
-  const [showTxnMenu, setShowTxnMenu] = useState(false);  
+  const [showTxnMenu, setShowTxnMenu] = useState(false);
 
-   
   useEffect(() => {
     if (!editTxn) return;
     setTab(editTxn.type);
@@ -179,7 +168,6 @@ export function AddScreen({
     setName(editTxn.name ?? "");
     setNote(editTxn.note ?? "");
     setDate(editTxn.date);
-    
 
     const linked = captureAllocationFlow(accounts, editTxn);
     setSkipAllocation(
@@ -190,9 +178,6 @@ export function AddScreen({
     );
     setAllocationTouched(false);
   }, [editTxn]);
-
-  
-
 
   useEffect(() => {
     if (!duplicateFrom) return;
@@ -239,7 +224,7 @@ export function AddScreen({
       setTab(it.type ?? "expense");
       setAmount(it.amount === null ? "" : padExpr(it.amount));
       setAccountId(draft.accountId);
-      if (it.toAccountId) setToAccountId(it.toAccountId);  
+      if (it.toAccountId) setToAccountId(it.toAccountId);
       setIsRefund(it.type === "expense" && !!it.isRefund);
       const automaticEnvelopeId = accounts.find((account) => account.id === draft.accountId)?.automaticEnvelopeId;
       setExpenseEnvelope(
@@ -273,9 +258,6 @@ export function AddScreen({
   const envById = new Map(state.envelopes.map((e) => [e.id, e]));
   const env = envelopeId ? envById.get(envelopeId) : null;
   const toAcc = accounts.find((a) => a.id === toAccountId);
-
-  
-
 
   const rankedCats = useMemo(() => {
     const ledger = store.getLedger();
@@ -315,18 +297,12 @@ export function AddScreen({
     setActiveSplit(null);
   };
 
-   
   const amtRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = amtRef.current;
     if (el) el.scrollLeft = el.scrollWidth;
   }, [amount]);
 
-  /* ── Physical-keyboard amount entry, WIDE ONLY (owner round 5 item 26) ─────────────────────
-     `wideHost` is null on phone, so NO listener is ever attached there — touch behavior is
-     byte-identical. Every accepted key routes through the SAME `press` → `padKey` machine the
-     on-screen pad drives (`keyboardPadKey` is a pure key map, never a second parser), so the
-     hero amount and a focused split row behave exactly as if their pad cells were tapped. */
   const rootRef = useRef<HTMLDivElement | null>(null);
   /** The keyboard's ⏎ = the pad's contextual OK with "save" in place of "close": an open A⊕B
    *  reduces first (`=`), otherwise the CTA's own guarded save runs (`submit` checks `canSubmit`
@@ -372,13 +348,13 @@ export function AddScreen({
         (el instanceof HTMLElement && el.isContentEditable);
       if (editable) return;
       if (e.key === "Escape") {
-        if (el?.closest("[data-wide-panel], [data-wide-panel-portal]")) return;  
+        if (el?.closest("[data-wide-panel], [data-wide-panel-portal]")) return;
         e.preventDefault();
         onDone();
         return;
       }
       if (e.key === "Enter") {
-        if (el?.closest("button, a[href], summary, [role='button']")) return;  
+        if (el?.closest("button, a[href], summary, [role='button']")) return;
         e.preventDefault();
         confirmFromKeyboard();
         return;
@@ -413,7 +389,6 @@ export function AddScreen({
     setCatOpen(false);
   };
 
-   
   const enterSplit = () => {
     if (items.length === 0 && env) setItems([{ envelopeId: env.id, amount: minor }]);
     setSplitMode(true);
@@ -425,7 +400,7 @@ export function AddScreen({
     setSplitPad({ expr: padExpr(items[index]?.amount ?? 0), fresh: true });
     setNumpad(true);
   };
-   
+
   const assignRest = () => {
     const index = activeSplit ?? items.length - 1;
     if (index < 0) return;
@@ -441,18 +416,15 @@ export function AddScreen({
   const submitLabel: Message =
     tab === "expense" ? (isRefund ? msg("Add refund") : msg("Add expense")) : tab === "income" ? msg("Add income") : msg("Add transfer");
 
-   
   const noAccount = accounts.length === 0;
   // A split must add up: the rows ARE the transaction, so an unassigned remainder (or an
   // excess) would silently change the amount that was typed. The CTA names the gap instead.
   const splitBalanced = !splitUi || (items.length > 0 && splitSum === minor);
   const canSubmit = Number.isSafeInteger(minor) && minor > 0 && isCalendarDate(date) && typeChosen && !noAccount && splitBalanced;
 
-   
   function submit() {
     if (!canSubmit) return;
-    if (!draft) setLastAccountId(accountId); 
-
+    if (!draft) setLastAccountId(accountId);
 
     if (draft) {
       if (tab === "transfer" && (!toAccountId || toAccountId === accountId)) return;
@@ -496,7 +468,6 @@ export function AddScreen({
       note: note || null,
       items: usingSplit ? items.map((i) => ({ envelopeId: i.envelopeId, amount: i.amount })) : undefined,
     };
-    
 
     const flowOptions: TxnFlowOptions | undefined = allocationApplies
       ? { skipAutomaticAllocation: skipAllocation ? true : allocationTouched ? false : undefined }
@@ -507,8 +478,6 @@ export function AddScreen({
     onDone();
   }
 
-  
-
   const todayIso = todayISO();
   const isToday = date === todayIso;
   const isYesterday = !isToday && date === shiftDay(todayIso, -1);
@@ -516,11 +485,8 @@ export function AddScreen({
   const dateLabel = isToday ? t("Today") : isYesterday ? t("Yesterday") : dayMonthLabel;
   const dateHint = isToday || isYesterday ? dayMonthLabel : date.slice(0, 4);
 
-  
-
   const ledgerNow = store.getLedger();
   const placeScopeEnv = envelopeId ?? items[0]?.envelopeId ?? null;
-  
 
   const activePlaces = state.places.filter((p) => !p.archived);
   const rankedPlaceObjs = ledgerNow
@@ -536,11 +502,8 @@ export function AddScreen({
   // exact-name check, which deliberately looks at hidden entries too).
   const hiddenCatMatch = catInput.trim() ? state.categories.find((c) => c.archived && c.name.toLowerCase() === catInput.trim().toLowerCase()) : undefined;
   const hiddenPlaceMatch = placeInput.trim() ? state.places.find((p) => p.archived && p.name.toLowerCase() === placeInput.trim().toLowerCase()) : undefined;
-  
 
   const placeList = withPinned(withSelectedFirst(rankedPlaceObjs, placeId ? state.places.find((p) => p.id === placeId) : null), placeId, 4);
-
-   
 
   // "Before" must be the world WITHOUT this transaction: while EDITING, the replica already
   // contains its effect, so `balance − amount` would deduct it a second time (a saved 100
@@ -562,7 +525,7 @@ export function AddScreen({
     editBaseline && id ? (editBaseline.accounts.find((a) => a.id === id)?.balance ?? live) : live;
   const availableBefore = (id: string | undefined, live: number) =>
     editBaseline && id ? (editBaseline.envelopes.find((e) => e.id === id)?.available ?? live) : live;
-   
+
   const previewEnvelopes = editBaseline ? state.envelopes.map((e) => ({ ...e, available: availableBefore(e.id, e.available) })) : state.envelopes;
 
   const accountBalance = balanceBefore(accountId, accObj?.balance ?? 0);
@@ -645,7 +608,6 @@ export function AddScreen({
             }
           : null;
 
-   
   const linkedRoute = captureAllocationFlow(accounts, { type: tab, accountId, toAccountId: tab === "transfer" ? toAccountId : null });
   const allocationApplies = tab === "transfer" && (linkedRoute.allocationFromEnvelopeId !== null || linkedRoute.allocationToEnvelopeId !== null);
   const allocationSkipped = allocationApplies && skipAllocation;
@@ -731,16 +693,10 @@ export function AddScreen({
         amtRef={amtRef}
         onOpenPad={openHeroPad}
         onToggleRefund={() => setIsRefund((v) => !v)}
-        
-
         onConfirm={wideHost && !draft ? confirmFromKeyboard : undefined}
       />
 
-      {
-
-
-
-}
+      {}
       <div className="gs" style={{ flex: 1, minHeight: 0, overflowY: "auto" }} onClick={closePad}>
         {/* The card lives inside the scroller now, so it would inherit its close-the-pad click.
             Tapping a split row's amount must OPEN the pad, not close it — the card handles its
@@ -824,8 +780,7 @@ export function AddScreen({
 
         {tab === "expense" && (
           <>
-            {
-}
+            {}
             {!splitUi && (
               <ChipPicker
                 label={t("Category")}
@@ -835,14 +790,11 @@ export function AddScreen({
                 open={catOpen}
                 query={catInput}
                 searchPlaceholder={t("Type or pick a category...")}
-                 
                 createLabel={
                   !draft && catInput.trim() && !state.categories.some((c) => c.name.toLowerCase() === catInput.trim().toLowerCase())
                     ? t("+ Add “{name}”", { name: catInput.trim() })
                     : null
                 }
-                
-
                 restoreLabel={hiddenCatMatch ? t("Restore “{name}” · hidden", { name: hiddenCatMatch.name }) : null}
                 onRestore={() => {
                   if (!hiddenCatMatch) return;
@@ -876,8 +828,6 @@ export function AddScreen({
               open={placeOpen}
               query={placeInput}
               searchPlaceholder={t("Type or pick a place...")}
-              
-
               createLabel={
                 !draft && placeInput.trim() && !state.places.some((p) => p.name.toLowerCase() === placeInput.trim().toLowerCase())
                   ? t("+ Add “{name}”", { name: placeInput.trim() })
@@ -912,8 +862,7 @@ export function AddScreen({
             />
           </>
         )}
-        {
-}
+        {}
         {tab === "income" && automaticEffect && <AutomaticEnvelopeEffect data={automaticEffect} />}
 
         <TransactionFields

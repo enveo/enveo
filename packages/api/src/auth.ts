@@ -1,4 +1,3 @@
- 
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
@@ -9,15 +8,11 @@ import { env } from "./env";
 import { authTrustedOrigins } from "./origins";
 import type { Executor } from "./sync/apply";
 
-
-
 declare module "hono" {
   interface ContextVariableMap {
     userId?: string;
   }
 }
-
-
 
 export async function hasCredentialedUser(x: Executor = db): Promise<boolean> {
   const rows = await x.select({ id: s.authAccounts.id }).from(s.authAccounts).limit(1);
@@ -26,17 +21,12 @@ export async function hasCredentialedUser(x: Executor = db): Promise<boolean> {
 
 const SIGNUP_GATE_LOCK = 815901; // arbitrary app-wide advisory lock id for the signup gate
 
- 
 export const SIGNUP_CLAIM = "enveo:signup-claim";
 const SIGNUP_CLAIM_TTL_SECONDS = 60;
 
 export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
-  
-
-
-
 
   trustedOrigins: (request) => authTrustedOrigins(request),
   database: drizzleAdapter(db, {
@@ -49,8 +39,6 @@ export const auth = betterAuth({
   session: { expiresIn: 60 * 60 * 24 * 90, updateAge: 60 * 60 * 24 },
   advanced: {
     database: { generateId: () => crypto.randomUUID() },
-    
-
 
     disableOriginCheck: false,
   },
@@ -89,9 +77,6 @@ export const auth = betterAuth({
             });
             if (!open) throw new APIError("FORBIDDEN", { message: "signups_closed" });
             if (accounts.length === 0) {
-              
-
-
               await tx`insert into auth_verifications
                          (id, identifier, value, expires_at, created_at, updated_at)
                        values (${crypto.randomUUID()}, ${SIGNUP_CLAIM}, ${user.email ?? ""},

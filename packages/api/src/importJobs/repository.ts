@@ -63,7 +63,7 @@ export interface ClaimedImportChunk {
 
 export interface ImportChunkFailure {
   errorCode: ImportJobErrorCode;
-   
+
   retryAt: Date | null;
 }
 
@@ -86,7 +86,7 @@ export interface ClaimedImportJob {
   /** Screenshots still retained (positions of chunks not yet extracted). */
   images: StoredImage[];
   screenshotTotal: number;
-   
+
   chunks: ClaimedImportChunk[];
 }
 
@@ -113,8 +113,6 @@ type ImportJobChunkRow = typeof importJobChunks.$inferSelect;
 /** One SQL condition: a position is still needed by some window that has not been extracted. */
 const positionStillNeeded = (jobId: string, position: typeof importJobImages.position) =>
   sql`exists (select 1 from ${importJobChunks} c where c.job_id = ${jobId} and c.status <> 'extracted' and ${position} >= c.image_start and ${position} < c.image_end)`;
-
-
 
 async function recountScreenshots(tx: Pick<DB, "execute">, jobId: string, now: Date): Promise<void> {
   await tx.execute(sql`
@@ -386,7 +384,7 @@ export function createImportJobRepository(database: DB) {
           )
           .returning();
         if (!updated) return null;
-         
+
         await tx
           .update(importJobChunks)
           .set({ status: "pending", attempt: 0, errorCode: null, retryAt: null, updatedAt: now })
@@ -574,7 +572,6 @@ export function createImportJobRepository(database: DB) {
       return updated.length === 1;
     },
 
-     
     async saveChunkExtraction(id: string, leaseToken: string, chunkIndex: number, batch: ImportExtractBatch, now = new Date()): Promise<boolean> {
       const normalized = importExtractBatchSchema.parse(batch);
       return database.transaction(async (tx) => {
@@ -590,7 +587,7 @@ export function createImportJobRepository(database: DB) {
           .where(and(eq(importJobChunks.jobId, id), eq(importJobChunks.chunkIndex, chunkIndex), inArray(importJobChunks.status, ["pending", "failed"])))
           .returning({ start: importJobChunks.imageStart, end: importJobChunks.imageEnd });
         if (!chunk) return false;
-         
+
         await tx
           .delete(importJobImages)
           .where(
@@ -610,7 +607,6 @@ export function createImportJobRepository(database: DB) {
       });
     },
 
-     
     async failChunk(id: string, leaseToken: string, chunkIndex: number, failure: ImportChunkFailure, now = new Date()): Promise<boolean> {
       const errorCode = importJobErrorCodeSchema.parse(failure.errorCode);
       return database.transaction(async (tx) => {

@@ -180,7 +180,6 @@ function mutationSpy() {
 
 describe("local E2EE import planning", () => {
   it("reconciles a ready job against current duplicates, accounts, and active assignments idempotently", () => {
-     
     const current = ledger();
     current.transactions.push(
       { ...current.transactions[0]!, id: U(30), date: "2026-08-02", amount: 2500, sourceRef: "RAW exact" },
@@ -194,11 +193,9 @@ describe("local E2EE import planning", () => {
       recognitionProposal("assignment", { date: "2026-08-04", amount: 2700, rawPlace: "RAW assignment" }),
     );
 
-     
     const once = reconcileImportJobResult({ result: ready, ledger: current, accountId: U(2) });
     const twice = reconcileImportJobResult({ result: once, ledger: current, accountId: U(2) });
 
-     
     expect(once.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
     expect(once.proposals[1]).toMatchObject({
       duplicateStatus: "probable",
@@ -213,13 +210,11 @@ describe("local E2EE import planning", () => {
     });
     expect(twice).toEqual(once);
 
-     
     const deletedAccount = reconcileImportJobResult({ result: ready, ledger: { ...current, accounts: [] }, accountId: U(2) });
     expect(deletedAccount.proposals.every((proposal) => proposal.sourceAccountInvalid && !proposal.selected)).toBe(true);
   });
 
   it("records each successful row before attempting the next mutation", async () => {
-     
     const firstItem = item({ importRowId: "row-one", rawPlace: "ROW ONE" });
     const secondItem = item({ importRowId: "row-two", date: "2026-08-03", amount: 2600, rawPlace: "ROW TWO" });
     const firstPlan = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: [firstItem, secondItem], dryRun: false });
@@ -238,7 +233,6 @@ describe("local E2EE import planning", () => {
 
     const durableRows: string[] = [];
 
-     
     let partial: PartialImportApplyError | null = null;
     try {
       await applyLocalImportRecoverably(firstPlan, mutations, {
@@ -252,12 +246,10 @@ describe("local E2EE import planning", () => {
       else throw error;
     }
 
-     
     expect(partial?.progress).toEqual({ appliedRowIds: ["row-one"], appliedCount: 1, skippedCount: 0 });
     expect(durableRows).toEqual(["row-one"]);
     expect(created).toHaveLength(1);
 
-     
     const live = ledger();
     live.transactions.push({
       ...live.transactions[0]!,
@@ -285,7 +277,6 @@ describe("local E2EE import planning", () => {
     });
     const spy = mutationSpy();
 
-     
     let partial: PartialImportApplyError | null = null;
     try {
       await applyLocalImportRecoverably(plan, spy.mutations, {
@@ -299,7 +290,6 @@ describe("local E2EE import planning", () => {
       else throw error;
     }
 
-     
     expect(partial?.progress.appliedRowIds).toEqual(["blank-one"]);
     expect(spy.created.transactions).toHaveLength(1);
   });
@@ -411,15 +401,12 @@ describe("local E2EE import planning", () => {
   });
 
   it("rechecks duplicates in review and again against the live ledger immediately before mutation", () => {
-     
     const first = planLocalImport({ ledger: ledger(), globalAccountId: U(2), dryRun: true, items: [item({ rawPlace: "LATE RAW" })] });
     expect(first.results[0]!.status).toBe("added");
 
-     
     const live = ledger();
     live.transactions.push({ ...live.transactions[0]!, id: U(30), date: "2026-08-02", amount: 2500, sourceRef: "LATE RAW" });
 
-     
     const final = planLocalImport({ ledger: live, globalAccountId: U(2), dryRun: false, items: [item({ rawPlace: "LATE RAW" })] });
     const spy = mutationSpy();
     applyLocalImport(final, spy.mutations);
@@ -449,7 +436,6 @@ describe("local E2EE import planning", () => {
   });
 
   it.each(["unchanged", "edited", "cleared"] as const)("carries historical metadata through review and ledger application with %s fields", async (mode) => {
-     
     const current = ledger();
     current.accounts[0]!.automaticEnvelopeId = null;
     const recognized = await runImportRecognitionPipeline({
@@ -495,7 +481,7 @@ describe("local E2EE import planning", () => {
       placeName: "Linden Market",
       note: "",
     };
-     
+
     const accepted = reviewedImportItemsForApply({ items, edited: mode === "unchanged" ? {} : { 0: correction }, editedAutomaticDefaults: {} });
     const plan = planLocalImport({ ledger: current, globalAccountId: U(2), items: accepted, dryRun: false });
     expect(plan.transactions).toHaveLength(1);
@@ -503,7 +489,7 @@ describe("local E2EE import planning", () => {
     expect(plan.transactions[0]!.categoryName).toBeNull();
     const payload = prepareTxnCreate(current, plan.transactions[0]!.payload);
     const after = applyOp(current, { opId: U(21), kind: "txn.create", payload: { ...payload, id: U(20) } });
-     
+
     expect(after.places).toEqual(current.places);
     expect(after.transactions.find((t) => t.id === U(20))).toMatchObject({
       name: mode === "unchanged" ? "Groceries" : mode === "cleared" ? null : "My correction",
@@ -608,7 +594,6 @@ describe("local E2EE import planning", () => {
   });
 
   it("defaults only missing imported expenses from each item's account link", () => {
-     
     const plan = planLocalImport({
       ledger: ledger(),
       globalAccountId: U(2),
@@ -620,16 +605,13 @@ describe("local E2EE import planning", () => {
       ],
     });
 
-     
     const plannedEnvelopeIds = plan.transactions.map((transaction) => transaction.payload.envelopeId);
 
-     
     expect(plan.results.map((result) => result.envelopeId)).toEqual([U(5), U(9), U(9)]);
     expect(plannedEnvelopeIds).toEqual([U(5), U(9), U(9)]);
   });
 
   it("sends each accepted import exactly once through the transaction mutation port without pre-stamping flow", () => {
-     
     const plan = planLocalImport({
       ledger: ledger(),
       globalAccountId: U(2),
@@ -638,10 +620,8 @@ describe("local E2EE import planning", () => {
     });
     const spy = mutationSpy();
 
-     
     applyLocalImport(plan, spy.mutations);
 
-     
     expect(spy.created.transactions).toHaveLength(1);
     expect(spy.created.transactions[0]).toMatchObject({ type: "income", accountId: U(2) });
     expect(spy.created.transactions[0]).not.toHaveProperty("allocationFromEnvelopeId");
@@ -682,7 +662,6 @@ describe("local E2EE import planning", () => {
   });
 
   it("preserves automatic, explicit-empty, and explicit-ID provenance from editor review through local apply", () => {
-     
     const reviewed = [
       { ...item({ envelopeId: U(9), envelopeName: "Travel", rawPlace: "AUTO RAW" }), status: "added" as const, include: true, automaticEnvelopeDefault: true },
       {
@@ -702,7 +681,7 @@ describe("local E2EE import planning", () => {
       1: editedItem({ amount: 2600, envelopeId: null }),
       2: editedItem({ amount: 2700, envelopeId: U(9) }),
     };
-     
+
     const chosen = reviewedImportItemsForApply({
       items: reviewed,
       edited,
@@ -712,7 +691,6 @@ describe("local E2EE import planning", () => {
     const spy = mutationSpy();
     applyLocalImport(plan, spy.mutations);
 
-     
     expect(plan.transactions.map((transaction) => transaction.payload.envelopeId)).toEqual([U(5), null, U(9)]);
     expect(spy.created.transactions).toHaveLength(3);
   });
@@ -725,7 +703,6 @@ describe("local E2EE import planning", () => {
     ];
 
     for (const { input, expected } of cases) {
-       
       const dry = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: [input], dryRun: true });
       const review = importReviewItem(dry.results[0]!, U(5));
       const edited = editedItem({ accountId: U(3), envelopeId: review.envelopeId });
@@ -735,7 +712,6 @@ describe("local E2EE import planning", () => {
         editedAutomaticDefaults: { 0: review.automaticEnvelopeDefault },
       });
 
-       
       const live = ledger();
       live.envelopes.push({
         id: U(10),
@@ -751,12 +727,10 @@ describe("local E2EE import planning", () => {
       });
       live.accounts[1]!.automaticEnvelopeId = U(10);
 
-       
       const plan = planLocalImport({ ledger: live, globalAccountId: U(2), items: chosen, dryRun: false });
       const spy = mutationSpy();
       applyLocalImport(plan, spy.mutations);
 
-       
       expect((spy.created.transactions[0] as { envelopeId: string | null }).envelopeId).toBe(expected);
       expect(spy.created.transactions).toHaveLength(1);
     }

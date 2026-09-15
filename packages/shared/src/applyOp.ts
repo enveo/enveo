@@ -62,7 +62,6 @@ const buildItems = (txnId: string, items: OpPayload<"txn.create">["items"]): Txn
     amount: i.amount,
   }));
 
- 
 function txnFromCreate(p: OpPayload<"txn.create">): Transaction {
   const items = p.items ?? [];
   const envelopeId = items.length > 0 ? null : (p.envelopeId ?? null);
@@ -88,7 +87,6 @@ function txnFromCreate(p: OpPayload<"txn.create">): Transaction {
   };
 }
 
- 
 function txnFromUpdate(prev: Transaction, p: OpPayload<"txn.update">): Transaction {
   const items = p.items ?? [];
   return {
@@ -115,7 +113,6 @@ function txnFromUpdate(prev: Transaction, p: OpPayload<"txn.update">): Transacti
   };
 }
 
- 
 function merge<T extends object>(prev: T, patch: object): T {
   const out = { ...prev } as Record<string, unknown>;
   for (const [k, v] of Object.entries(patch)) {
@@ -125,7 +122,6 @@ function merge<T extends object>(prev: T, patch: object): T {
   return out as T;
 }
 
- 
 function accountFromCreate(p: OpPayload<"account.create">): Account {
   return {
     id: p.id,
@@ -141,14 +137,12 @@ function accountFromCreate(p: OpPayload<"account.create">): Account {
   };
 }
 
- 
 const groupFromCreate = (p: OpPayload<"group.create">): EnvelopeGroup => ({
   id: p.id,
   name: p.name,
   sort: p.sort ?? 0,
 });
 
- 
 function envelopeFromCreate(p: OpPayload<"envelope.create">): Envelope {
   return {
     id: p.id,
@@ -193,7 +187,6 @@ function deleteEnvelopesEffects(ledger: ClientLedger, envIds: ReadonlySet<string
   };
 }
 
- 
 function replaceAt<T>(arr: readonly T[], idx: number, value: T): T[] {
   const next = arr.slice();
   next[idx] = value;
@@ -209,13 +202,13 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
   switch (op.kind) {
     case "txn.create": {
       const p = op.payload as OpPayload<"txn.create">;
-      if (ledger.transactions.some((t) => t.id === p.id)) return ledger;  
+      if (ledger.transactions.some((t) => t.id === p.id)) return ledger;
       return { ...ledger, transactions: [...ledger.transactions, txnFromCreate(p)] };
     }
     case "txn.update": {
       const p = op.payload as OpPayload<"txn.update">;
       const idx = ledger.transactions.findIndex((t) => t.id === p.id);
-      if (idx < 0) return ledger;  
+      if (idx < 0) return ledger;
       const next = txnFromUpdate(ledger.transactions[idx]!, p);
       if (!transactionSemanticsValid(next)) return ledger;
       return {
@@ -250,7 +243,7 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
     }
     case "account.create": {
       const p = op.payload as OpPayload<"account.create">;
-      if (ledger.accounts.some((a) => a.id === p.id)) return ledger;  
+      if (ledger.accounts.some((a) => a.id === p.id)) return ledger;
       return { ...ledger, accounts: [...ledger.accounts, accountFromCreate(p)] };
     }
     case "account.update": {
@@ -264,13 +257,13 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
       return {
         ...ledger,
         accounts: ledger.accounts.filter((a) => a.id !== p.id),
-         
+
         transactions: ledger.transactions.filter((t) => t.accountId !== p.id && t.toAccountId !== p.id),
       };
     }
     case "envelope.create": {
       const p = op.payload as OpPayload<"envelope.create">;
-      if (ledger.envelopes.some((e) => e.id === p.id)) return ledger;  
+      if (ledger.envelopes.some((e) => e.id === p.id)) return ledger;
       return { ...ledger, envelopes: [...ledger.envelopes, envelopeFromCreate(p)] };
     }
     case "envelope.update": {
@@ -285,7 +278,7 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
     }
     case "group.create": {
       const p = op.payload as OpPayload<"group.create">;
-      if (ledger.groups.some((g) => g.id === p.id)) return ledger;  
+      if (ledger.groups.some((g) => g.id === p.id)) return ledger;
       return { ...ledger, groups: [...ledger.groups, groupFromCreate(p)] };
     }
     case "group.update": {
@@ -302,13 +295,13 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
     }
     case "category.create": {
       const p = op.payload as OpPayload<"category.create">;
-      if (ledger.categories.some((cat) => cat.id === p.id)) return ledger;  
+      if (ledger.categories.some((cat) => cat.id === p.id)) return ledger;
       const row: Category = { id: p.id, name: p.name, archived: false };
       return { ...ledger, categories: [...ledger.categories, row] };
     }
     case "place.create": {
       const p = op.payload as OpPayload<"place.create">;
-      if (ledger.places.some((pl) => pl.id === p.id)) return ledger;  
+      if (ledger.places.some((pl) => pl.id === p.id)) return ledger;
       const row: Place = { id: p.id, name: p.name, archived: false };
       return { ...ledger, places: [...ledger.places, row] };
     }
@@ -385,8 +378,6 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
     default: {
       const _exhaustive: never = op.kind; // a NEW kind without a reducer must not compile
       void _exhaustive;
-      
-
 
       return ledger;
     }

@@ -70,7 +70,7 @@ describe("localizePadExpression — display substitution, nothing else", () => {
 
 describe("compactMoney", () => {
   test("thousands collapse, and the currency is the budget's, never a hardcoded symbol", () => {
-    const en = compactMoney(2_696_290, "USD", "en");  
+    const en = compactMoney(2_696_290, "USD", "en");
     expect(en).toContain("27");
     expect(en).toContain("$");
     expect(en).not.toContain("26,962");

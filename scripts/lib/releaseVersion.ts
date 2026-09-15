@@ -15,18 +15,16 @@
  * gate should not depend on a transitive package it cannot audit.
  */
 
- 
 export type ReleaseTag = Readonly<{
-   
   tag: string;
-   
+
   version: string;
-   
+
   core: string;
   major: number;
   minor: number;
   patch: number;
-   
+
   prerelease: string | null;
   /** A stable release moves the mutable aliases; a prerelease never does. */
   stable: boolean;
@@ -34,10 +32,8 @@ export type ReleaseTag = Readonly<{
 
 export type TagVerdict = Readonly<{ ok: true; release: ReleaseTag }> | Readonly<{ ok: false; reason: string }>;
 
- 
 const CORE = /^(\d+)\.(\d+)\.(\d+)$/;
 
- 
 const IDENTIFIER = /^[0-9A-Za-z-]+$/;
 
 const ALL_DIGITS = /^\d+$/;
@@ -181,7 +177,6 @@ export function checkAppVersion(release: ReleaseTag, appVersion: string | null):
   );
 }
 
- 
 export function parseVersion(text: string): ReleaseTag | null {
   const verdict = parseReleaseTag(`v${text}`);
   return verdict.ok ? verdict.release : null;
@@ -225,10 +220,9 @@ export function compareVersions(a: ReleaseTag, b: ReleaseTag): number {
   return 0;
 }
 
- 
 export type AliasState = Readonly<{
   alias: string;
-   
+
   present: boolean;
   /** The version the alias currently serves, or `null` when it could not be determined. */
   version: string | null;
@@ -291,12 +285,6 @@ export function planAliasMoves(release: ReleaseTag, states: readonly AliasState[
     };
   });
 }
-
-
-
-
-
-
 
 export function aliasImageTags(release: ReleaseTag): string[] {
   return release.stable ? [`${release.major}.${release.minor}`, "latest"] : [];

@@ -19,10 +19,10 @@ export const BALANCE_MATCH_MAX_SOLUTIONS = 8;
 
 export interface BalanceMatchCandidate {
   id: string;
-   
+
   effect: number;
   included: boolean;
-   
+
   flippable: boolean;
 }
 
@@ -31,11 +31,10 @@ export type BalanceMatchAction = "include" | "exclude" | "flip";
 export interface BalanceMatchChange {
   id: string;
   action: BalanceMatchAction;
-   
+
   delta: number;
 }
 
- 
 export function balanceMatchOptions(candidate: BalanceMatchCandidate): BalanceMatchChange[] {
   if (!Number.isInteger(candidate.effect) || candidate.effect === 0) return [];
   if (candidate.included) {
@@ -47,11 +46,6 @@ export function balanceMatchOptions(candidate: BalanceMatchCandidate): BalanceMa
   if (candidate.flippable) options.push({ id: candidate.id, action: "flip", delta: -candidate.effect });
   return options;
 }
-
-
-
-
-
 
 export function findBalanceMatches(
   candidates: ReadonlyArray<BalanceMatchCandidate>,
@@ -151,6 +145,6 @@ export function findNearestBalanceMatch(
     }
   };
   search(0, 0);
-   
+
   return best !== null && bestCost < Math.abs(difference) ? best : null;
 }

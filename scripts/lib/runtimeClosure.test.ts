@@ -9,8 +9,6 @@
 import { describe, expect, it } from "bun:test";
 import { closureProblems, computeClosure, deadStoreEntries, type Link, type Manifest, requiredSpecifiers, type StoreReader } from "./runtimeClosure";
 
- 
-
 const WORKSPACE: Record<string, Manifest> = {
   "/app/packages/api": { dependencies: { "better-auth": "*", "drizzle-orm": "*", "@enveo/shared": "*" } },
   "/app/packages/shared": { dependencies: { zod: "*" } },
@@ -36,7 +34,6 @@ const STORE: Record<string, Manifest> = {
   "react@18.3.1": {},
 };
 
- 
 const LINKS: Record<string, Link[]> = {
   "/app/packages/api/node_modules": [
     { name: "better-auth", storeId: "better-auth@1.6.26", workspaceDir: null },
@@ -63,8 +60,6 @@ const reader: StoreReader = {
 };
 
 const ROOTS = ["/app/packages/api", "/app/packages/shared"];
-
- 
 
 describe("requiredSpecifiers", () => {
   it("includes dependencies and optionalDependencies", () => {
@@ -104,7 +99,6 @@ describe("computeClosure", () => {
   });
 
   it("keeps an optional peer that a workspace package depends on DIRECTLY", () => {
-     
     expect(closure.keep.has("drizzle-orm@0.45.2")).toBe(true);
   });
 
@@ -113,7 +107,6 @@ describe("computeClosure", () => {
   });
 
   it("follows workspace links, so a sibling package's own dependencies survive", () => {
-     
     expect(closure.reachedVia.get("zod@3.25.76")).toBe("/app/packages/shared → zod");
   });
 

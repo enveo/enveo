@@ -9,7 +9,6 @@ interface AccountListRowContentProps {
   colors: { text: string; soft: string; mute: string };
 }
 
- 
 export function AccountListRowContent({ account, automaticLabel, balanceText, compact = false, colors }: AccountListRowContentProps) {
   const iconBox = compact ? 34 : 44;
   const iconDisc = compact ? 24 : 30;

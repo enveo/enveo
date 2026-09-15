@@ -36,7 +36,6 @@ export type Advisory = Readonly<{
   vulnerableVersions: string;
 }>;
 
- 
 export type InstalledInstance = Readonly<{ version: string; path: string }>;
 
 export type InstalledIndex = ReadonlyMap<string, readonly InstalledInstance[]>;
@@ -47,7 +46,7 @@ export type PolicyException = Readonly<{
   severity: Severity;
   vulnerableVersions: string;
   installed: readonly InstalledInstance[];
-   
+
   scope: string;
   reachability: string;
   mitigation: string;
@@ -80,8 +79,6 @@ export type AuditReport = Readonly<{
   staleExceptions: readonly string[];
   problems: readonly string[];
 }>;
-
- 
 
 function fail<T>(error: string): ParseResult<T> {
   return { ok: false, error };
@@ -178,14 +175,13 @@ function stripTrailingCommas(text: string): string {
       let j = i + 1;
       while (j < text.length && /\s/.test(text[j] as string)) j++;
       const next = text[j];
-      if (next === "}" || next === "]") continue;  
+      if (next === "}" || next === "]") continue;
     }
     out += ch;
   }
   return out;
 }
 
- 
 function splitDescriptor(descriptor: string): { name: string; version: string } | null {
   const at = descriptor.lastIndexOf("@");
   if (at <= 0) return null;
@@ -194,10 +190,6 @@ function splitDescriptor(descriptor: string): { name: string; version: string } 
   if (!name || !version) return null;
   return { name, version };
 }
-
-
-
-
 
 export function parseBunLock(text: string): ParseResult<InstalledIndex> {
   if (!nonEmptyString(text)) return fail("bun.lock is empty");
@@ -238,7 +230,6 @@ function parseIsoDate(value: unknown): Date | null {
   return date.toISOString().slice(0, 10) === value ? date : null;
 }
 
- 
 const ADDED_ON_SKEW_DAYS = 2;
 
 export function parsePolicy(text: string, now: Date = new Date()): ParseResult<AuditPolicy> {
@@ -306,9 +297,6 @@ export function parsePolicy(text: string, now: Date = new Date()): ParseResult<A
     if (addedOn.getTime() > now.getTime() + ADDED_ON_SKEW_DAYS * DAY_MS) {
       return fail(`exception ${advisoryId} has an \`addedOn\` in the future (${raw.addedOn}) — ` + "the expiry window must be measured from a real date");
     }
-    
-
-
 
     const from = Math.min(addedOn.getTime(), now.getTime());
     const days = Math.ceil((expires.getTime() - from) / DAY_MS);
@@ -334,8 +322,6 @@ export function parsePolicy(text: string, now: Date = new Date()): ParseResult<A
   }
   return { ok: true, value: { schemaVersion: 1, exceptions } };
 }
-
- 
 
 function sameInstances(a: readonly InstalledInstance[], b: readonly InstalledInstance[]): boolean {
   const key = (i: InstalledInstance) => `${i.version} ${i.path}`;

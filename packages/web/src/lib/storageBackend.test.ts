@@ -15,7 +15,6 @@ afterEach(() => {
   __resetStorageForTests();
 });
 
- 
 async function exercise(b: StorageBackend): Promise<unknown[]> {
   await b.put("meta", { hello: 1 }, "ledger");
   await b.put("meta", "cursor-7", "cursor");
@@ -30,15 +29,15 @@ async function exercise(b: StorageBackend): Promise<unknown[]> {
   const out: unknown[] = [];
   out.push(await b.get("meta", "ledger"));
   out.push(await b.get("meta", "cursor"));
-  out.push(await b.get("meta", "k1"));  
+  out.push(await b.get("meta", "k1"));
   out.push(await b.get("meta", "k2"));
-  out.push((await b.getAll("outbox")).length);  
-  out.push((await b.getAll("deadletter")).length);  
+  out.push((await b.getAll("outbox")).length);
+  out.push((await b.getAll("deadletter")).length);
   await b.clear("outbox");
-  out.push((await b.getAll("outbox")).length);  
+  out.push((await b.getAll("outbox")).length);
   await b.clearAll();
-  out.push((await b.getAll("meta")).length);  
-  out.push((await b.getAll("deadletter")).length);  
+  out.push((await b.getAll("meta")).length);
+  out.push((await b.getAll("deadletter")).length);
   return out;
 }
 
@@ -74,7 +73,7 @@ describe("backend selection (device storage policy)", () => {
     await idbPut("meta", "value", "k");
     expect(await idbGet<string>("meta", "k")).toBe("value");
     expect(storageMode()).toBe("memory-session");
-    expect(await factory.databases()).toEqual([]);  
+    expect(await factory.databases()).toEqual([]);
   });
 
   test("absent policy → IdbBackend (persistent legacy default)", async () => {

@@ -21,9 +21,6 @@ import {
 } from "../lib/transactionSearch";
 import { activeFilterCount, TransactionFilterSheet } from "./transactions/TransactionFilterSheet";
 
-// Design parity wave C task 5 (§0.8): `Transactions.tsx` is itself one shared chunk between
-// phone and wide (`App.tsx`'s own `lazy()`), so the wide-only 6-column filter body gets its OWN
-// nested lazy boundary — a phone user who opens Transactions never fetches it.
 const WideFilterPanel = lazy(() => import("./transactions/WideFilterPanel").then((m) => ({ default: m.WideFilterPanel })));
 
 export function TransactionsScreen({
@@ -46,20 +43,12 @@ export function TransactionsScreen({
   onPrev: () => void;
   onNext: () => void;
   onEditTxn: (t: Transaction) => void;
-   
+
   query: string;
   setQuery: (q: string) => void;
   filters: TransactionFilters;
   setFilters: (filters: TransactionFilters) => void;
-  /** Design parity wave C task 3 (owner rule 2): on wide, a row click SELECTS the txn panel's
-   *  content instead of opening the editor — matching the `AccountsScreen`/`BudgetScreen`
-   *  `selected*Id` precedent. Three-state, because App owns "is the panel showing this list's txn
-   *  pane" while only THIS component owns the filtered fallback row: a string is App's explicit
-   *  `txnView` pick; `undefined` means "panel showing the txn pane, nothing explicitly picked" and
-   *  this component falls back to its OWN first FILTERED row (`txns[0]` below — the one place that
-   *  can, since App's own fallback table is deliberately unfiltered, panel.ts's own comment);
-   *  `null` means "no panel is showing a row of this list" (collapsed panel, envelope pane over
-   *  it, Add takeover, or phone) — NO highlight, fallback included. */
+
   selectedTxnId?: string | null;
   onSelectTxn?: (id: string) => void;
 }) {
@@ -79,7 +68,7 @@ export function TransactionsScreen({
     { id: MISSING_TRANSACTION_FIELD, name: t("No envelope") },
     ...state.envelopes.filter((e) => !e.archived || filters.envelopeIds.has(e.id) || filterReferences.envelopeIds.has(e.id)).sort((a, b) => a.sort - b.sort),
   ];
-   
+
   const accounts = state.accounts
     .filter((a) => !a.archived || filters.accountIds.has(a.id) || filterReferences.accountIds.has(a.id))
     .sort((a, b) => a.sort - b.sort);
@@ -125,15 +114,8 @@ export function TransactionsScreen({
     (transaction) => matchesTransactionQuery(transaction, query, searchIndex) && matchesTransactionFilters(transaction, filters),
   );
 
-  // Design parity wave C task 3 (txn gap 9): the row the panel is showing — an explicit pick, else
-  // THIS list's own first entry (the never-empty fallback, computed here rather than trusted from
-  // App since only this component owns the filtered/ordered `txns` the panel must agree with).
-  // `null` off wide so phone never highlights a row it has no panel to show it in, and `null` when
-  // App says NO panel is showing this list's txn pane (`selectedTxnId === null` — collapsed panel
-  // etc., see the prop's contract above): the fallback must not paint a highlight no panel backs.
   const effectiveSelectedId = inWide && selectedTxnId !== null ? (selectedTxnId ?? txns[0]?.id ?? null) : null;
 
-   
   const groups: Array<{ date: string; items: Transaction[] }> = [];
   for (const t of txns) {
     const last = groups[groups.length - 1];
@@ -141,7 +123,6 @@ export function TransactionsScreen({
     else groups.push({ date: t.date, items: [t] });
   }
 
-   
   const balance = txns.reduce((s, t) => (t.type === "transfer" ? s : s + (t.type === "income" || t.isRefund ? t.amount : -t.amount)), 0);
   const selectedSummary = (selected: ReadonlySet<string>, options: ReadonlyArray<{ id: string; name: string }>): string => {
     const picked = options.filter((option) => selected.has(option.id));
@@ -300,19 +281,7 @@ export function TransactionsScreen({
           )}
         </div>
 
-        {/* Design parity wave C task 4 (txn gaps 4-7, v3:296-308): search + Filters merge into ONE
-            bordered card — a SIBLING of the `data-band` wrapper above, not a child of it. Duet's
-            `band` is a per-SCREEN theme flag, not a per-viewport one — it stays true on wide too —
-            so nesting this inside that wrapper let its `C.headerBg` navy show through underneath
-            the (transparent) count/Balance row below the card, with plain `C.soft`/`C.pos`/`C.neg`
-            text sized for the CREAM Duet surface sitting on that navy instead (caught live on a
-            Duet-light throwaway probe, not eyeballed from the design, which has no band concept at
-            all). Plain `C.card`/`C.line` tokens throughout — not the phone `hc()` on-band variants
-            above — matching the `TxnPanel`/`EnvelopePanel` (C2/C3) precedent that wide content
-            ignores `hc()` entirely. `alignItems: "stretch"` (v3:296) is load-bearing, not
-            decorative: it is what gives the borderless Filters button the search half's own ~32px
-            height for free, clearing the house's 30px touch floor without a manual override (see
-            7a73272's minHeight fix for the alternative). */}
+        {}
         {inWide && (
           <>
             <div
@@ -325,10 +294,6 @@ export function TransactionsScreen({
                 border: `1px solid ${C.line}`,
                 borderTopLeftRadius: 12,
                 borderTopRightRadius: 12,
-                
-
-
-
 
                 borderBottomLeftRadius: pickFilter ? 0 : 12,
                 borderBottomRightRadius: pickFilter ? 0 : 12,
@@ -341,10 +306,6 @@ export function TransactionsScreen({
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  
-
-
-
                   placeholder={t("Search transactions…")}
                   style={{ flex: 1, minWidth: 0, background: "none", border: "none", fontSize: 14, color: C.text, fontFamily: font }}
                 />
@@ -359,12 +320,7 @@ export function TransactionsScreen({
                 )}
               </div>
               <div style={{ width: 1, background: C.line, flexShrink: 0 }} />
-              {/* Design parity wave C task 5: on wide, this toggle opens/closes the inline panel
-                  below (`pickFilter`, plain state — owner rule 3, not the pane machine). The
-                  caret and this button's own accent top-rule (v3:4308's `filterBtnTopRule`) read
-                  the SAME boolean the panel's mount condition below does. `border-top` is 3px in
-                  BOTH states (transparent when closed) so the reserved space never shifts this
-                  bar's height when the accent line appears — only its color changes. */}
+              {}
               <button
                 onClick={() => setPickFilter((v) => !v)}
                 aria-expanded={pickFilter}
@@ -377,7 +333,6 @@ export function TransactionsScreen({
                   background: "transparent",
                   border: "none",
                   borderTop: `3px solid ${pickFilter ? "var(--accent)" : "transparent"}`,
-                  
 
                   borderTopRightRadius: 11,
                   cursor: "pointer",
@@ -409,12 +364,7 @@ export function TransactionsScreen({
               </button>
             </div>
 
-            {/* Design parity wave C task 5 (v3:310-364): the inline body — pushes the list down,
-                never dims/overlays anything (no backdrop, no portal; a plain sibling in normal
-                flow). Conditionally MOUNTED (not just hidden) so a phone user, and a wide user who
-                never opens Filters, never fetch this chunk; `WideFilterPanel`'s own local amount
-                text re-derives from `filters.amount` fresh on every mount, so nothing is lost by
-                unmounting on close beyond an in-progress invalid (unapplied) amount edit. */}
+            {}
             {pickFilter && (
               <div style={{ margin: `0 ${P}px` }}>
                 <LazyChunk>
@@ -450,7 +400,7 @@ export function TransactionsScreen({
           </>
         )}
 
-        { }
+        {}
         {filterChips.length > 0 && (!inWide || !!filters.date) && (
           <div className="gs" style={{ display: "flex", alignItems: "center", gap: 7, padding: `0 ${P}px 8px`, overflowX: "auto" }}>
             <span style={{ fontSize: 13.5, color: C.text, flexShrink: 0 }}>{t("Filter:")}</span>
@@ -485,12 +435,6 @@ export function TransactionsScreen({
         {groups.length === 0 && <div style={{ textAlign: "center", color: C.mute, fontSize: 13.5, padding: "56px 0" }}>{t("No transactions.")}</div>}
 
         {groups.map((group) => {
-          // Design parity wave C task 4 (txn gap 10, v3:2556-2563): per-day ↑in/↓out, wide only —
-          // computed from `group.items` with the SAME income-or-refund/expense split as the
-          // `balance` reduce above (not the design's own simplified `t.type === "income"`/`!t.type`,
-          // which has no `isRefund` concept in its synthetic data model — real code wins on
-          // mechanics). Left at 0/0 on phone (never read there), which also makes `right` below
-          // `undefined` for free.
           let inSum = 0;
           let outSum = 0;
           if (inWide) {
@@ -520,18 +464,13 @@ export function TransactionsScreen({
                   ) : undefined
                 }
               />
-              {
-
-}
+              {}
               <CardBox style={{ marginBottom: 8, padding: "2px 12px", overflow: "hidden" }}>
                 {group.items.map((tx, i) => {
                   const col = colorOf(tx);
                   const s = signed(tx);
                   const acc = accById.get(tx.accountId);
-                  // Design parity wave C task 3 (owner rule 1's list/panel sync, txn gap 9): the
-                  // SAME id `effectiveSelectedId` above resolves to — never a second "what's open"
-                  // check (owner rule 3), and always `false` off wide (`effectiveSelectedId` is
-                  // `null` there).
+
                   const selected = effectiveSelectedId === tx.id;
                   return (
                     <div
@@ -552,17 +491,7 @@ export function TransactionsScreen({
                         animationDelay: `${i * 20}ms`,
                         display: "flex",
                         alignItems: "center",
-                        // Edge-to-edge selection bleed (Budget.tsx's identical technique, design
-                        // parity wave C task 1), WIDE ONLY: row padding matches the CardBox's own
-                        // 12px horizontal padding, and the equal-and-opposite negative margin lets
-                        // the row's background reach the card's edges while leaving the CONTENT at
-                        // the same horizontal position as before — applied to every wide row, not
-                        // just the selected one, so nothing shifts on select. No `width` (the
-                        // design row, v3:383, has none): a `width:100%` here over-constrains the
-                        // box (margin-right gets ignored) and the bleed stops 24px short of the
-                        // card's right edge — block-level `width:auto` resolves BOTH negative
-                        // margins. Phone keeps its exact pre-wave `6px 0` geometry (dividers inset
-                        // by the card's own 12px padding).
+
                         padding: inWide ? "6px 12px" : "6px 0",
                         margin: inWide ? "0 -12px" : undefined,
                         boxSizing: "border-box",
@@ -651,10 +580,7 @@ export function TransactionsScreen({
         })}
       </div>
 
-      {/* Design parity wave C task 5: wide replaces this modal with the inline `WideFilterPanel`
-          above and never mounts the phone sheet at all (not just `show={false}` — `pickFilter`
-          is the SAME boolean the inline panel's mount condition reads, and this sheet must never
-          answer to it once wide is active). Phone is untouched: this is exactly the pre-C5 render. */}
+      {}
       {!inWide && (
         <TransactionFilterSheet
           show={pickFilter}

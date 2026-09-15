@@ -6,6 +6,9 @@ foldable and your desktop, self-hosted with a single `docker compose up`.
 It installs from the browser, works offline, syncs in the background
 (optionally end-to-end encrypted), and your data stays yours.
 
+![Enveo budget with fictional USD demo data](docs/assets/app-demo.png)
+
+*All accounts and amounts shown are independently invented demo data.*
 
 <p align="center"><strong>Website: <a href="https://enveo.app">enveo.app</a></strong> · <strong><a href="docs/readme.md">Documentation</a></strong> · AGPL-3.0</p>
 

@@ -104,7 +104,6 @@ function activePhase(job: StoredE2eeImportJob): "extracting" | "validating" | "e
   return job.resumePhase ?? "extracting";
 }
 
- 
 function parseInput(value: string): { images: Array<string | null> } {
   const parsed = JSON.parse(value) as { images?: unknown };
   if (
@@ -118,7 +117,6 @@ function parseInput(value: string): { images: Array<string | null> } {
   return { images: [...(parsed.images as Array<string | null>)] };
 }
 
- 
 interface StoredChunk {
   index: number;
   start: number;
@@ -172,7 +170,6 @@ const freshChunks = (imageCount: number): StoredChunk[] =>
 const coveredBy = (chunks: readonly StoredChunk[], status: StoredChunk["status"], position: number): boolean =>
   chunks.some((chunk) => chunk.status === status && position >= chunk.start && position < chunk.end);
 
- 
 const screenshotsOf = (chunks: readonly StoredChunk[]) => {
   const total = chunks.reduce((max, chunk) => Math.max(max, chunk.end), 0);
   let read = 0;
@@ -184,7 +181,6 @@ const screenshotsOf = (chunks: readonly StoredChunk[]) => {
   return { total, read, failed };
 };
 
- 
 const stillNeeded = (chunks: readonly StoredChunk[], position: number): boolean =>
   chunks.some((chunk) => chunk.status !== "extracted" && position >= chunk.start && position < chunk.end);
 
@@ -500,12 +496,12 @@ export class E2eeImportJobRunner {
           this.assertCurrent();
           chunks = job.chunkCiphertext ? parseChunks(await this.decrypt(job.chunkCiphertext, key, aad("chunks"))) : freshChunks(images.length);
           this.assertCurrent();
-           
+
           if (manualStart) {
             chunks = chunks.map((chunk) => (chunk.status === "failed" ? { ...chunk, status: "pending", attempt: 0, errorCode: null, retryAt: null } : chunk));
           }
         }
-         
+
         let extractionCompletedThisRun = false;
         const persistChunks = async (change: Partial<StoredE2eeImportJob> = {}) => {
           const chunkCiphertext = await this.encrypt(JSON.stringify({ chunks }), key, aad("chunks"));
@@ -531,7 +527,6 @@ export class E2eeImportJobRunner {
             await persistChunks();
           },
           failChunk: async (chunkIndex, error) => {
-             
             if (isOfflineFailure(error) || (error instanceof Error && error.message === "locked") || error instanceof ImportJobGenerationChanged) throw error;
             await this.fence(job);
             const chunk = chunks.find((candidate) => candidate.index === chunkIndex);
@@ -547,7 +542,7 @@ export class E2eeImportJobRunner {
           saveExtraction: async (result) => {
             await this.fence(job);
             const checkpointCiphertext = await this.encrypt(JSON.stringify(result), key, aad("checkpoint"));
-             
+
             const retained = images.map((image, position) =>
               coveredBy(chunks, "failed", position) && !coveredBy(chunks, "extracted", position) ? image : null,
             );
@@ -610,7 +605,6 @@ export class E2eeImportJobRunner {
           });
         } catch (error) {
           if (error instanceof ImportChunksPendingError) {
-             
             const pending = chunks.filter((chunk) => error.pendingChunks.includes(chunk.index) && chunk.retryAt !== null);
             const earliest = pending.reduce<StoredChunk | null>((best, chunk) => (best === null || chunk.retryAt! < best.retryAt! ? chunk : best), null);
             await this.fence(job);
@@ -630,7 +624,6 @@ export class E2eeImportJobRunner {
           if (extractionCompletedThisRun && !(error instanceof StaleImportJobRunner)) {
             const current = await importJobStorage.getJob(this.options.scope, job.id);
             if (this.isCurrent() && current?.status === "running") {
-               
               await this.recordFailure(current, error).catch((writeError) => {
                 if (!(writeError instanceof StaleImportJobRunner)) throw writeError;
               });

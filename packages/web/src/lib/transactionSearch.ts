@@ -19,7 +19,6 @@ export type TransactionKind = "expense" | "income" | "refund" | "transfer";
 
 export type TransactionAmountFilter = { mode: "exact"; minor: number } | { mode: "range"; minMinor: number | null; maxMinor: number | null };
 
- 
 export const MISSING_TRANSACTION_FIELD = "";
 
 export interface TransactionFilters {

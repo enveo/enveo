@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { assertDbEnv, assertSeedEnv, resolveDatabaseUrl } from "./env";
 
-const ROOT = new URL("../../..", import.meta.url).pathname;  
+const ROOT = new URL("../../..", import.meta.url).pathname;
 
 const KEYS = ["DATABASE_URL", "DB_HOST", "DB_PORT", "DB_USER", "DB_PASS", "DB_NAME", "NODE_ENV", "ENVEO_SEED_ACK"] as const;
 const saved: Record<string, string | undefined> = {};

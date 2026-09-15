@@ -33,7 +33,7 @@ describe("monthRuler", () => {
     expect(monthRuler("2026-07-19")).toEqual({ day: 19, days: 31, pct: 61 });
   });
   test("first and last day", () => {
-    expect(monthRuler("2026-02-01").pct).toBe(4);  
+    expect(monthRuler("2026-02-01").pct).toBe(4);
     expect(monthRuler("2026-02-28").pct).toBe(100);
   });
 });

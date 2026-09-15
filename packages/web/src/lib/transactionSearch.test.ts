@@ -60,18 +60,14 @@ const filters = (overrides: Partial<TransactionFilters> = {}): TransactionFilter
 
 describe("monthly transaction search", () => {
   test("a partial place name finds the transaction", () => {
-     
     const expense = transaction({ placeId: "place-linden" });
 
-     
     const matches = matchesTransactionQuery(expense, "li", index);
 
-     
     expect(matches).toBe(true);
   });
 
   test("every user-facing transaction description participates in search", () => {
-     
     const cases: Array<{ query: string; expense: Transaction }> = [
       { query: "coffee", expense: transaction({ name: "Morning coffee" }) },
       { query: "birthday", expense: transaction({ name: "Gift", note: "Birthday for Ada" }) },
@@ -92,20 +88,16 @@ describe("monthly transaction search", () => {
       },
     ];
 
-     
     const results = cases.map(({ query, expense }) => matchesTransactionQuery(expense, query, index));
 
-     
     expect(results).toEqual([true, true, true, true, true, true, true]);
   });
 
   test("text fragments and exact amounts can satisfy different query terms", () => {
-     
     const lindenForExactAmount = transaction({ placeId: "place-linden", amount: 5_042 });
     const lindenForAnotherAmount = transaction({ placeId: "place-linden", amount: 6_000 });
     const anotherMerchantForExactAmount = transaction({ name: "Clover Market", amount: 5_042 });
 
-     
     const results = [
       matchesTransactionQuery(lindenForExactAmount, "li 50,42", index),
       matchesTransactionQuery(lindenForAnotherAmount, "li 50,42", index),
@@ -118,18 +110,14 @@ describe("monthly transaction search", () => {
   });
 
   test("a locale-formatted amount with grouping spaces remains one query term", () => {
-     
     const expense = transaction({ placeId: "place-linden", amount: 194_400 });
 
-     
     expect(matchesTransactionQuery(expense, "li 1 944,00", index)).toBe(true);
   });
 
   test("amounts copied from supported locales preserve grouping and decimal separators", () => {
-     
     const localeAmounts = ["1 944,00", "1\u00a0944,00", "1\u202f944,00", "1,944.00", "1.944,00", "1,944", "1.944"];
 
-     
     const parsed = localeAmounts.map(parseSearchAmount);
 
     // then: grouping never changes the minor-unit value
@@ -137,7 +125,6 @@ describe("monthly transaction search", () => {
   });
 
   test("amount parsing rejects malformed grouping instead of guessing", () => {
-     
     const malformed = ["1,94,4.00", "1.944.00", "12 34,00", "1,234.567", "50abc", "-1.00"];
 
     // when/then: an invalid token never turns into a surprising amount match
@@ -145,30 +132,24 @@ describe("monthly transaction search", () => {
   });
 
   test("locale-formatted grouped amounts work inside a multi-term query", () => {
-     
     const expense = transaction({ placeId: "place-linden", amount: 194_400 });
 
-     
     expect(matchesTransactionQuery(expense, "li 1,944.00", index)).toBe(true);
     expect(matchesTransactionQuery(expense, "li 1.944,00", index)).toBe(true);
   });
 
   test("search folds Polish letters that Unicode decomposition leaves intact", () => {
-     
     const polishIndex = createTransactionSearchIndex({ ...indexSources(), places: [{ id: "place-lodz", name: "Łódź Fabryczna" }] });
     const expense = transaction({ placeId: "place-lodz" });
 
-     
     expect(matchesTransactionQuery(expense, "lodz", polishIndex)).toBe(true);
   });
 
   test("a numeric term still matches text such as venue names", () => {
-     
     const zone = transaction({ placeId: "place-zone-51", amount: 1_000 });
     const year = transaction({ placeId: "place-1944", amount: 1_000 });
     const unrelatedAmount = transaction({ placeId: null, name: "Dinner", amount: 15_100 });
 
-     
     expect(matchesTransactionQuery(zone, "strefa 51", index)).toBe(true);
     expect(matchesTransactionQuery(year, "1944", index)).toBe(true);
     expect(matchesTransactionQuery(unrelatedAmount, "51", index)).toBe(false);
@@ -224,7 +205,6 @@ describe("transaction filters", () => {
   });
 
   test("different dimensions combine with AND while selections inside one dimension use OR", () => {
-     
     const expense = transaction({ placeId: "place-linden", categoryId: "category-groceries" });
     const selected = filters({
       accountIds: new Set(["account-checking", "account-savings"]),
@@ -238,7 +218,6 @@ describe("transaction filters", () => {
   });
 
   test("transfer destinations and split item assignments participate in filters", () => {
-     
     const transfer = transaction({ type: "transfer", toAccountId: "account-savings", envelopeId: null, categoryId: null });
     const split = transaction({
       envelopeId: null,
@@ -246,14 +225,12 @@ describe("transaction filters", () => {
       items: [{ id: "item-1", envelopeId: "envelope-groceries", categoryId: "category-chemicals", amount: 1_000 }],
     });
 
-     
     expect(matchesTransactionFilters(transfer, filters({ accountIds: new Set(["account-savings"]) }))).toBe(true);
     expect(matchesTransactionFilters(split, filters({ envelopeIds: new Set(["envelope-groceries"]) }))).toBe(true);
     expect(matchesTransactionFilters(split, filters({ categoryIds: new Set(["category-chemicals"]) }))).toBe(true);
   });
 
   test("expense, refund, income and transfer are distinct filter choices", () => {
-     
     const expense = transaction();
     const refund = transaction({ isRefund: true });
     const income = transaction({ type: "income", envelopeId: null, categoryId: null });
@@ -266,7 +243,6 @@ describe("transaction filters", () => {
   });
 
   test("amount filters support an exact value or an inclusive range", () => {
-     
     const expense = transaction({ amount: 5_042 });
 
     // when/then: exact and boundary values match; values outside the range do not
@@ -277,16 +253,13 @@ describe("transaction filters", () => {
   });
 
   test("filter choices retain archived accounts and envelopes referenced this month", () => {
-     
     const entries = [
       transaction({ type: "transfer", toAccountId: "account-savings", envelopeId: null, categoryId: null }),
       transaction({ envelopeId: null, items: [{ id: "item-1", envelopeId: "envelope-archived", categoryId: null, amount: 1_000 }] }),
     ];
 
-     
     const references = transactionFilterReferences(entries);
 
-     
     expect(references.accountIds).toEqual(new Set(["account-checking", "account-savings"]));
     expect(references.envelopeIds).toEqual(new Set(["envelope-archived"]));
   });

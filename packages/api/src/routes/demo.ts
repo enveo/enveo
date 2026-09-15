@@ -1,11 +1,3 @@
-
-
-
-
-
-
-
-
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -17,29 +9,20 @@ import { ownerAssertionFails } from "./sync";
 
 export const demoRoutes = new Hono();
 
-
-
-
-
-
- 
 export const seedInput = z.object({
   locale: z.enum(["pl", "en"]).optional(),
   userId: z.string().min(1).optional(),
 });
 
- 
 export const resetInput = z.object({
   confirm: z.literal("RESET"),
   userId: z.string().min(1).optional(),
 });
 
- 
 const zl = (x: number) => Math.round(x * 100);
 
 type Locale = "pl" | "en";
 
- 
 function monthAt(offset: number): { ym: string; day: (d: number) => string } {
   const now = new Date();
   const base = new Date(now.getFullYear(), now.getMonth() - offset, 1);
@@ -55,8 +38,8 @@ const NAMES: Record<
     accounts: [string, string, string];
     groups: [string, string, string];
     env: Record<"housing" | "utilities" | "subs" | "groceries" | "transport" | "health" | "fun" | "savings" | "rainy", string>;
-    categories: [string, string, string];  
-    places: [string, string];  
+    categories: [string, string, string];
+    places: [string, string];
     tx: { salary: string; rent: string; utilities: string; subs: string; groceries: string; fuel: string; fun: string; health: string };
   }
 > = {
@@ -116,7 +99,6 @@ const NAMES: Record<
   },
 };
 
- 
 const ALLOC: Record<keyof (typeof NAMES)["pl"]["env"], number> = {
   housing: 1800,
   utilities: 250,
@@ -129,7 +111,6 @@ const ALLOC: Record<keyof (typeof NAMES)["pl"]["env"], number> = {
   rainy: 100,
 };
 
- 
 const GROCERY_AMOUNTS: number[][] = [
   [286.4, 312.15, 295.3, 304.5],
   [281.9, 318.6, 302.45, 289.7],
@@ -144,12 +125,10 @@ demoRoutes.post("/demo/seed", async (c) => {
   const seeded = await db.transaction(async (tx) => {
     const budgetId = (await requireTier(c, "plain", tx)).id;
 
-     
     const [anyAccount] = await tx.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, budgetId)).limit(1);
     const [anyTxn] = await tx.select({ id: s.transactions.id }).from(s.transactions).where(eq(s.transactions.budgetId, budgetId)).limit(1);
     if (anyAccount || anyTxn) return false;
 
-     
     const accRows = await tx
       .insert(s.accounts)
       .values([
@@ -160,14 +139,12 @@ demoRoutes.post("/demo/seed", async (c) => {
       .returning();
     const checking = accRows[0]!;
 
-     
     const groupRows = await tx
       .insert(s.envelopeGroups)
       .values(n.groups.map((name, i) => ({ budgetId, name, sort: i })))
       .returning();
     const [bills, living, savingsGrp] = [groupRows[0]!, groupRows[1]!, groupRows[2]!];
 
-     
     const envDefs: Array<{
       key: keyof typeof n.env;
       groupId: string;
@@ -203,7 +180,6 @@ demoRoutes.post("/demo/seed", async (c) => {
       .returning();
     const env = (key: keyof typeof n.env) => envRows[envDefs.findIndex((e) => e.key === key)]!;
 
-     
     const catRows = await tx
       .insert(s.categories)
       .values(n.categories.map((name) => ({ budgetId, name })))
@@ -215,7 +191,6 @@ demoRoutes.post("/demo/seed", async (c) => {
       .returning();
     const [supermarket, gasStation] = [placeRows[0]!, placeRows[1]!];
 
-     
     const months = [monthAt(0), monthAt(1), monthAt(2)];
     await tx.insert(s.allocations).values(
       months.flatMap((m) =>
@@ -228,11 +203,9 @@ demoRoutes.post("/demo/seed", async (c) => {
       ),
     );
 
-     
     type TxnRow = typeof s.transactions.$inferInsert;
     const txns: TxnRow[] = [];
     months.forEach((m, off) => {
-       
       txns.push({
         budgetId,
         type: "income",
@@ -241,7 +214,7 @@ demoRoutes.post("/demo/seed", async (c) => {
         date: m.day(1),
         name: n.tx.salary,
       });
-       
+
       txns.push({
         budgetId,
         type: "expense",
@@ -270,7 +243,7 @@ demoRoutes.post("/demo/seed", async (c) => {
         categoryId: catHome.id,
         name: n.tx.utilities,
       });
-       
+
       const groceryDays = [4, 11, 18, 25];
       groceryDays.forEach((d, i) => {
         txns.push({
@@ -285,7 +258,7 @@ demoRoutes.post("/demo/seed", async (c) => {
           name: n.tx.groceries,
         });
       });
-       
+
       txns.push({
         budgetId,
         type: "expense",
@@ -307,7 +280,7 @@ demoRoutes.post("/demo/seed", async (c) => {
         categoryId: catCar.id,
         name: n.tx.fuel,
       });
-       
+
       txns.push({
         budgetId,
         type: "expense",
@@ -317,7 +290,7 @@ demoRoutes.post("/demo/seed", async (c) => {
         envelopeId: env("fun").id,
         name: n.tx.fun,
       });
-       
+
       if (off % 2 === 0) {
         txns.push({
           budgetId,

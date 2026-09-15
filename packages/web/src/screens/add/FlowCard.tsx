@@ -5,25 +5,23 @@ import { useT } from "../../lib/i18n";
 import { Glyph, Ico } from "../../lib/icons";
 import { font, P, tint } from "../../lib/theme";
 
- 
 export interface FlowEndpoint {
-   
   role: string;
   name: string;
-   
+
   color: string;
   icon: string;
-   
+
   before: number;
   after: number;
   afterColor: string;
-   
+
   hint: string;
-   
+
   pillTint: string;
-   
+
   onOpen?: () => void;
-   
+
   placeholder?: boolean;
 }
 
@@ -33,9 +31,9 @@ export interface SplitPanel {
   envelopes: StateResponse["envelopes"];
   /** The typed amount the items must add up to. */
   total: number;
-   
+
   plus: boolean;
-   
+
   activeIndex: number | null;
   onFocusItem: (index: number) => void;
   onRemoveItem: (index: number) => void;
@@ -44,12 +42,6 @@ export interface SplitPanel {
 }
 
 const EYEBROW = { display: "block", fontSize: 9, fontWeight: 750, letterSpacing: "1.2px", textTransform: "uppercase" } as const;
-
-
-
-
-
-
 
 export function FlowCard({
   source,
@@ -66,21 +58,21 @@ export function FlowCard({
   splitAction,
 }: {
   source: FlowEndpoint;
-   
+
   target: FlowEndpoint | null;
-   
+
   pool: { role: string; title: string; caption: string } | null;
-   
+
   note: string | null;
   split: SplitPanel | null;
-   
+
   automatic: { label: string; checked: boolean; onToggle: (checked: boolean) => void; body: ReactNode } | null;
   amountMinor: number;
   plus: boolean;
   dateLabel: string;
   dateHint: string;
   onOpenDate: () => void;
-   
+
   splitAction: { label: string; onClick: () => void } | null;
 }) {
   const C = useTheme();
@@ -286,7 +278,6 @@ function EndpointRow({ endpoint, showEffect }: { endpoint: FlowEndpoint; showEff
   );
 }
 
- 
 function SplitPanelBody({ split }: { split: SplitPanel }) {
   const C = useTheme();
   const M = useMask();
@@ -305,10 +296,7 @@ function SplitPanelBody({ split }: { split: SplitPanel }) {
         const after = e ? e.available + (split.plus ? it.amount : -it.amount) : 0;
         const active = split.activeIndex === idx;
         return (
-          <div
-            key={idx}  
-            style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderBottom: `1px solid ${C.line}` }}
-          >
+          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderBottom: `1px solid ${C.line}` }}>
             <span
               style={{
                 width: 28,

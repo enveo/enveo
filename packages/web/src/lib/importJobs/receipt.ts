@@ -3,7 +3,6 @@ import type { EditedImportItem } from "../api";
 import type { ImportReviewRow } from "../importReview";
 import type { LocalImportPlan } from "../localImport";
 
- 
 const balances = (ledger: ClientLedger) =>
   new Map(
     computeBudgetState(

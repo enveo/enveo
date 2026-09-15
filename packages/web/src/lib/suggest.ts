@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import type { ClientLedger } from "@enveo/shared";
 
 const DAY_MS = 86_400_000;
@@ -13,17 +7,15 @@ function toUTC(iso: string): number {
   return Date.UTC(y, m - 1, d);
 }
 
- 
 function daysAgo(date: string, todayISO: string): number {
   return Math.round((toUTC(todayISO) - toUTC(date)) / DAY_MS);
 }
 
- 
 function recencyWeight(daysBack: number): number {
   if (daysBack < 0 || daysBack > 90) return 0;
   if (daysBack <= 30) return 1;
   if (daysBack <= 60) return 0.5;
-  return 0.25;  
+  return 0.25;
 }
 
 function median(values: number[]): number {
@@ -67,12 +59,6 @@ export function rankEnvelopes(ledger: ClientLedger, todayISO: string, amountMino
   scored.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.sort - b.sort));
   return scored.map((s) => s.id);
 }
-
-
-
-
-
-
 
 export function rankPlaces(ledger: ClientLedger, envelopeId: string | null, categoryId: string | null): string[] {
   const counts = new Map<string, { count: number; lastDate: string }>();

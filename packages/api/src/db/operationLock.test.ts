@@ -1,23 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { beforeAll, describe, expect, it } from "bun:test";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -34,8 +14,6 @@ import * as s from "./schema";
  *  Applied to the ONE hook that spawns it, NOT via setDefaultTimeout (process-global in bun:
  *  it would silently relax every other suite sharing the run). */
 const CHILD_TIMEOUT_MS = 120_000;
-
- 
 
 describe("operationLockKey", () => {
   it("builds the (operation, id) key for a registered operation", () => {
@@ -85,8 +63,6 @@ async function _rejectPooledDbAtCompileTime(pooled: typeof db, key: OperationLoc
 }
 void _rejectPooledDbAtCompileTime;
 
- 
-
 const TEST_URL = process.env.TEST_DATABASE_URL ?? "";
 if (TEST_URL && TEST_URL === process.env.DATABASE_URL) {
   throw new Error("TEST_DATABASE_URL must differ from DATABASE_URL — this suite writes to the DB.");
@@ -113,9 +89,8 @@ describe.skipIf(!TEST_URL)("operation lock semantics (DB-backed, child process)"
   }, CHILD_TIMEOUT_MS);
 
   it("the same (operation, id) serializes across independent connections — forced, not lucky", () => {
-     
     expect(out.serialization.waiterObserved).toBe(true);
-     
+
     expect(out.serialization.events).toEqual(["A-enter", "B-blocked-observed", "A-exit", "B-enter"]);
   });
 

@@ -118,13 +118,10 @@ function processorFixture(options: { cancelledAfterUpstream?: boolean; enrichmen
 
 describe("plain import job processor", () => {
   test("persists extraction before image deletion and records optional enrichment in phase order", async () => {
-     
     const fixture = processorFixture({ enrichment: true });
 
-     
     const outcome = await processClaimedImportJob(claimedJob(), { ...fixture, now: () => NOW });
 
-     
     expect(outcome).toEqual({ kind: "ready" });
     expect(fixture.events.filter((event) => event !== "heartbeat")).toEqual([
       "extracting",
@@ -530,7 +527,6 @@ describe("chunked cycle one in the worker", () => {
     });
 
   test("hands per-chunk state to recognition and judges each failed window on its own attempt counter", async () => {
-     
     const fixture = processorFixture();
     let seenChunks: unknown;
     const recognize = async (input: ImportRecognitionRunInput) => {
@@ -543,10 +539,8 @@ describe("chunked cycle one in the worker", () => {
       throw new ImportChunksPendingError([1]);
     };
 
-     
     const outcome = await processClaimedImportJob(twoWindowJob(), { ...fixture, recognize, now: () => NOW });
 
-     
     expect(seenChunks).toEqual([
       { index: 0, start: 0, end: 6, extraction: null, permanentlyFailed: false },
       { index: 1, start: 5, end: 7, extraction: null, permanentlyFailed: false },
@@ -591,7 +585,6 @@ describe("chunked cycle one in the worker", () => {
   });
 
   test("judges a post-extraction failure as a first attempt when extraction completed in this claim", async () => {
-     
     const fixture = processorFixture();
     const recognize = async (input: ImportRecognitionRunInput) => {
       await input.saveChunkExtraction(0, { rows: [] });
@@ -601,7 +594,6 @@ describe("chunked cycle one in the worker", () => {
 
     const outcome = await processClaimedImportJob(claimedJob({ attempt: 3 }), { ...fixture, recognize, now: () => NOW });
 
-     
     expect(outcome).toEqual({ kind: "retry", errorCode: "malformed_model_response", retryAt: new Date(NOW.getTime() + 30_000) });
   });
 

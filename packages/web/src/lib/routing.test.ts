@@ -15,8 +15,6 @@ function parse(url: string): Route {
 describe("routeToUrl / parseUrl round-trip", () => {
   for (const screen of SCREENS) {
     for (const reportsView of REPORT_VIEWS) {
-      
-
       if (screen !== "reports" && reportsView !== "overview") continue;
       for (const envelopeId of [null, ENV_ID]) {
         // The add pane never serialises ?env (its URL is the constant "/add" — see routeToUrl's
@@ -50,12 +48,6 @@ describe("routeToUrl", () => {
   });
 
   test("addExpense NEVER serialises ?env — the add pane's URL is a constant /add", () => {
-    
-
-
-
-
-
     expect(routeToUrl({ screen: "addExpense", reportsView: "overview", envelopeId: ENV_ID })).toBe("/add");
   });
 
@@ -64,7 +56,6 @@ describe("routeToUrl", () => {
   });
 
   test("a non-reports screen never gets a reports subpath even if reportsView is set", () => {
-     
     expect(routeToUrl({ screen: "budget", reportsView: "assets", envelopeId: null })).toBe("/budget");
   });
 
@@ -142,9 +133,6 @@ describe("historyAction (entry-0 contract at the codec/glue seam)", () => {
   });
 
   test("the FIRST navigation after activation PUSHES — never replaces the start entry", () => {
-    
-
-
     expect(historyAction(true, true, false)).toBe("push");
   });
 

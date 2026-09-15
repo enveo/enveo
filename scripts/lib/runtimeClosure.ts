@@ -29,33 +29,29 @@ export type Manifest = Readonly<{
   peerDependenciesMeta?: Record<string, { optional?: boolean } | undefined>;
 }>;
 
- 
 export type Link = Readonly<{
-   
   name: string;
-   
+
   storeId: string | null;
-   
+
   workspaceDir: string | null;
 }>;
 
 export type StoreReader = Readonly<{
-   
   linksIn: (dir: string) => Link[];
-   
+
   manifestOfStoreEntry: (storeId: string) => Manifest;
-   
+
   manifestOfWorkspace: (dir: string) => Manifest;
-   
+
   nodeModulesOfStoreEntry: (storeId: string) => string;
-   
+
   nodeModulesOfWorkspace: (dir: string) => string;
 }>;
 
 export type Closure = Readonly<{
-   
   keep: ReadonlySet<string>;
-   
+
   reachedVia: ReadonlyMap<string, string>;
 }>;
 
@@ -71,7 +67,6 @@ export function requiredSpecifiers(manifest: Manifest): Set<string> {
   return required;
 }
 
- 
 export function computeClosure(reader: StoreReader, workspaceRoots: readonly string[]): Closure {
   const keep = new Set<string>();
   const reachedVia = new Map<string, string>();

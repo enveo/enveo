@@ -77,7 +77,6 @@ export function alloc(envelopeId: string, month: string, amount: number): Alloca
   return { id: uid("al"), envelopeId, month, amount };
 }
 
- 
 export const asClientLedger = (l: Ledger): ClientLedger => ({
   ...l,
   budgets: [],
@@ -87,7 +86,6 @@ export const asClientLedger = (l: Ledger): ClientLedger => ({
 
 export const MONTHS = ["2026-04", "2026-05", "2026-06", "2026-07"] as const;
 
- 
 export function ledgerArb(): fc.Arbitrary<Ledger> {
   const months = [...MONTHS];
   return fc
@@ -97,7 +95,7 @@ export function ledgerArb(): fc.Arbitrary<Ledger> {
     })
     .chain(({ nAcc, nEnv }) => {
       const accounts: Account[] = Array.from({ length: nAcc }, (_, i) => acc({ id: `A${i}` }));
-       
+
       return fc
         .tuple(
           fc.array(fc.boolean(), { minLength: nAcc, maxLength: nAcc }),
@@ -165,7 +163,7 @@ export function ledgerArb(): fc.Arbitrary<Ledger> {
                 date,
               });
             }
-             
+
             return tx({
               type: "expense",
               accountId: accs[s.accIdx]!.id,
@@ -187,7 +185,6 @@ export function ledgerArb(): fc.Arbitrary<Ledger> {
     });
 }
 
- 
 export function deepFreeze<T>(value: T): T {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
     Object.freeze(value);
@@ -276,7 +273,6 @@ const pick = <T>(arr: readonly T[], i: number): T | undefined => (arr.length > 0
 export const envDeletable = (l: ClientLedger, envId: string): boolean =>
   !l.transactions.some((t) => (t.type === "expense" && t.envelopeId === envId) || t.items.some((i) => i.envelopeId === envId));
 
- 
 export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncOp | null {
   switch (s.k) {
     case "txnCreate": {
@@ -313,7 +309,7 @@ export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncO
         });
       }
       const e = pick(l.envelopes, s.ei);
-      if (!e) return null;  
+      if (!e) return null;
       if (s.split) {
         const e2 = pick(l.envelopes, s.ei + 1)!;
         const a1 = Math.floor(s.amount / 2);

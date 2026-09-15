@@ -1,7 +1,5 @@
 import { storageMode } from "./idb";
 
-
-
 const KEY = "enveo.lastAccount";
 
 export function getLastAccountId(): string | null {
@@ -13,21 +11,17 @@ export function getLastAccountId(): string | null {
 }
 
 export function setLastAccountId(id: string): void {
-  if (storageMode() === "memory-session") return;  
+  if (storageMode() === "memory-session") return;
   try {
     localStorage.setItem(KEY, id);
-  } catch {
-     
-  }
+  } catch {}
 }
 
 /** Explicit sign-out: this account-derived device preference must not remain behind. */
 export function clearLastAccountId(): void {
   try {
     localStorage.removeItem(KEY);
-  } catch {
-     
-  }
+  } catch {}
 }
 
 /** Preselection: the remembered account if still active, otherwise the fallback. */

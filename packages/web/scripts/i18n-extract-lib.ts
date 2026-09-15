@@ -1,12 +1,3 @@
-
-
-
-
-
-
-
-
-
 declare const Bun: {
   Glob: new (pattern: string) => { scanSync: (cwd: string) => Iterable<string> };
   file: (path: string) => { text: () => Promise<string> };
@@ -16,10 +7,8 @@ declare const Bun: {
 /** packages/web/src — resolved from this file, so the caller's cwd does not matter. */
 export const SRC = new URL("../src/", import.meta.url).pathname;
 
- 
 const CALL = /\b(?:t|tp|msg)\(\s*"((?:[^"\\]|\\.)*)"|\btranslate(?:Plural)?\([^,]{0,40},\s*"((?:[^"\\]|\\.)*)"/g;
 
- 
 const unescapeLiteral = (raw: string): string => {
   try {
     return JSON.parse(`"${raw}"`) as string;
@@ -46,11 +35,10 @@ export function matchMessages(src: string): { message: string; line: number }[] 
   return out;
 }
 
- 
 export async function extractSites(): Promise<Map<string, string[]>> {
   const sites = new Map<string, string[]>();
   for (const f of new Bun.Glob("**/*.{ts,tsx}").scanSync(SRC)) {
-    if (f.includes("messages.generated") || f.includes("i18n/locales/")) continue;  
+    if (f.includes("messages.generated") || f.includes("i18n/locales/")) continue;
     const src = await Bun.file(SRC + f).text();
     for (const { message, line } of matchMessages(src)) {
       const at = `${f}:${line}`;
@@ -81,15 +69,14 @@ export async function extract(): Promise<string[]> {
 export function ambiguous(sites: Map<string, string[]>): { message: string; sites: string[] }[] {
   const candidates: { message: string; sites: string[] }[] = [];
   for (const [message, at] of sites) {
-    if (at.length < 2) continue;  
+    if (at.length < 2) continue;
     const words = message.trim().split(/\s+/).length;
-    if (words > 2 || /[.?!:…]$/.test(message.trim()) || /\{\w+\}/.test(message)) continue;  
+    if (words > 2 || /[.?!:…]$/.test(message.trim()) || /\{\w+\}/.test(message)) continue;
     candidates.push({ message, sites: at });
   }
   return candidates.sort((a, b) => b.sites.length - a.sites.length || a.message.localeCompare(b.message));
 }
 
- 
 export async function writeMessages(): Promise<number> {
   const msgs = await extract();
   await Bun.write(

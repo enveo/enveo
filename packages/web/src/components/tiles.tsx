@@ -8,13 +8,11 @@ import { tint } from "../lib/theme";
 import { spendMeter } from "../lib/uiState";
 import { GoalRing, SpendLine } from "./kit";
 
- 
 export function EnvRow({ e, onClick, last }: { e: EnvelopeView; onClick: () => void; last?: boolean }) {
   const M = useMask();
   const C = useTheme();
   const { t, lang } = useT();
   const { settings } = useSettings();
-  
 
   const meter = e.isSavings && e.spent <= 0 ? null : spendMeter(e);
   const gp = goalProgress(e);
@@ -73,7 +71,6 @@ const lightChip = (c: string) => c === "#e9e3d7" || c === "#cdeede";
 
 export const accountIconColor = (color: string) => (lightChip(color) ? "#8a8576" : color);
 
- 
 export function AccCell({ a, onClick, last }: { a: AccountView; onClick: () => void; last?: boolean }) {
   const M = useMask();
   const C = useTheme();

@@ -70,7 +70,6 @@ describe("plain import upload drafts", () => {
   });
 
   it("atomically keeps one prepared transaction identity and merges progress across tabs", async () => {
-     
     const claims = await Promise.all([
       importJobStorage.claimApplyRow(SCOPE, JOB_ID, {
         rowToken: "opaque-row-one",
@@ -93,7 +92,6 @@ describe("plain import upload drafts", () => {
       importJobStorage.mergeApplyProgress(SCOPE, JOB_ID, { skippedRowIds: ["opaque-row-two"] }),
     ]);
 
-     
     expect(claims.filter((claim) => claim.kind === "claimed")).toHaveLength(1);
     expect(claims.filter((claim) => claim.kind === "busy")).toHaveLength(1);
     expect(await importJobStorage.getApplyProgress(SCOPE, JOB_ID)).toEqual({
@@ -128,7 +126,6 @@ describe("plain import upload drafts", () => {
       leaseUntil: 251,
     });
 
-     
     const wrongOwnerRenewed = await importJobStorage.renewApplyRow(SCOPE, JOB_ID, {
       rowToken: "h1.opaque-row",
       ownerToken: "tab-two",
@@ -144,7 +141,6 @@ describe("plain import upload drafts", () => {
       leaseUntil: 301,
     });
 
-     
     expect(first).toEqual({ kind: "claimed", transactionId: "transaction-from-tab-one", fence: 1 });
     expect(blocked).toEqual({ kind: "busy" });
     expect(sameOwnerBlocked).toEqual({ kind: "busy" });
@@ -167,7 +163,6 @@ describe("plain import upload drafts", () => {
   });
 
   it("proves a transaction only from persistent replica state and lets deadletter rejection win", async () => {
-     
     await idbPut("meta", OWNER_ID, "userId");
     await idbPut("meta", BUDGET_ID, "budgetId");
     await idbPut("meta", { transactions: [] }, "ledger");
@@ -180,11 +175,9 @@ describe("plain import upload drafts", () => {
     // then: optimistic memory alone cannot prove the prepared row
     expect(await importJobStorage.durableTransactionProof(SCOPE, operation.payload.id)).toBe("absent");
 
-     
     await idbAdd("outbox", { op: operation });
     expect(await importJobStorage.durableTransactionProof(SCOPE, operation.payload.id)).toBe("durable");
 
-     
     await idbPut("deadletter", { opId: operation.opId, op: operation, error: "rejected", at: new Date(0).toISOString() });
     expect(await importJobStorage.durableTransactionProof(SCOPE, operation.payload.id)).toBe("rejected");
   });

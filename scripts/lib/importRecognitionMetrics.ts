@@ -97,7 +97,7 @@ export interface ImportRecognitionMetrics {
   postingStatusAccuracy: ImportRecognitionRatio;
   duplicateStatusAccuracy: ImportRecognitionRatio;
   relationPrecision: ImportRecognitionRatio;
-   
+
   relationRecall: ImportRecognitionRatio;
   /** Null only when neither truth nor output contains a relation. */
   relationF1: number | null;
@@ -109,9 +109,9 @@ export interface ImportRecognitionMetrics {
   interpretationErrors: number;
   reviewCoverage: ImportRecognitionRatio;
   unexpectedReviewReasons: number;
-   
+
   unexpectedReviewReasonCounts: Record<string, number>;
-   
+
   reviewRequired: number;
   reviewBreakdown: ImportRecognitionReviewBreakdown;
   missingRows: number;
@@ -339,7 +339,6 @@ export function scoreImportRecognition(
   };
 }
 
- 
 export function gateImportRecognition(
   expected: readonly ExpectedImportRecognitionRow[],
   baselineActual: readonly ActualImportRecognitionRow[],

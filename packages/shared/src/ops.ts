@@ -1,16 +1,5 @@
-
-
-
-
-
-
-
-
-
 import { z } from "zod";
 import { budgetPreferencesPatchSchema, reconcileBudgetPreferences } from "./preferences";
-
- 
 
 export const txnItemPayload = z.object({
   envelopeId: z.string().uuid(),
@@ -35,7 +24,7 @@ const txnBase = z.object({
   allocationFromEnvelopeId: z.string().uuid().nullable().optional(),
   allocationToEnvelopeId: z.string().uuid().nullable().optional(),
   items: z.array(txnItemPayload).optional(),
-   
+
   createdAt: z.string().datetime().optional(),
 });
 
@@ -94,16 +83,12 @@ const txnRules = (v: TransactionSemanticInput, ctx: z.RefinementCtx) => {
 export const txnPayload = txnBase.superRefine(txnRules);
 export type TxnPayload = z.infer<typeof txnPayload>;
 
- 
-
 export const allocPayload = z.object({
   envelopeId: z.string().uuid(),
   month: z.string().regex(/^\d{4}-\d{2}$/),
   amount: z.number().int(),
 });
 export type AllocPayload = z.infer<typeof allocPayload>;
-
- 
 
 export const accountPayload = z.object({
   name: z.string().min(1),
@@ -134,17 +119,15 @@ export const envelopePayload = z.object({
 });
 export type EnvelopePayload = z.infer<typeof envelopePayload>;
 
- 
-
 const withId = { id: z.string().uuid() };
 const idOnly = z.object(withId);
 
 export const opSchemas = {
   "txn.create": txnBase.extend(withId).superRefine(txnRules),
-   
+
   "txn.update": txnBase.extend(withId).superRefine(txnRules),
   "txn.delete": idOnly,
-   
+
   "alloc.set": allocPayload,
   "account.create": accountPayload.extend(withId),
   "account.update": accountPayload.partial().extend(withId),
@@ -155,7 +138,7 @@ export const opSchemas = {
   "envelope.create": envelopePayload.extend(withId),
   "envelope.update": envelopePayload.partial().extend(withId),
   "envelope.delete": idOnly,
-   
+
   "category.create": z.object({ ...withId, name: z.string().min(1) }),
   "place.create": z.object({ ...withId, name: z.string().min(1) }),
   // Dictionary upkeep. `archived` hides an entry from ENTRY (suggestions, pickers) and nowhere
@@ -178,7 +161,7 @@ export const opSchemas = {
     .refine((v) => v.fromId !== v.intoId, { message: "cannot merge an entry into itself" }),
   "category.delete": idOnly,
   "place.delete": idOnly,
-   
+
   "budget.update": z.object({ id: z.string().uuid(), currency: z.string().regex(/^[A-Z]{3}$/) }),
   "budget.preferences.update": z.object({ id: z.string().uuid(), patch: budgetPreferencesPatchSchema }).strict(),
 } as const;
@@ -195,7 +178,6 @@ export interface SyncOp<K extends OpKind = OpKind> {
   payload: OpPayload<K>;
 }
 
- 
 export const syncOpSchema = z
   .object({
     opId: z.string().uuid(),
@@ -210,17 +192,6 @@ export const syncOpSchema = z
       }
     }
   });
-
-
-
-
-
-
-
-
-
-
-
 
 const zUuid = z.string().uuid();
 const zYmd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected a YYYY-MM-DD date");
@@ -263,13 +234,13 @@ const envelopeEntity = z.object({
 const categoryEntity = z.object({ id: zUuid, name: z.string(), archived: z.boolean().default(false) });
 const placeEntity = z.object({ id: zUuid, name: z.string(), archived: z.boolean().default(false) });
 const allocationEntity = z.object({
-  id: z.string(),  
+  id: z.string(),
   envelopeId: zUuid,
   month: zYm,
   amount: zMoney,
 });
 const txnItemEntity = z.object({
-  id: z.string(),  
+  id: z.string(),
   envelopeId: zUuid,
   categoryId: zUuid.nullable(),
   amount: zMoneyNonNeg,
@@ -289,7 +260,7 @@ const transactionEntity = z
     name: z.string().nullable(),
     note: z.string().nullable(),
     tag: z.string().nullable(),
-     
+
     sourceRef: z.string().nullable().default(null),
     allocationFromEnvelopeId: zUuid.nullable().default(null),
     allocationToEnvelopeId: zUuid.nullable().default(null),
@@ -340,6 +311,5 @@ export type ClientLedgerInput = z.infer<typeof clientLedgerSchema>;
  */
 export const E2EE_DISABLE_CONFIRM = "DISABLE-E2EE";
 
- 
 export const REPLICATED_TABLES = ["accounts", "envelope_groups", "envelopes", "categories", "places", "transactions", "allocations", "budgets"] as const;
 export type ReplicatedTable = (typeof REPLICATED_TABLES)[number];

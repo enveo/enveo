@@ -10,7 +10,6 @@
 import { loadPersistedSettings } from "../settingsPersist";
 import type { Dict } from "./index";
 
- 
 export type Lang = "en" | "pl" | "de" | "es" | "fr" | "it" | "nl" | "pt-BR" | "cs" | "sv";
 
 /** `endonym` is the language's name in itself (shown in Settings); `community` marks translations
@@ -41,7 +40,6 @@ export function uiLang(): Lang {
   return detectLang();
 }
 
- 
 export function detectLang(): Lang {
   const nav = typeof navigator !== "undefined" ? (navigator.languages ?? [navigator.language]) : [];
   for (const tag of nav) {

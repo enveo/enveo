@@ -7,14 +7,12 @@ import { highlightRanges } from "../lib/search";
 import { font, P } from "../lib/theme";
 import type { SpendMeter } from "../lib/uiState";
 
- 
 export function useBand(): { band: boolean; hc: (onBand: string, plain: string) => string } {
   const C = useTheme();
   const band = C.headerStyle === "band";
   return { band, hc: (onBand, plain) => (band ? onBand : plain) };
 }
 
- 
 export function SectionEyebrow({ label, right }: { label: string; right?: ReactNode }) {
   const C = useTheme();
   return (
@@ -25,7 +23,6 @@ export function SectionEyebrow({ label, right }: { label: string; right?: ReactN
   );
 }
 
- 
 export function CardBox({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   const C = useTheme();
   return (
@@ -35,7 +32,6 @@ export function CardBox({ children, style }: { children: ReactNode; style?: CSSP
   );
 }
 
- 
 export function SpendLine({ meter }: { meter: SpendMeter }) {
   const C = useTheme();
   const fillColor = meter.state === "over" ? C.neg : meter.state === "warn" ? C.warn : C.mute;
@@ -79,8 +75,6 @@ export function PickerSearch({ value, onChange, placeholder }: { value: string; 
   );
 }
 
-
-
 export function HighlightedText({ text, query }: { text: string; query: string }) {
   const segments = highlightRanges(text, query);
   return (
@@ -97,8 +91,6 @@ export function HighlightedText({ text, query }: { text: string; query: string }
     </>
   );
 }
-
-
 
 export function GoalRing({ pct, size = 14, color = "var(--accent)" }: { pct: number; size?: number; color?: string }) {
   const C = useTheme();

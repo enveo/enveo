@@ -48,7 +48,6 @@ export class ScopeViolation extends Error {
 
 export type AutomaticEnvelopeViolationCode = "automatic_envelope_unavailable" | "automatic_envelope_requires_on_budget" | "automatic_envelope_linked";
 
- 
 export class AutomaticEnvelopeViolation extends Error {
   constructor(readonly code: AutomaticEnvelopeViolationCode) {
     super(code);
@@ -56,7 +55,6 @@ export class AutomaticEnvelopeViolation extends Error {
   }
 }
 
- 
 export class TransactionSemanticViolation extends Error {
   constructor() {
     super("invalid_transaction_flow");
@@ -79,7 +77,6 @@ type FkBody = {
 
 type FkTable = "accounts" | "envelopes" | "categories" | "places" | "envelope_groups";
 
- 
 export function collectFkChecks(b: FkBody): { table: FkTable; id: string }[] {
   const out: { table: FkTable; id: string }[] = [];
   if (b.accountId) out.push({ table: "accounts", id: b.accountId });
@@ -156,22 +153,17 @@ export function findForeignLedgerRef(ledger: ClientLedgerInput): string | null {
   return null;
 }
 
- 
-
 export async function applyBudgetUpdate(x: Executor, budgetId: string, currency: string) {
   const [row] = await x.update(s.budgets).set({ currency }).where(eq(s.budgets.id, budgetId)).returning();
   return row ?? NOT_FOUND;
 }
 
- 
 export async function applyBudgetPreferencesUpdate(x: Executor, budgetId: string, patch: BudgetPreferencesPatch): Promise<typeof NOT_FOUND | undefined> {
   const [row] = await x.select({ preferences: s.budgets.preferences }).from(s.budgets).where(eq(s.budgets.id, budgetId)).for("update");
   if (!row) return NOT_FOUND;
   const preferences = reconcileBudgetPreferences({ ...reconcileBudgetPreferences(row.preferences), ...patch });
   await x.update(s.budgets).set({ preferences }).where(eq(s.budgets.id, budgetId));
 }
-
- 
 
 export async function applyTxnCreate(x: Executor, budgetId: string, body: TxnPayload & { id?: string }) {
   await assertBudgetFks(x, budgetId, body);
@@ -291,8 +283,6 @@ export async function applyTxnDelete(x: Executor, budgetId: string, id: string):
   await x.delete(s.transactions).where(and(eq(s.transactions.id, id), eq(s.transactions.budgetId, budgetId)));
 }
 
- 
-
 export async function applyAllocSet(x: Executor, budgetId: string, body: AllocPayload) {
   // IDOR guard: the (envelopeId, month) upsert would otherwise hijack another
   // budget's allocation row via the global unique conflict.
@@ -307,8 +297,6 @@ export async function applyAllocSet(x: Executor, budgetId: string, body: AllocPa
     .returning();
   return row!;
 }
-
- 
 
 type AutomaticEnvelopeAccountState = {
   onBudget: boolean;
@@ -400,8 +388,6 @@ export async function applyAccountDelete(x: Executor, budgetId: string, id: stri
   await x.delete(s.accounts).where(and(eq(s.accounts.id, id), eq(s.accounts.budgetId, budgetId)));
 }
 
- 
-
 export async function applyGroupCreate(x: Executor, budgetId: string, body: GroupPayload & { id?: string }) {
   const { id, ...fields } = body;
   const [row] = await x
@@ -437,8 +423,6 @@ export async function applyGroupDelete(x: DbTransaction, budgetId: string, id: s
   await x.delete(s.envelopeGroups).where(and(eq(s.envelopeGroups.id, id), eq(s.envelopeGroups.budgetId, budgetId)));
 }
 
- 
-
 export async function applyEnvelopeCreate(x: Executor, budgetId: string, body: EnvelopePayload & { id?: string }) {
   // groupId is a body FK (NOT NULL, ON DELETE CASCADE): a foreign group would
   // attach the envelope to ANOTHER budget's group — the victim's group delete
@@ -454,7 +438,7 @@ export async function applyEnvelopeCreate(x: Executor, budgetId: string, body: E
 
 export async function applyEnvelopeUpdate(x: DbTransaction, budgetId: string, body: Partial<EnvelopePayload> & { id: string }) {
   await lockChangesCursorShared(x);
-  await assertBudgetFks(x, budgetId, { groupId: body.groupId });  
+  await assertBudgetFks(x, budgetId, { groupId: body.groupId });
   if (body.archived === true) {
     await lockAccountsLinkedToEnvelope(x, budgetId, body.id);
     // Account linking locks account→envelope too. Whichever transaction wins
@@ -488,9 +472,6 @@ export async function applyEnvelopeDelete(x: DbTransaction, budgetId: string, id
   await x.delete(s.envelopes).where(and(eq(s.envelopes.id, id), eq(s.envelopes.budgetId, budgetId)));
 }
 
- 
-
- 
 export async function wipeBudgetData(x: DbTransaction, budgetId: string): Promise<void> {
   await lockChangesCursorShared(x);
   // FK-safe AND lifecycle-lock-safe order (txn_items via cascade): transactions first,
@@ -505,8 +486,6 @@ export async function wipeBudgetData(x: DbTransaction, budgetId: string): Promis
   await x.delete(s.categories).where(eq(s.categories.budgetId, budgetId));
   await x.delete(s.places).where(eq(s.places.budgetId, budgetId));
 }
-
- 
 
 /**
  * Plain insert. Name-based dedupe is NOT here — REST does the lookup in the
@@ -527,8 +506,6 @@ export async function applyPlaceCreate(x: Executor, budgetId: string, body: { id
     .returning();
   return row!;
 }
-
- 
 
 type DictionaryPatch = { id: string; name?: string; archived?: boolean };
 
@@ -553,14 +530,6 @@ export async function applyPlaceUpdate(x: Executor, budgetId: string, body: Dict
     .returning({ id: s.places.id });
   return rows.length > 0 ? undefined : NOT_FOUND;
 }
-
-
-
-
-
-
-
-
 
 export async function applyCategoryDelete(x: DbTransaction, budgetId: string, id: string): Promise<void> {
   await lockChangesCursorShared(x);
@@ -615,7 +584,6 @@ export async function applyCategoryMerge(x: DbTransaction, budgetId: string, fro
     .update(s.transactions)
     .set({ categoryId: intoId })
     .where(and(eq(s.transactions.budgetId, budgetId), eq(s.transactions.categoryId, fromId)));
-  
 
   await x.update(s.txnItems).set({ categoryId: intoId }).where(eq(s.txnItems.categoryId, fromId));
   await applyCategoryDelete(x, budgetId, fromId);

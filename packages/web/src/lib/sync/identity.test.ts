@@ -24,8 +24,6 @@ afterEach(() => {
   store.setBootStatus("ready");
 });
 
- 
-
 describe("decideIdentity", () => {
   it("no session → unauthed (regardless of the stamp)", () => {
     expect(decideIdentity(null, "user-A")).toBe("unauthed");
@@ -40,8 +38,6 @@ describe("decideIdentity", () => {
   });
 });
 
- 
-
 describe("sync/identity: verdict state transitions", () => {
   it("enterForeignReplica blocks every cycle and routes to ForeignReplicaScreen", () => {
     expect(isIdentityBlocked()).toBe(false);
@@ -49,14 +45,14 @@ describe("sync/identity: verdict state transitions", () => {
     expect(isIdentityBlocked()).toBe(true);
     expect(store.getBootStatus()).toBe("foreign");
     expect(getSyncStatus().state).toBe("error"); // honest: sync is not happening
-    expect(getSyncStatus().ownerUnproven).toBe(false);  
+    expect(getSyncStatus().ownerUnproven).toBe(false);
   });
 
   it("enterLoginPreservingReplica unblocks — a NEW session is verified from scratch", () => {
     enterForeignReplica();
     enterLoginPreservingReplica();
     expect(isIdentityBlocked()).toBe(false);
-    expect(store.getBootStatus()).toBe("unauthed");  
+    expect(store.getBootStatus()).toBe("unauthed");
     expect(getSyncStatus().state).toBe("unauthed");
   });
 
@@ -77,9 +73,6 @@ describe("sync/identity: verdict state transitions", () => {
 /* ── Cloud: a foreign replica is silently discarded, never rendered ─────── */
 
 describe("sync/identity: foreign replica on CLOUD", () => {
-  
-
-
   let prevDeps: ReturnType<typeof configureIdentity>;
 
   function stubLocalStorage() {
@@ -108,7 +101,7 @@ describe("sync/identity: foreign replica on CLOUD", () => {
     });
     enterForeignReplica();
     expect(discards).toBe(1);
-    expect(store.getBootStatus()).toBe("ready");  
+    expect(store.getBootStatus()).toBe("ready");
     expect(isIdentityBlocked()).toBe(true); // no write may race the wipe before the reload
   });
 
@@ -122,9 +115,9 @@ describe("sync/identity: foreign replica on CLOUD", () => {
       },
     });
     enterForeignReplica();
-    await Promise.resolve();  
     await Promise.resolve();
-    expect(store.getBootStatus()).toBe("foreign");  
+    await Promise.resolve();
+    expect(store.getBootStatus()).toBe("foreign");
     expect(getSyncStatus().state).toBe("error");
     expect(isIdentityBlocked()).toBe(true);
   });
@@ -146,7 +139,7 @@ describe("sync/identity: foreign replica on CLOUD", () => {
 
   it("unknown deployment (nothing cached) → fail-safe: the screen, nothing destroyed", () => {
     prevDeps = configureIdentity(null);
-    stubLocalStorage();  
+    stubLocalStorage();
     let discards = 0;
     configureIdentity({
       discardForeignReplica: async () => {

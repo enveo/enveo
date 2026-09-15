@@ -1,21 +1,3 @@
-/**
- * Pure pane-view resolver (panel.ts). Every `screen × envView × reportsView` combination that
- * matters is exercised, plus the load-bearing rules the plan pins:
- *
- *  1. `panelClosed` is not a parameter of `resolvePanel` at all — open/closed survives
- *     navigation because it lives outside this function entirely (asserted here by showing the
- *     resolved view is identical across calls that differ only in what a caller's `panelClosed`
- *     bit happens to be, i.e. this function never needs to know it).
- *  2. An envelope opened from Reports (or from anywhere else) still resolves to the envelope —
- *     `envView` wins over every other input.
- *  3. Design parity Wave A Task 1 (owner rule 1, `waveA-t1-brief.md`) — the panel is NEVER EMPTY
- *     when there is data to fall back to: `envelope`/`report`/`account` resolve to real content
- *     (tagged `source: "fallback"`) even with no explicit selection, using `panelFallbacks`'s
- *     "first item" table. `empty` survives ONLY for a genuinely empty dataset (the fallback id is
- *     null) or for a screen with no panel-selection axis at all (transactions — C3's scope).
- *     Settings (owner rule 5) reads `acctView` exactly like Accounts does — the account context
- *     persists there instead of resolving to `generic`.
- */
 import { describe, expect, test } from "bun:test";
 import type { ReportTab, ReportView } from "../../screens/reports/types";
 import type { ScreenId } from "../chrome";
@@ -25,15 +7,11 @@ const ENV = { envelopeId: "env-1", month: "2026-08" };
 const ACCT = { accountId: "acc-1" };
 const TXN = { txnId: "txn-1" };
 
-
-
 const FB: PanelFallbacks = { firstEnvelopeId: "env-fb", firstAccountId: "acc-fb", firstTxnId: "txn-fb", month: "2026-08" };
 // The genuinely-empty-dataset table (every fallback id null) — `empty` must still survive here.
 const EMPTY_FB: PanelFallbacks = { firstEnvelopeId: null, firstAccountId: null, firstTxnId: null, month: "2026-08" };
 
 const SCREENS: readonly ScreenId[] = ["start", "budget", "transactions", "accounts", "reports", "activity", "addExpense", "settings"];
-
-
 
 const NON_ADD_SCREENS: readonly ScreenId[] = SCREENS.filter((s) => s !== "addExpense");
 const REPORT_VIEWS: readonly ReportView[] = ["overview", "assets", "cashflow", "spending", "budgets", "goals", "month", "trends"];
@@ -349,7 +327,7 @@ describe("resolvePanel", () => {
 
     test("picks the non-archived envelope earliest in GROUP-major then envelope-sort order (mirrors Budget's own visual order)", () => {
       const fb = panelFallbacks({ envelopes: ENVELOPES, groups: GROUPS, accounts: [] }, "2026-08", []);
-       
+
       expect(fb.firstEnvelopeId).toBe("e-earlier");
     });
 

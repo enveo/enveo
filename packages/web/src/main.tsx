@@ -16,9 +16,8 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } },
 });
 
-preventIosFocusZoom();  
-initInstallPrompt(); 
-
+preventIosFocusZoom();
+initInstallPrompt();
 
 void startImportJobManager();
 

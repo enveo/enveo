@@ -35,13 +35,10 @@ const calculateUsage = (row: ReturnType<typeof envRow>): BudgetUsage => budgetUs
 
 describe("budgetUsage", () => {
   test("a zero budget with spending has no percentage and remains overspent", () => {
-     
     const envelope = envRow({ spent: 500 });
 
-     
     const usage = calculateUsage(envelope);
 
-     
     expect(usage).toEqual({ rawBudget: 0, spent: 500, left: -500, pct: null, status: "over" });
   });
 
@@ -106,24 +103,20 @@ describe("budget report row ordering", () => {
 describe("budgetsSummary", () => {
   test("thresholds: 79.9% → ok, 80% → near, 100% → ok (used up), 100.1% → over", () => {
     const out = budgetsSummary([
-      envRow({ allocated: 1000, spent: 799 }),  
-      envRow({ allocated: 1000, spent: 800 }),  
-      envRow({ allocated: 1000, spent: 1000 }),  
-      envRow({ allocated: 1000, spent: 1001 }),  
+      envRow({ allocated: 1000, spent: 799 }),
+      envRow({ allocated: 1000, spent: 800 }),
+      envRow({ allocated: 1000, spent: 1000 }),
+      envRow({ allocated: 1000, spent: 1001 }),
     ]);
     expect(out).toEqual({ over: 1, near: 1, ok: 2 });
   });
 
   test("budget = allocated + carryIn (carry-in counts)", () => {
-     
     expect(budgetsSummary([envRow({ allocated: 500, carryIn: 500, spent: 800 })])).toEqual({ over: 0, near: 1, ok: 0 });
   });
 
   test("filter as in BudgetsReport: no allocation and no spending → outside the counters; archived → outside", () => {
-    const out = budgetsSummary([
-      envRow(),  
-      envRow({ allocated: 1000, spent: 2000, archived: true }),  
-    ]);
+    const out = budgetsSummary([envRow(), envRow({ allocated: 1000, spent: 2000, archived: true })]);
     expect(out).toEqual({ over: 0, near: 0, ok: 0 });
   });
 
@@ -146,7 +139,7 @@ describe("budgetsSummary", () => {
  * pill above still counts it as "over" (the regression this test pins). */
 describe("budgetsOverAmount", () => {
   test("sums -left over ordinary overspent envelopes", () => {
-    expect(budgetsOverAmount([envRow({ allocated: 1000, spent: 1300 })])).toBe(300);  
+    expect(budgetsOverAmount([envRow({ allocated: 1000, spent: 1300 })])).toBe(300);
   });
 
   test("the zero-budget boundary: no allocation and spent=1 contributes the real overspend", () => {
@@ -168,8 +161,8 @@ describe("budgetsOverAmount", () => {
   test("sums across multiple overspent envelopes", () => {
     expect(
       budgetsOverAmount([
-        envRow({ allocated: 1000, spent: 1300 }),  
-        envRow({ allocated: 500, spent: 800 }),  
+        envRow({ allocated: 1000, spent: 1300 }),
+        envRow({ allocated: 500, spent: 800 }),
         envRow({ allocated: 1000, spent: 500 }), // ok, not counted
       ]),
     ).toBe(600);
@@ -196,9 +189,9 @@ describe("monthProgress", () => {
 
 describe("daysInMonth", () => {
   test("gets February right in a leap year and a century non-leap year", () => {
-    expect(daysInMonth("2024-02")).toBe(29);  
+    expect(daysInMonth("2024-02")).toBe(29);
     expect(daysInMonth("1900-02")).toBe(28); // divisible by 100 but not 400 → not a leap year
-    expect(daysInMonth("2000-02")).toBe(29);  
+    expect(daysInMonth("2000-02")).toBe(29);
   });
 });
 
@@ -221,7 +214,6 @@ describe("budgetPace", () => {
   });
 
   test("near the limit is preserved from budgetUsage", () => {
-     
     expect(budgetPace(row({ allocated: 100_00, spent: 90_00 }), 0.5).bucket).toBe("near");
   });
 
@@ -230,7 +222,6 @@ describe("budgetPace", () => {
   });
 
   test("a calm envelope whose pace overshoots the budget is risk", () => {
-     
     const p = budgetPace(row({ allocated: 100_00, spent: 60_00 }), 0.4);
     expect(p.projected).toBe(150_00);
     expect(p.bucket).toBe("risk");
@@ -259,7 +250,6 @@ describe("budgetPace", () => {
   });
 
   test("carryIn counts toward the budget", () => {
-     
     expect(budgetPace(row({ allocated: 60_00, carryIn: 40_00, spent: 30_00 }), 0.5).bucket).toBe("ok");
   });
 });
@@ -278,9 +268,9 @@ describe("budgetSteps", () => {
   test("overspends come first, then risks, then near-limit", () => {
     const steps = budgetSteps(
       [
-        stepRow("near", { allocated: 100_00, spent: 90_00 }),  
-        stepRow("risk", { allocated: 100_00, spent: 60_00 }),  
-        stepRow("over", { allocated: 100_00, spent: 120_00 }),  
+        stepRow("near", { allocated: 100_00, spent: 90_00 }),
+        stepRow("risk", { allocated: 100_00, spent: 60_00 }),
+        stepRow("over", { allocated: 100_00, spent: 120_00 }),
       ],
       0.4,
     );
@@ -295,17 +285,12 @@ describe("budgetSteps", () => {
   });
 
   test("the risk amount closes the projected gap", () => {
-     
     const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 60_00 })], 0.4);
     expect(steps[0]!.kind).toBe("risk");
     expect(steps[0]!.amount).toBe(50_00);
   });
 
   test("the near amount tops the envelope back up to a 20% cushion, post-application", () => {
-    
-
-
-
     const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 90_00 })], 0.5);
     expect(steps[0]!.kind).toBe("near");
     expect(steps[0]!.amount).toBe(12_50);
@@ -330,10 +315,6 @@ describe("budgetSteps", () => {
   });
 
   test("near top-up is idempotent: applying the step once clears the checklist", () => {
-    
-
-
-
     const before = stepRow("e", { allocated: 100_00, spent: 90_00 });
     const steps = budgetSteps([before], 0.5);
     expect(steps).toHaveLength(1);
@@ -342,13 +323,7 @@ describe("budgetSteps", () => {
   });
 
   test("within a kind the largest amount leads", () => {
-    const steps = budgetSteps(
-      [
-        stepRow("small", { allocated: 100_00, spent: 110_00 }),  
-        stepRow("big", { allocated: 100_00, spent: 150_00 }),  
-      ],
-      0.5,
-    );
+    const steps = budgetSteps([stepRow("small", { allocated: 100_00, spent: 110_00 }), stepRow("big", { allocated: 100_00, spent: 150_00 })], 0.5);
     expect(steps.map((s) => s.envelopeId)).toEqual(["big", "small"]);
   });
 
@@ -371,7 +346,7 @@ describe("budgetSteps", () => {
   test("keeps an ignored step, flagged rather than dropped", () => {
     const rows = [stepRow("over", { allocated: 100_00, spent: 120_00 }), stepRow("near", { allocated: 100_00, spent: 90_00 })];
     const steps: BudgetStep[] = budgetSteps(rows, 0.5, { ignored: new Set(["over"]) });
-     
+
     expect(steps.map((s) => s.envelopeId)).toEqual(["over", "near"]);
     expect(steps.map((s) => s.ignored)).toEqual([true, false]);
   });
@@ -391,7 +366,6 @@ describe("budgetSteps", () => {
   });
 
   test("a zero-amount top-up is dropped rather than shown as a no-op step", () => {
-     
     const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 80_00 })], 0.5);
     expect(steps).toEqual([]);
   });

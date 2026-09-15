@@ -36,16 +36,16 @@ export { OPENAI_MODELS };
 
 export interface Settings {
   themeMode: ThemeMode;
-   
+
   accentTheme: AccentTheme;
   discreet: boolean;
   lang: Lang;
   /** Compatibility view over the budget-scoped AI provider. */
   aiMode: AiMode;
   openaiModel: OpenAiModel;
-   
+
   customProfiles: Array<{ id: string; name: string; prompt: string }>;
-   
+
   startWidgets: WidgetConfig[];
 }
 
@@ -101,9 +101,6 @@ export function accentChoicePatch(choice: AccountAccentTheme, overridden: boolea
   return overridden ? { device: { accentThemeOverride: choice } } : { account: { accentTheme: choice } };
 }
 
-
-
-
 export function effectiveThemeMode(account: ThemeMode, deviceOverride: ThemeMode | null): ThemeMode {
   return deviceOverride ?? account;
 }
@@ -111,10 +108,6 @@ export function effectiveThemeMode(account: ThemeMode, deviceOverride: ThemeMode
 export function effectiveAccentTheme(account: AccountAccentTheme, deviceOverride: AccentTheme | null, phone: boolean): AccentTheme {
   return deviceOverride ?? resolveAccentTheme(account, phone);
 }
-
-
-
-
 
 const defaultStartWidgets = (): WidgetConfig[] => createDefaultBudgetPreferences().startWidgets;
 
@@ -173,15 +166,11 @@ export function useCurrency(): string {
   return store.getLedger()?.budgets?.[0]?.currency ?? LOCALE_CURRENCY;
 }
 
- 
 export function useMask() {
   const { settings } = useSettings();
   const currency = useCurrency();
   return (minor: number, amountCurrency = currency) => (settings.discreet ? "••••" : formatMoney(minor, amountCurrency, settings.lang));
 }
-
-
-
 
 export function useCompactMask() {
   const { settings } = useSettings();

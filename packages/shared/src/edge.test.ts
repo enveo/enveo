@@ -28,8 +28,6 @@ import { applyOp } from "./applyOp";
 import type { ClientLedger, SyncOp } from "./index";
 import { acc, alloc, asClientLedger, deepFreeze, env, grp, interpret, ledgerArb, mkOp, specArb, tx } from "./ledger.test-support";
 
- 
-
 describe("FK cascade parity: envelope.delete", () => {
   /**
    * Envelope E1 referenced in ALL the ways the server catches:
@@ -44,7 +42,7 @@ describe("FK cascade parity: envelope.delete", () => {
     const g1 = grp({ id: "G1" });
     const g2 = grp({ id: "G2" });
     const a1 = acc({ id: "A1", initialBalance: 100_00 });
-    const e1 = env("G1", { id: "E1" });  
+    const e1 = env("G1", { id: "E1" });
     const e2 = env("G1", { id: "E2" });
     const e3 = env("G2", { id: "E3" });
     return {
@@ -53,7 +51,7 @@ describe("FK cascade parity: envelope.delete", () => {
       envelopes: [e1, e2, e3],
       allocations: [
         alloc("E1", "2026-06", 40_00), // → CASCADE (disappears)
-        alloc("E2", "2026-06", 25_00),  
+        alloc("E2", "2026-06", 25_00),
       ],
       transactions: [
         tx({ id: "T1", accountId: "A1", type: "expense", envelopeId: "E1", amount: 10_00 }),
@@ -64,7 +62,7 @@ describe("FK cascade parity: envelope.delete", () => {
           amount: 50_00,
           items: [
             { id: "i-e1", envelopeId: "E1", categoryId: null, amount: 30_00 }, // → CASCADE (disappears)
-            { id: "i-e2", envelopeId: "E2", categoryId: null, amount: 20_00 },  
+            { id: "i-e2", envelopeId: "E2", categoryId: null, amount: 20_00 },
           ],
         }),
         tx({ id: "T3", accountId: "A1", type: "income", envelopeId: "E1", amount: 100_00 }),
@@ -86,22 +84,21 @@ describe("FK cascade parity: envelope.delete", () => {
     const l = deepFreeze(fixture());
     const next = applyOp(l, mkOp("envelope.delete", { id: "E1" }));
 
-     
     expect(next.envelopes.map((e) => e.id)).toEqual(["E2", "E3"]);
     // E1 allocation deleted (CASCADE); E2 allocation untouched
     expect(next.allocations).toEqual([{ id: next.allocations[0]!.id, envelopeId: "E2", month: "2026-06", amount: 25_00 }]);
 
     const byId = Object.fromEntries(next.transactions.map((t) => [t.id, t]));
-     
+
     expect(byId.T1!.envelopeId).toBeNull();
     // T2 split — the E1 item disappears (CASCADE), the E2 item stays, parent amount unchanged
     expect(byId.T2!.items).toEqual([{ id: "i-e2", envelopeId: "E2", categoryId: null, amount: 20_00 }]);
     expect(byId.T2!.amount).toBe(50_00);
-     
+
     expect(byId.T3!.envelopeId).toBeNull();
-     
+
     expect(byId.T4).toBe(l.transactions[3]!);
-     
+
     expect(byId.T5!.items).toEqual([]);
     expect(byId.T5!.amount).toBe(30_00);
   });
@@ -153,15 +150,15 @@ describe("FK cascade parity: group.delete", () => {
     const l = deepFreeze<ClientLedger>({
       accounts: [acc({ id: "A1" })],
       groups: [grp({ id: "G1" }), grp({ id: "G2" })],
-       
+
       envelopes: [env("G1", { id: "E1" }), env("G1", { id: "E2" }), env("G2", { id: "E3" })],
       allocations: [
         alloc("E1", "2026-06", 30_00), // CASCADE
         alloc("E2", "2026-06", 15_00), // CASCADE
-        alloc("E3", "2026-06", 60_00),  
+        alloc("E3", "2026-06", 60_00),
       ],
       transactions: [
-        tx({ id: "T1", accountId: "A1", type: "expense", envelopeId: "E1", amount: 10_00 }),  
+        tx({ id: "T1", accountId: "A1", type: "expense", envelopeId: "E1", amount: 10_00 }),
         tx({
           id: "T2",
           accountId: "A1",
@@ -169,10 +166,10 @@ describe("FK cascade parity: group.delete", () => {
           amount: 40_00,
           items: [
             { id: "i-e2", envelopeId: "E2", categoryId: null, amount: 20_00 }, // CASCADE (disappears)
-            { id: "i-e3", envelopeId: "E3", categoryId: null, amount: 20_00 },  
+            { id: "i-e3", envelopeId: "E3", categoryId: null, amount: 20_00 },
           ],
         }),
-        tx({ id: "T3", accountId: "A1", type: "expense", envelopeId: "E3", amount: 8_00 }),  
+        tx({ id: "T3", accountId: "A1", type: "expense", envelopeId: "E3", amount: 8_00 }),
       ],
       categories: [],
       places: [],
@@ -183,22 +180,17 @@ describe("FK cascade parity: group.delete", () => {
     expect(next.allocations.map((a) => a.envelopeId)).toEqual(["E3"]);
 
     const byId = Object.fromEntries(next.transactions.map((t) => [t.id, t]));
-    expect(byId.T1!.envelopeId).toBeNull();  
+    expect(byId.T1!.envelopeId).toBeNull();
     expect(byId.T2!.items).toEqual([{ id: "i-e3", envelopeId: "E3", categoryId: null, amount: 20_00 }]);
-    expect(byId.T2!.amount).toBe(40_00);  
-    expect(byId.T3).toBe(l.transactions[2]!);  
+    expect(byId.T2!.amount).toBe(40_00);
+    expect(byId.T3).toBe(l.transactions[2]!);
   });
 });
 
 /* ── 2. fullResync replay idempotency (property) ─────────────────────── */
 
 describe("fullResync: outbox replay idempotency", () => {
-   
   const replay = (l: ClientLedger, ops: readonly SyncOp[]): ClientLedger => ops.reduce((accL, op) => applyOp(accL, op), l);
-
-  
-
-
 
   const assertUniqueIds = (l: ClientLedger): void => {
     const uniq = (ids: string[], label: string) => expect(new Set(ids).size, `duplicate ids in ${label}`).toBe(ids.length);
@@ -267,9 +259,6 @@ describe("fullResync: outbox replay idempotency", () => {
   it("replaying the same ops over a state that already reflects them changes nothing and duplicates no rows", () => {
     fc.assert(
       fc.property(ledgerArb(), fc.array(specArb, { maxLength: 30 }), (baseLedger, specs) => {
-        
-
-
         let l = asClientLedger(baseLedger);
         const ops: SyncOp[] = [];
         let n = 0;
@@ -280,13 +269,12 @@ describe("fullResync: outbox replay idempotency", () => {
           ops.push(op);
           l = applyOp(l, op);
         }
-         
+
         const L1 = deepFreeze(l);
 
         // Trivial part of the invariant: replaying an EMPTY list = identity.
         expect(replay(L1, [])).toBe(L1);
 
-         
         const L2 = replay(L1, ops);
         expect(L2).toEqual(L1); // idempotent: no changes, no duplicates
         assertUniqueIds(L1);

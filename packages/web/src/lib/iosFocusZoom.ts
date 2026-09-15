@@ -10,13 +10,11 @@
  * honour `maximum-scale` literally and would lose pinch zoom, so they never see it.
  */
 
- 
 export function isIosWebKit(userAgent: string, maxTouchPoints: number): boolean {
   if (/iphone|ipad|ipod/i.test(userAgent)) return true;
   return /macintosh/i.test(userAgent) && maxTouchPoints > 1;
 }
 
- 
 export function viewportWithoutFocusZoom(content: string): string {
   if (/(^|,)\s*maximum-scale\s*=/i.test(content)) return content;
   const trimmed = content.trim().replace(/,\s*$/, "");

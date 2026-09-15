@@ -34,23 +34,6 @@ const FOLD_LABEL: Record<SubId, Message> = {
   data: msg("Data & sync"),
 };
 
-/**
- * Persistent two-column Settings (design parity wave E task 3, owner rule 5, v3:675-744): a
- * 218px left nav listing all 6 sections at once — never a drill-in, never a back arrow — and a
- * right content column that swaps in place. Replaces `WideShell`'s interim centered-column
- * wrapper around the phone `SettingsScreen`; every section body below is the SAME
- * `screens/settings/*` component the phone hub drills into (zero phone deltas — those components
- * render identically in every mode), so this file owns only the two-column frame, the nav rows'
- * own copy/badges, and the Account section (phone has no equivalent row: it renders
- * `LogoutSection` as a hub footer instead).
- *
- * Local `section` state, not App-owned: nothing outside this component needs to know which
- * Settings section is open (unlike `envView`/`acctView`/`reportsView`, which the URL/deep-link
- * machinery and the right PANEL also read) — the right panel's own account context (owner rule 1)
- * survives navigating here for free, since `App.tsx`'s `nav()` already special-cases `"settings"`
- * to leave `acctView` untouched (design parity wave A task 1) and `resolvePanel` already treats
- * `"settings"` exactly like `"accounts"` (`panel.ts`) — this component changes neither.
- */
 export function WideSettings({ mode }: { mode: WideMode }) {
   const C = useTheme();
   const { t, lang } = useT();
@@ -60,18 +43,16 @@ export function WideSettings({ mode }: { mode: WideMode }) {
   const [section, setSection] = useState<WideSection>("appearance");
   const isFold = mode === "fold";
 
-  
-
   const aiBadge = t(preferences.aiProvider === "enveo" ? msg("server") : preferences.aiProvider === "openai" ? msg("own key") : msg("rules"));
   const dataBadge = relSync(lastSyncAt, lang);
 
   const rows: Array<{ id: WideSection; label: string; sub: string; badge: string | null }> = [
     ...SETTINGS_CATEGORIES.map((c) => ({
       id: c.id,
-       
+
       label: isFold ? t(FOLD_LABEL[c.id]) : t(c.title),
       sub: t(c.desc),
-       
+
       badge: c.id === "ai" ? aiBadge : c.id === "data" ? dataBadge : null,
     })),
     { id: "account", label: t("Account"), sub: email ? t("Signed in as {email}", { email }) : "", badge: null },
@@ -82,12 +63,9 @@ export function WideSettings({ mode }: { mode: WideMode }) {
     <div style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
       <div
         data-wide-settings-nav
-         
         className="gsh"
         style={{
           width: isFold ? 142 : 218,
-          
-
 
           boxSizing: "border-box",
           flexShrink: 0,
@@ -160,7 +138,7 @@ export function WideSettings({ mode }: { mode: WideMode }) {
                   </span>
                 )}
               </span>
-              { }
+              {}
               {!isFold && row.sub && (
                 <span style={{ fontSize: 10.5, color: C.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.sub}</span>
               )}
@@ -182,11 +160,6 @@ export function WideSettings({ mode }: { mode: WideMode }) {
     </div>
   );
 }
-
-
-
-
-
 
 function AccountSection({ name, email, lang, lastSyncAt }: { name: string | null; email: string | null; lang: Lang; lastSyncAt: string | null }) {
   const C = useTheme();
@@ -234,17 +207,6 @@ function AccountSection({ name, email, lang, lastSyncAt }: { name: string | null
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
 
 function LogoutCard() {
   const C = useTheme();

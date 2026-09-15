@@ -22,8 +22,6 @@ import {
 
 export const crudRoutes = new Hono();
 
- 
-
 crudRoutes.post("/accounts", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const body = accountPayload.parse(await c.req.json());
@@ -42,8 +40,6 @@ crudRoutes.delete("/accounts/:id", async (c) => {
   await applyAccountDelete(db, budgetId, c.req.param("id"));
   return c.body(null, 204);
 });
-
- 
 
 crudRoutes.post("/groups", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
@@ -64,8 +60,6 @@ crudRoutes.delete("/groups/:id", async (c) => {
   return c.body(null, 204);
 });
 
- 
-
 crudRoutes.post("/envelopes", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const body = envelopePayload.parse(await c.req.json());
@@ -84,9 +78,6 @@ crudRoutes.delete("/envelopes/:id", async (c) => {
   await db.transaction((tx) => applyEnvelopeDelete(tx, budgetId, c.req.param("id")));
   return c.body(null, 204);
 });
-
- 
-
 
 const nameInput = z.object({ name: z.string().min(1) });
 

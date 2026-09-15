@@ -1,12 +1,3 @@
-
-
-
-
-
-
-
-
-
 import { accountPreferences } from "../accountPreferences";
 import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
@@ -43,7 +34,6 @@ import {
 
 let deps: CycleDeps | null = null;
 
- 
 export function configureCycle(d: CycleDeps): void {
   deps = d;
 }
@@ -53,15 +43,13 @@ function requireDeps(): CycleDeps {
   return deps;
 }
 
- 
-
 let backoffMs = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
 function scheduleRetry(): void {
   if (isSignOutBlocking()) return;
   backoffMs = backoffMs === 0 ? 1000 : Math.min(backoffMs * 2, BACKOFF_MAX_MS);
-  const jitter = backoffMs * (0.7 + Math.random() * 0.6);  
+  const jitter = backoffMs * (0.7 + Math.random() * 0.6);
   clearTimeout(retryTimer);
   retryTimer = setTimeout(() => void syncNow("retry"), jitter);
 }
@@ -77,31 +65,20 @@ export function __resetBackoff(): void {
   resetBackoff();
 }
 
-
-
-
-
-
 function enterLocked(): void {
   store.setBootStatus("locked");
-  setState("error");  
+  setState("error");
 }
-
-
-
-
-
-
 
 async function doFullResync(): Promise<void> {
   if ((await bootstrapReplica()) === "locked") {
     enterLocked();
-    throw new Error("e2ee: no DEK — waiting for unlock");  
+    throw new Error("e2ee: no DEK — waiting for unlock");
   }
   replayOutbox();
   requireDeps().ensureE2eeProviderPreference();
-  void persist.persistLedger(store.snapshotForPersist());  
-  requireDeps().notePeersMayNeedUpdate();  
+  void persist.persistLedger(store.snapshotForPersist());
+  requireDeps().notePeersMayNeedUpdate();
 }
 
 /**
@@ -129,8 +106,8 @@ async function doFullResync(): Promise<void> {
  * as they are, and the human decides (ForeignReplicaScreen). Nothing is destroyed unattended.
  */
 async function resyncVerified(): Promise<boolean> {
-  invalidateIdentityVerdict();  
-  if (!(await ensureIdentity())) return false;  
+  invalidateIdentityVerdict();
+  if (!(await ensureIdentity())) return false;
   markResyncPending(); // durable BEFORE the snapshot: a blip must not lose the obligation
   await doFullResync();
   clearResyncPending();
@@ -172,18 +149,13 @@ export function recheckReplicaOwner(): Promise<void> {
   return syncNow("recheck-owner");
 }
 
- 
-
- 
 function cycleMayContinue(permit?: SignOutPermit): boolean {
   return !isSignOutBlocking() || isSignOutPermitActive(permit);
 }
 
 async function doCycle(permit?: SignOutPermit): Promise<boolean> {
-  
-
   if (store.getBootStatus() === "locked") return true;
-   
+
   if (isIdentityBlocked()) return true;
   let isE2ee = e2ee.getTierMeta().tier === "e2ee";
   // before bootstrap — nothing to do (a fresh e2ee replica may not know its budgetId yet)
@@ -210,7 +182,6 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
       }
     }
     if (!cycleMayContinue(permit)) return true;
-    
 
     isE2ee = e2ee.getTierMeta().tier === "e2ee";
 
@@ -237,16 +208,16 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
       if (isE2ee) {
         const dek = e2ee.getDek();
         if (!dek) {
-          enterLocked();  
+          enterLocked();
           return true;
         }
         await (permit ? resetServerE2eeForSignOut(dek, permit) : resetServerE2ee(dek)); // server := ciphertext of the local mirror; clears replacePending
       } else {
-        await (permit ? pushLocalToServerForSignOut(permit) : pushLocalToServer());  
+        await (permit ? pushLocalToServerForSignOut(permit) : pushLocalToServer());
       }
       if (!cycleMayContinue(permit)) return true;
       clearResyncPending();
-      requireDeps().notePeersMayNeedUpdate();  
+      requireDeps().notePeersMayNeedUpdate();
       finishSuccess();
       return true;
     }
@@ -258,8 +229,6 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
     // and persist; the rest of the cycle pushes them (server idempotency dedupes a possible duplicate).
     const { absorbed, peerDeadLettered } = await outbox.reconcileFromIdb();
     if (!cycleMayContinue(permit)) return true;
-    
-
 
     if (peerDeadLettered) markResyncPending();
     if (absorbed.length > 0) {
@@ -271,7 +240,7 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
         }
       }
       void persist.persistLedger(store.snapshotForPersist());
-      requireDeps().notePeersMayNeedUpdate();  
+      requireDeps().notePeersMayNeedUpdate();
     }
     // Reconciliation may have absorbed a later plain-tier Enveo preference from a peer tab.
     // The terminal rules op must be in this very push batch, after the absorbed ordering.
@@ -286,7 +255,7 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
       // key until bootstrap/Unlock re-proves it — pushing on adoption alone would write
       // dead-key ciphertext the blind server accepts and every correct device chokes on.
       if (!dek || !e2ee.isDekValidForEpoch(e2ee.getTierMeta().epoch)) {
-        enterLocked();  
+        enterLocked();
         return true;
       }
       // PUSH v2 — the same batches in localSeq order; encryption happens ONLY here,
@@ -311,7 +280,7 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
           await pushE2eeBatch(epoch, pushBudgetId, ops, permit);
           if (!cycleMayContinue(permit)) return true;
           outbox.removeAcked(batch.map((en) => en.op.opId));
-          requireDeps().notePeersMayNeedUpdate();  
+          requireDeps().notePeersMayNeedUpdate();
         } finally {
           outbox.clearInFlight();
         }
@@ -320,11 +289,8 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
       // PULL v2 — ciphertext delta (own pending ops skipped + outbox replay)
       await doPullE2ee(dek, userId, permit);
       if (!cycleMayContinue(permit)) return true;
-      
 
       requireDeps().ensureE2eeProviderPreference();
-
-      
 
       if (isResyncPending() && !(await resyncVerified())) return true;
       finishSuccess();
@@ -354,7 +320,7 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
           // the mirror; foreign/unproven ⇒ no snapshot, and we STOP the cycle (ops stay in the
           // outbox — server idempotency makes re-sending them safe).
           if (!(await resyncVerified())) return true;
-          dirty = true;  
+          dirty = true;
           finishSuccess();
           return true;
         }
@@ -379,7 +345,7 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
           }
         }
         outbox.removeAcked(acked);
-        if (acked.length > 0) requireDeps().notePeersMayNeedUpdate(); 
+        if (acked.length > 0) requireDeps().notePeersMayNeedUpdate();
 
         if (batch.length > 0 && settled === 0) throw new Error("push: response without batch results");
       } finally {
@@ -387,7 +353,6 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
       }
     }
 
-     
     await doPull();
     if (!cycleMayContinue(permit)) return true;
 
@@ -402,9 +367,6 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
   } catch (e) {
     if (!cycleMayContinue(permit)) return true;
     if (e instanceof UnauthorizedError) {
-      
-
-
       enterUnauthed();
       return false;
     }
@@ -440,10 +402,8 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
  */
 async function handleBudgetMismatch(): Promise<boolean> {
   try {
-    
-
     if (!(await resyncVerified())) return true;
-    dirty = true;  
+    dirty = true;
     finishSuccess();
     return true;
   } catch (e) {
@@ -467,7 +427,7 @@ async function handleBudgetMismatch(): Promise<boolean> {
 async function handleTierFlip(): Promise<boolean> {
   try {
     if ((await bootstrapReplica()) === "locked") {
-      enterLocked();  
+      enterLocked();
       return true;
     }
     replayOutbox();
@@ -475,7 +435,7 @@ async function handleTierFlip(): Promise<boolean> {
     void persist.persistLedger(store.snapshotForPersist());
     requireDeps().notePeersMayNeedUpdate();
     clearResyncPending();
-    dirty = true;  
+    dirty = true;
     finishSuccess();
     return true;
   } catch (e) {
@@ -493,21 +453,14 @@ function finishSuccess(): void {
   resetBackoff();
   const at = new Date().toISOString();
   setLastSyncAt(at);
-  
 
   void persist.putMeta("lastSyncAt", at);
   setState("synced");
-  requireDeps().broadcastUpdatedIfPending();  
+  requireDeps().broadcastUpdatedIfPending();
 }
-
- 
 
 let running: Promise<void> | null = null;
 let dirty = false;
-
-
-
-
 
 export async function runWithSyncMutex<T>(task: () => Promise<T>): Promise<T> {
   while (running) await running.catch(() => {});
@@ -538,9 +491,8 @@ export async function runWithSyncMutex<T>(task: () => Promise<T>): Promise<T> {
 
 function runSyncNow(reason: string, permit?: SignOutPermit): Promise<void> {
   if (!cycleMayContinue(permit)) return Promise.resolve();
-  void reason;  
+  void reason;
   if (import.meta.env.DEV) lastReason = reason;
-  
 
   if (isIdentityBlocked()) return Promise.resolve();
   if (running) {
@@ -551,7 +503,7 @@ function runSyncNow(reason: string, permit?: SignOutPermit): Promise<void> {
     do {
       dirty = false;
       const ok = await doCycle(permit);
-      if (!ok) break;  
+      if (!ok) break;
     } while (dirty);
   })().finally(() => {
     running = null;
@@ -563,7 +515,6 @@ export function syncNow(reason: string): Promise<void> {
   return runSyncNow(reason);
 }
 
- 
 export function syncNowForSignOut(reason: string, permit: SignOutPermit): Promise<void> {
   return runSyncNow(reason, permit);
 }
@@ -576,12 +527,10 @@ export function pullNow(): Promise<void> {
   return syncNow("pull");
 }
 
- 
 export async function awaitInFlightCycle(): Promise<void> {
-  if (running) await running.catch(() => {});  
+  if (running) await running.catch(() => {});
 }
 
- 
 export async function quiesceSyncForSignOut(): Promise<void> {
   dirty = false;
   resetBackoff();
@@ -591,20 +540,16 @@ export async function quiesceSyncForSignOut(): Promise<void> {
   dirty = false;
 }
 
- 
-
 let pokeTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function poke(): void {
   if (isSignOutBlocking()) return;
-  resetBackoff();  
-  bumpStatus();  
-  requireDeps().postPokeToPeers();  
+  resetBackoff();
+  bumpStatus();
+  requireDeps().postPokeToPeers();
   clearTimeout(pokeTimer);
   pokeTimer = setTimeout(() => void syncNow("enqueue"), POKE_DEBOUNCE_MS);
 }
-
- 
 
 let lastReason = "";
 

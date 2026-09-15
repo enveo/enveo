@@ -30,15 +30,11 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
   const { settings } = useSettings();
   const { t, lang } = useT();
   const [proposals, setProposals] = useState<FillProposal[]>([]);
-  const [edited, setEdited] = useState<Record<string, string>>({});  
+  const [edited, setEdited] = useState<Record<string, string>>({});
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
-
-  
 
   useEffect(() => {
     if (!show) return;
-    
-
 
     const groupSortById = new Map(state.groups.map((g) => [g.id, g.sort]));
     const props = fillByGoals(
@@ -98,7 +94,7 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
       const add = editedMinor(p.envelopeId, p.add);
       if (add <= 0) continue;
       const envFresh = live.envelopes.find((e) => e.id === p.envelopeId);
-      if (!envFresh || envFresh.archived) continue;  
+      if (!envFresh || envFresh.archived) continue;
       local.setDisplayedAllocation({ envelopeId: p.envelopeId, month, amount: envFresh.allocated + add });
     }
     haptic([10, 30, 14]);
@@ -113,7 +109,7 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("Fill by goals")}</div>
 
             {visibleProposals.map((p, i) => {
-              const env = envById.get(p.envelopeId)!;  
+              const env = envById.get(p.envelopeId)!;
               return (
                 <div
                   key={p.envelopeId}
@@ -147,8 +143,7 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
                       {M(env.allocated)} → {M(env.monthlyTarget ?? 0)}
                     </div>
                   </div>
-                  {
-}
+                  {}
                   {settings.discreet ? (
                     <div
                       style={{ display: "flex", alignItems: "center", border: `1px solid ${C.line}`, background: C.inset, borderRadius: 9, padding: "6px 9px" }}
@@ -171,7 +166,6 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
                     >
                       <span style={{ fontSize: 11, color: C.soft }}>+</span>
                       <input
-                         
                         value={localizePadExpression(edited[p.envelopeId] ?? "", lang)}
                         readOnly
                         tabIndex={0}

@@ -31,16 +31,16 @@ export type LockChildOutput = {
     events: string[];
     /** pg_locks showed B's ungranted advisory waiter while A held the lock. */
     waiterObserved: boolean;
-     
+
     otherIdFinishedWhileHeld: boolean;
-     
+
     otherOperationFinishedWhileHeld: boolean;
   };
   rollback: {
     threw: boolean;
     /** The row written inside the throwing callback must NOT survive. */
     rowVisibleAfter: boolean;
-     
+
     reacquiredOk: boolean;
   };
   sameConnection: {
@@ -49,11 +49,10 @@ export type LockChildOutput = {
     lockHeldByCallbackPid: boolean;
   };
   inTx: {
-     
     callbackTxIsOuterTx: boolean;
-     
+
     heldAfterCallbackReturned: boolean;
-     
+
     heldAfterOuterCommit: boolean;
   };
   invalidKeys: {
@@ -78,7 +77,6 @@ async function main(): Promise<void> {
   type OperationLockName = (typeof OPERATION_LOCK)[keyof typeof OPERATION_LOCK];
   type Key = ReturnType<typeof operationLockKey>;
 
-   
   const observer = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
   const locks = lockObserver(observer);
 
@@ -103,7 +101,7 @@ async function main(): Promise<void> {
   const pA = withOperationLock(keyA, async () => {
     events.push("A-enter");
     signalAEntered();
-    await gateA;  
+    await gateA;
     events.push("A-exit");
   });
   await withTimeout(aEntered, 10_000, "A entering its callback");
@@ -115,8 +113,6 @@ async function main(): Promise<void> {
   // B is only "blocked" once pg_locks shows its ungranted advisory waiter — no lucky timing.
   const waiterObserved = await waitFor(async () => (await locks.waiters()) >= 1);
   events.push("B-blocked-observed");
-
-  
 
   const otherIdFinishedWhileHeld = await withTimeout(
     withOperationLock(operationLockKey(OPERATION_LOCK.ensureInitialBudget, `other-${crypto.randomUUID()}`), async () => true),
@@ -138,8 +134,6 @@ async function main(): Promise<void> {
   releaseA();
   await withTimeout(Promise.all([pA, pB]), 10_000, "A and B finishing");
 
-   
-
   const keyRollback = operationLockKey(OPERATION_LOCK.ensureInitialBudget, `rollback-${crypto.randomUUID()}`);
   const rollbackEmail = `lock-rollback-${crypto.randomUUID()}@example.test`;
   let threw = false;
@@ -160,16 +154,12 @@ async function main(): Promise<void> {
     "reacquiring after a rollback",
   );
 
-   
-
   let callbackPid = 0;
   let lockHeldByCallbackPid = false;
   await withOperationLock(operationLockKey(OPERATION_LOCK.ensureInitialBudget, `samepid-${crypto.randomUUID()}`), async (tx) => {
     callbackPid = await backendPid(tx);
     lockHeldByCallbackPid = (await locks.heldByPid(callbackPid)) >= 1;
   });
-
-   
 
   let callbackTxIsOuterTx = false;
   let heldAfterCallbackReturned = false;
@@ -186,8 +176,6 @@ async function main(): Promise<void> {
     attempts: 100,
   });
   const heldAfterOuterCommit = !released;
-
-   
 
   let workInvoked = false;
   const rejects = async (key: Key): Promise<boolean> => {

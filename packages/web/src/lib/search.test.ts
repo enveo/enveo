@@ -24,7 +24,6 @@ describe("matchesSearch", () => {
   });
 
   test("diacritic-insensitive the other direction: an accented query matches plain text", () => {
-     
     expect(matchesSearch("oszczednosci", "Oszczędności")).toBe(true);
   });
 
@@ -77,9 +76,6 @@ describe("highlightRanges", () => {
   });
 
   test("Polish diacritic trap: NFD decomposition must not desync original-string indices", () => {
-    
-
-
     expect(highlightRanges("Środki", "srodki")).toEqual([{ text: "Środki", hit: true }]);
     expect(highlightRanges("Środki własne", "rodki")).toEqual([
       { text: "Ś", hit: false },

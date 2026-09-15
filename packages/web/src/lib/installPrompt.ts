@@ -80,7 +80,6 @@ function recompute(): void {
   for (const fn of listeners) fn();
 }
 
- 
 export function initInstallPrompt(): void {
   if (initialized || typeof window === "undefined") return;
   initialized = true;
@@ -93,7 +92,7 @@ export function initInstallPrompt(): void {
     deferred = null;
     recompute();
   });
-  recompute();  
+  recompute();
 }
 
 /**
@@ -120,7 +119,6 @@ export async function promptInstall(): Promise<"accepted" | "dismissed" | "unava
 
 const getSnapshot = (): InstallState => snapshot;
 
- 
 export function getInstallState(): InstallState {
   return snapshot;
 }

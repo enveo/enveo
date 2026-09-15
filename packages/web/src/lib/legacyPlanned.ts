@@ -19,7 +19,6 @@
  */
 import type { ClientLedger } from "@enveo/shared";
 
- 
 export function purgeLegacyPlannedIds(ledger: ClientLedger): string[] {
   return ledger.transactions.filter((t) => (t as unknown as { planned?: boolean }).planned === true).map((t) => t.id);
 }

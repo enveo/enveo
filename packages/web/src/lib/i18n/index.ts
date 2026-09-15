@@ -45,9 +45,7 @@ export async function loadLocale(lang: Lang): Promise<void> {
   if (!entry) return;
   try {
     loaded.set(lang, await entry.load());
-  } catch {
-     
-  }
+  } catch {}
 }
 
 /**
@@ -68,7 +66,7 @@ function fill(s: string, params?: Record<string, string | number>): string {
 
 export function translate(lang: Lang, message: Message, params?: Record<string, string | number>): string {
   const entry = lang === "en" ? undefined : loaded.get(lang)?.[message];
-  const s = typeof entry === "string" ? entry : message;  
+  const s = typeof entry === "string" ? entry : message;
   return fill(s, params);
 }
 

@@ -114,8 +114,6 @@ describe("buildSuggestPrompt", () => {
   });
 });
 
-
-
 describe("languageName / languageDirectives — any BCP-47 locale", () => {
   it("names every shipped language in English (the language the prompts are written in)", () => {
     expect(languageName("en")).toBe("English");
@@ -137,8 +135,8 @@ describe("languageName / languageDirectives — any BCP-47 locale", () => {
 
   it("falls back to English for a missing or unnameable tag — never instructs a language it cannot name", () => {
     expect(languageName("")).toBe("English");
-    expect(languageName("zz")).toBe("English");  
-    expect(languageName("nonsense tag!")).toBe("English");  
+    expect(languageName("zz")).toBe("English");
+    expect(languageName("nonsense tag!")).toBe("English");
   });
 
   it("gives EVERY prompt the same language contract (one source — server and byok cannot drift)", () => {
@@ -664,7 +662,7 @@ describe("runImportRecognitionPipeline", () => {
             return JSON.stringify(batch);
           },
         });
-         
+
         expect(result.proposals[0]).toMatchObject({ type: "income", amount: 1234, envelopeId: null });
       }
     });
@@ -730,9 +728,8 @@ describe("runImportRecognitionPipeline", () => {
     it.each(["posted", "pending", "unknown"] as const)(
       "restores a known merchant's metadata for a %s bank entry despite incidental history",
       async (postingStatus) => {
-         
         const result = await recognizeBakery({ postingStatus });
-         
+
         expect(result.proposals[0]).toMatchObject({
           name: "Bread",
           placeName: "Prairie Bakery",
@@ -798,14 +795,13 @@ describe("runImportRecognitionPipeline", () => {
     });
 
     it.each([false, true])("does not restore an archived historical place when model failure is %s", async (modelFails) => {
-       
       const result = await recognizeBakery({
         places: [{ id: "old", name: "Prairie Bakery", archived: true }],
         postingStatus: "unknown",
         modelPlace: "Bakery",
         modelFails,
       });
-       
+
       expect(result.proposals[0]).toMatchObject({
         placeName: modelFails ? null : "Bakery",
         name: "Bread",
@@ -864,7 +860,6 @@ describe("runImportRecognitionPipeline", () => {
   });
 
   it.each(["posted", "pending"] as const)("enriches a new %s cafe purchase without merchant history", async (postingStatus) => {
-     
     const requests: ChatRequest[] = [];
     const result = await runImportRecognitionPipeline({
       ...base,
@@ -891,7 +886,7 @@ describe("runImportRecognitionPipeline", () => {
         });
       },
     });
-     
+
     expect(requests).toHaveLength(2);
     const context = JSON.parse(requests[1]!.messages[1]!.content as string);
     expect(context.rows[0].historyCandidates).toEqual([]);
@@ -914,7 +909,6 @@ describe("runImportRecognitionPipeline", () => {
   });
 
   it("does not flag parking as conflicting history because unrelated purchases share card boilerplate", async () => {
-     
     const boilerplate = "CARD 2468 PURCHASE 20260807 TERMINAL 9999999999";
     const requests: ChatRequest[] = [];
     const result = await runImportRecognitionPipeline({
@@ -984,7 +978,7 @@ describe("runImportRecognitionPipeline", () => {
         });
       },
     });
-     
+
     expect(result.proposals[0]).toMatchObject({
       name: "Bread",
       placeName: "Linden Market",
@@ -1440,7 +1434,6 @@ describe("runImportRecognitionPipeline", () => {
   });
 
   it.each(["unknown", "credit"])("uses prior reimbursements as reviewable counterevidence for a purchase with %s direction", async (direction) => {
-     
     let calls = 0;
     const refundHistory = { ...history("account-1", "Food"), isRefund: true };
     const result = await runImportRecognitionPipeline({
@@ -1777,8 +1770,7 @@ describe("reasoningEffort — fast responses for suggest", () => {
   it("supportsReasoningEffort: gpt-5*/o* yes, others no", () => {
     expect(supportsReasoningEffort("gpt-5.5")).toBe(true);
     expect(supportsReasoningEffort("gpt-5.5-mini")).toBe(true);
-    expect(supportsReasoningEffort("gpt-5.6-luna")).toBe(true); 
-
+    expect(supportsReasoningEffort("gpt-5.6-luna")).toBe(true);
 
     expect(supportsReasoningEffort("gpt-5.6-terra")).toBe(true);
     expect(supportsReasoningEffort("gpt-5.6-sol")).toBe(true);

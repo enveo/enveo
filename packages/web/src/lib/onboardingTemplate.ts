@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { type Message, msg } from "./i18n";
 
 export type TemplateEnvelope = { name: Message; color: string; icon: string; isSavings?: boolean };
@@ -36,7 +30,6 @@ export const TEMPLATE: TemplateGroup[] = [
   },
 ];
 
- 
 export const CUSTOM_ENVELOPE_COLORS: string[] = TEMPLATE.flatMap((g) => g.envelopes.map((e) => e.color));
 
 /**

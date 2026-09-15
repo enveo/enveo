@@ -1,23 +1,6 @@
 import { TEAL } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 
-/**
- * `Sparkline` lives OUTSIDE `reportKit.tsx` on purpose (design parity wave D task 1, bundle
- * investigation): it is the ONLY export of that ~900-line module a truly EAGER path needs
- * (`components/widgets.tsx`'s Start-screen Net-worth widget, statically imported off
- * `App.tsx` → `screens/Start.tsx`) — everything else there (`ReportShell`, `NetWorthChart`,
- * `CalendarHeatmap`, `gridTicks`, `UndoBar`, `TrendSpark`, …) is reached only through the LAZY
- * `Reports` chunk. Rollup does not partially tree-shake a single-file module across that
- * boundary: importing one named export from `reportKit.tsx` pulled the WHOLE compiled module
- * into the eager entry chunk as a duplicate of the lazy chunk's own copy, so any edit to
- * `ReportShell` (etc.) silently grew the eager §3f budget too — confirmed by grepping the built
- * `index-*.js` for a string unique to an unrelated `ReportShell` branch. Moving the one genuinely
- * eager component (plus the tiny polyline math it needs) into its own module keeps that module's
- * eager footprint to exactly what `widgets.tsx` actually calls, and `reportKit.tsx` importing
- * `polylineCoords` back from here (for `TrendSpark`) costs nothing extra there — this file is
- * already loaded on both paths either way, just no longer standing in for the rest of the kit.
- */
-
 /** Shared normalized-polyline math for `TrendSpark`/`Sparkline`: x evenly spaced across `w`
  *  (`pad` inset each side), y linearly scaled between the series' own min/max onto `h` (a
  *  perfectly flat series draws a level line at `h/2` rather than dividing by a zero range).

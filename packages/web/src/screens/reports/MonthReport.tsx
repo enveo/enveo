@@ -235,9 +235,6 @@ export function MonthReport({
             {dayDetail.txns.length > 4 && <div style={{ fontSize: 9.5, color: C.mute }}>{tp("+ {n} more | + {n} more", dayDetail.txns.length - 4)}</div>}
             <button
               onClick={() => onOpenTxns({ date: monthDay })}
-              
-
-
               style={{
                 alignSelf: "flex-start",
                 display: "flex",

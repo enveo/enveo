@@ -11,7 +11,6 @@ const monthParam = (raw: string | undefined): string => {
 
 export const stateRoutes = new Hono();
 
- 
 stateRoutes.get("/state", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const month = monthParam(c.req.query("month"));
@@ -27,7 +26,6 @@ stateRoutes.get("/state", async (c) => {
   });
 });
 
- 
 stateRoutes.get("/envelopes/:id/summary", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const envId = c.req.param("id");

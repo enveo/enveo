@@ -70,9 +70,7 @@ function decodedTextDataUrls(text: string): string[] {
   for (const match of text.matchAll(/data:(?:text\/[a-z0-9.+-]+|application\/(?:json|xml)|image\/svg\+xml)(?:;[^;,=]+=[^;,]*)*;base64,([A-Za-z0-9+/=]+)/gi)) {
     try {
       decoded.push(Buffer.from(match[1]!, "base64").toString("utf8"));
-    } catch {
-       
-    }
+    } catch {}
   }
   return decoded;
 }
@@ -124,6 +122,7 @@ export function isBinary(bytes: Uint8Array): boolean {
 
 export function isAllowedBinaryAsset(path: string): boolean {
   return new Set([
+    "docs/assets/app-demo.png",
     "packages/web/public/apple-touch-icon.png",
     "packages/web/public/icon-192.png",
     "packages/web/public/icon-512.png",

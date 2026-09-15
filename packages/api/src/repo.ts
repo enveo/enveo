@@ -17,9 +17,6 @@ import { db } from "./db/client";
 import * as s from "./db/schema";
 import type { Executor } from "./sync/apply";
 
-
-
-
 export const mapBudget = (b: typeof s.budgets.$inferSelect): Budget => ({
   id: b.id,
   name: b.name,
@@ -102,7 +99,6 @@ export const mapTransaction = (t: typeof s.transactions.$inferSelect, items: Txn
   createdAt: t.createdAt,
 });
 
- 
 export async function loadLedger(budgetId: string, x: Executor = db): Promise<Ledger> {
   const [accRows, grpRows, envRows, allocRows, txnRows, itemRows] = await Promise.all([
     x.select().from(s.accounts).where(eq(s.accounts.budgetId, budgetId)),
@@ -139,7 +135,6 @@ export async function loadLedger(budgetId: string, x: Executor = db): Promise<Le
   };
 }
 
- 
 export async function loadClientLedger(x: Executor, budgetId: string): Promise<ClientLedger> {
   const [ledger, catRows, plcRows, budgetRows] = await Promise.all([
     loadLedger(budgetId, x),

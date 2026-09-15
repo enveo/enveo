@@ -25,8 +25,6 @@ import { hydrateObligations } from "./obligations";
 import { bumpStatus, getLastSyncAt, setLastSyncAt } from "./status";
 import { bootstrapReplica, getClientId } from "./transport";
 
- 
-
 let lastBootSource: BootSource = null;
 let awaitSecurityBoundary: () => Promise<void> = () => Promise.resolve();
 
@@ -93,13 +91,13 @@ async function boot(): Promise<void> {
     // account storage is opened or any authenticated data can reach the UI.
     await awaitSecurityBoundary();
     if (isSignOutBlocking()) return;
-    void getClientId();  
-    void requestPersistentStorage();  
+    void getClientId();
+    void requestPersistentStorage();
     const [hydrated] = await Promise.all([store.hydrate(), outbox.hydrate()]);
     if (isSignOutBlocking()) return;
     await loadSyncMeta();
     if (isSignOutBlocking()) return;
-     
+
     const ownership = await bootOwnerOk();
     if (isSignOutBlocking()) return;
     if (!ownership.ok) return;
@@ -116,16 +114,15 @@ async function boot(): Promise<void> {
       if (isSignOutBlocking()) return;
     }
     if (hydrated === "empty") {
-      lastBootSource = "snapshot"; 
+      lastBootSource = "snapshot";
 
       if ((await bootstrapReplica()) === "locked") {
-         
         store.setBootStatus("locked");
         return;
       }
       if (isSignOutBlocking()) return;
     } else {
-      lastBootSource = "replica";  
+      lastBootSource = "replica";
     }
     // REPLAY the outbox onto the mirror — heals a crash between addOutbox of an op and persist
     // (reducers are idempotent: create guards the id, update = full replacement);
@@ -139,13 +136,10 @@ async function boot(): Promise<void> {
   } catch (e) {
     if (isSignOutBlocking()) return;
     if (e instanceof UnauthorizedError) {
-      
-
       enterUnauthed();
       return;
     }
     if (store.getLedger()) {
-       
       lastBootSource = "replica";
       // Read the meta flags HERE too: the resync obligation from IDB must not be lost.
       await loadSyncMeta();
@@ -168,13 +162,11 @@ export function __resetBootForTests(): void {
   bootPromise = null;
 }
 
- 
 export function bootOnce(): Promise<void> {
   if (!bootPromise) bootPromise = boot();
   return bootPromise;
 }
 
- 
 export function retryBoot(): Promise<void> {
   if (isSignOutBlocking()) return bootPromise ?? Promise.resolve();
   bootPromise = boot();

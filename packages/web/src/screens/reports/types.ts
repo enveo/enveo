@@ -1,7 +1,7 @@
 import { type Message, msg } from "../../lib/i18n";
 
 export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals" | "month" | "trends";
- 
+
 export type ReportView = "overview" | ReportTab;
 export const TITLES: Record<ReportTab, Message> = {
   assets: msg("Wealth"),

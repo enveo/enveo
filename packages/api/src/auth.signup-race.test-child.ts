@@ -30,14 +30,13 @@ export type RaceResult = {
 export type RaceOutput = {
   baseURL: string;
   results: RaceResult[];
-   
+
   sessionCookie: { name: string; attributes: Record<string, unknown> };
 };
 
 async function main(): Promise<void> {
   const expected = process.env.EXPECT_DATABASE_URL ?? "";
   const { env } = await import("./env");
-  
 
   if (!expected || env.DATABASE_URL !== expected) {
     throw new Error(`refusing to run: env.DATABASE_URL is not the throwaway database given by the test ` + `(EXPECT_DATABASE_URL=${expected || "<unset>"})`);

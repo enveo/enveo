@@ -21,7 +21,6 @@ import { RulesProvider } from "./aiProvider/rules";
 import { apiErrorMessage } from "./api";
 import { type ChatTarget, chatJson, directChatJson } from "./openai";
 
- 
 async function withFetch<T>(fetchStub: typeof fetch, fn: () => Promise<T>, onLine = true): Promise<T> {
   const origFetch = globalThis.fetch;
   const origNav = Object.getOwnPropertyDescriptor(globalThis, "navigator");
@@ -42,11 +41,11 @@ const answering = (status: number, body: unknown): typeof fetch =>
       status,
       headers: { "content-type": "application/json" },
     })) as unknown as typeof fetch;
- 
+
 const replying = (content: string): typeof fetch => answering(200, { choices: [{ message: { content } }] });
 const rejecting = (): typeof fetch =>
   (async () => {
-    throw new TypeError("Failed to fetch");  
+    throw new TypeError("Failed to fetch");
   }) as unknown as typeof fetch;
 
 const MONTH = "2026-07";
@@ -69,7 +68,6 @@ const txn = (over: Partial<Transaction> & Pick<Transaction, "id" | "type" | "amo
   allocationToEnvelopeId: over.allocationToEnvelopeId ?? null,
 });
 
- 
 const fixtureLedger = (): ClientLedger => ({
   accounts: [
     {
@@ -130,7 +128,7 @@ describe("previewSuggestPrompt", () => {
     expect(typeof preview.system).toBe("string");
     expect(typeof preview.user).toBe("string");
     expect(preview.system).toContain("Write all text you GENERATE (names, notes, rationales) in Polish.");
-     
+
     expect(`${preview.system}\n${preview.user}`).toContain("Profile: cautious");
     expect(preview.user).toContain("Jedzenie");
     expect(preview.user).toContain("Transport");
@@ -164,7 +162,7 @@ describe("previewSuggestPrompt", () => {
     const req = buildAgentSuggestPrompt(ctx);
     expect(preview.system).toBe(req.messages[0]!.content as string);
     expect(preview.user).toBe(req.messages[1]!.content as string);
-     
+
     const user = JSON.parse(preview.user) as Record<string, any>;
     expect(user.currentMonth.month).toBe(MONTH);
     expect(user.previousMonth.note).toContain("reference");

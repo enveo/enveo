@@ -14,5 +14,4 @@ export type DB = typeof db;
  *  than the one that follows it. */
 export type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
- 
 export type DbExecutor = typeof db | DbTransaction;

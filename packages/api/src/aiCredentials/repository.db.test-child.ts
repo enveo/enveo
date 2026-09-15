@@ -76,9 +76,7 @@ async function main() {
         await repository.replaceServerCredential(tx, owner, budgetId, "sk-must-rollback");
         throw new Error("forced_rollback");
       });
-    } catch {
-       
-    }
+    } catch {}
     const rollbackKeptPrevious = await db.transaction((tx) =>
       repository.withServerCredential(tx, owner, budgetId, async (credential) => credential === "sk-original"),
     );

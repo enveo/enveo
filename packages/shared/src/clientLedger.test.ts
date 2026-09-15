@@ -14,7 +14,6 @@ const emptyLedger: ClientLedger = {
   places: [],
 };
 
- 
 function fullLedger(): ClientLedger {
   return {
     accounts: [
@@ -83,7 +82,7 @@ describe("clientLedgerSchema", () => {
 
   test("Σ split items ≠ amount → rejected", () => {
     const l = fullLedger();
-    l.transactions[0]!.items[0]!.amount = 999;  
+    l.transactions[0]!.items[0]!.amount = 999;
     const res = clientLedgerSchema.safeParse(l);
     expect(res.success).toBe(false);
   });
@@ -192,8 +191,8 @@ describe("clientLedgerSchema", () => {
     const res = clientLedgerSchema.safeParse(l);
     expect(res.success).toBe(true);
     if (!res.success) return;
-    expect(res.data.envelopes[0]!.isSavings).toBe(false);  
-    expect(res.data.envelopes[1]!.isSavings).toBe(true);  
+    expect(res.data.envelopes[0]!.isSavings).toBe(false);
+    expect(res.data.envelopes[1]!.isSavings).toBe(true);
   });
 
   test("pre-3.2 planned=true template rows are dropped on parse (never materialize as real money)", () => {

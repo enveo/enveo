@@ -5,7 +5,6 @@ import { rankEnvelopes, rankPlaces, withSelectedFirst } from "./suggest";
 const TODAY = "2026-06-30";
 const DAY_MS = 86_400_000;
 
- 
 function back(iso: string, days: number): string {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
   return new Date(Date.UTC(y, m - 1, d) - days * DAY_MS).toISOString().slice(0, 10);
@@ -59,8 +58,6 @@ const L = (envelopes: Envelope[], transactions: Transaction[]): ClientLedger =>
 
 describe("rankEnvelopes", () => {
   test("recency-weighted usage beats raw count", () => {
-    
-
     const envelopes = [env("Enew", 0), env("Eold", 1)];
     const txns = [
       ...[10, 20].map((d) => txn({ envelopeId: "Enew", date: back(TODAY, d) })),
@@ -71,17 +68,14 @@ describe("rankEnvelopes", () => {
   });
 
   test("amount affinity reorders envelopes with an otherwise equal score", () => {
-    
-
-
     const envelopes = [env("Ehigh", 0), env("Elow", 1)];
     const txns = [
       ...[10, 20].map((d) => txn({ envelopeId: "Ehigh", date: back(TODAY, d), amount: 500_000 })),
       ...[10, 20].map((d) => txn({ envelopeId: "Elow", date: back(TODAY, d), amount: 5_000 })),
     ];
     const ledger = L(envelopes, txns);
-    expect(rankEnvelopes(ledger, TODAY, null)).toEqual(["Ehigh", "Elow"]);  
-    expect(rankEnvelopes(ledger, TODAY, 4_700)).toEqual(["Elow", "Ehigh"]);  
+    expect(rankEnvelopes(ledger, TODAY, null)).toEqual(["Ehigh", "Elow"]);
+    expect(rankEnvelopes(ledger, TODAY, 4_700)).toEqual(["Elow", "Ehigh"]);
   });
 
   test("excludes archived envelopes even when heavily used", () => {
@@ -108,7 +102,7 @@ describe("rankEnvelopes", () => {
     const envelopes = [env("Efar", 0), env("Enone", 1)];
     const txns = [txn({ envelopeId: "Efar", date: back(TODAY, 120) })];
     const ledger = L(envelopes, txns);
-     
+
     expect(rankEnvelopes(ledger, TODAY, null)).toEqual(["Efar", "Enone"]);
   });
 });
@@ -119,7 +113,7 @@ describe("rankPlaces", () => {
       txn({ envelopeId: "E1", placeId: "P1", date: back(TODAY, 5) }),
       txn({ envelopeId: "E1", placeId: "P1", date: back(TODAY, 4) }),
       txn({ envelopeId: "E1", placeId: "P2", date: back(TODAY, 3) }),
-       
+
       txn({ envelopeId: "E2", placeId: "P3", date: back(TODAY, 2) }),
       txn({ envelopeId: "E2", placeId: "P3", date: back(TODAY, 1) }),
       txn({ envelopeId: "E2", placeId: "P3", date: back(TODAY, 1) }),

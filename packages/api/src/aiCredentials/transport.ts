@@ -21,10 +21,6 @@ export class ByokInvalidBodyError extends Error {
   }
 }
 
-
-
-
-
 export async function byokChat(options: { apiKey: string; model: string; request: ChatRequest; timeoutMs?: number }): Promise<ByokChatOutcome> {
   const response = await byokTransportDeps.fetchChat(
     {

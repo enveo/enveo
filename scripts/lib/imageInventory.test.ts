@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { describe, expect, it } from "bun:test";
 import { scanModuleSpecifiers } from "../image-inventory";
 import { checkImage, type Expectations, type ImageFacts, packageNameOfStoreEntry } from "./imageInventory";
@@ -41,7 +35,7 @@ const facts = (overrides: Partial<ImageFacts> = {}): ImageFacts => ({
   nativeBinaries: [],
   unresolvableImports: [],
   bunVersion: "1.3.14",
-   
+
   osPackages: ["libcrypto3-3.5.7-r0", "libssl3-3.5.7-r0", "musl-1.2.5-r10"],
   ...overrides,
 });
@@ -102,8 +96,6 @@ describe("checkImage — the runtime allowlist", () => {
 });
 
 describe("checkImage — the denylist", () => {
-  
-
   it.each([
     ["packages/shared/src/ledger.test-support.ts", "shared test helpers (imports fast-check)"],
     ["packages/api/src/api.test-support.ts", "API test helpers"],
@@ -168,7 +160,6 @@ describe("checkImage — no native binaries (the two-base safety property)", () 
   });
 
   it("rejects a bare ELF helper with no telling file extension", () => {
-     
     const withHelper = facts({ nativeBinaries: ["node_modules/.bun/esbuild@0.25.12/bin/esbuild"] });
 
     expect(checkImage(withHelper, expectations()).join(" ")).toContain("must stay pure JavaScript");
@@ -181,7 +172,6 @@ describe("checkImage — no native binaries (the two-base safety property)", () 
 
 describe("checkImage — every shipped module can load", () => {
   it("rejects a shipped module importing a package the prune removed", () => {
-     
     const broken = facts({
       unresolvableImports: ["packages/shared/src/ledger.test-support.ts -> fast-check"],
     });
@@ -228,8 +218,6 @@ describe("scanModuleSpecifiers", () => {
 
 describe("checkImage — the base digest really is the pinned version", () => {
   it("rejects an image whose Bun differs from .bun-version", () => {
-    
-
     const stale = facts({ bunVersion: "1.3.9" });
 
     expect(checkImage(stale, expectations({ bunVersion: "1.3.14" })).join(" ")).toContain("image runs Bun 1.3.9, but .bun-version pins 1.3.14");

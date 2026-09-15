@@ -1,15 +1,10 @@
-
-
-
-
-
 import { and, eq } from "drizzle-orm";
 import { assertSeedEnv } from "../env";
 import { type DbTransaction, db, sql } from "./client";
 import { OPERATION_LOCK, operationLockKey, withOperationLock } from "./operationLock";
 import * as s from "./schema";
 
-const USD = (z: number) => Math.round(z * 100);  
+const USD = (z: number) => Math.round(z * 100);
 
 function isoShift(days: number): string {
   const d = new Date();
@@ -26,7 +21,6 @@ const ACCOUNTS = [
 
 const GROUPS = ["Bills", "Everyday", "Savings"];
 
- 
 const ENVELOPES: Array<[string, string, string, string, number, boolean?]> = [
   ["Housing", "Bills", "#ccd9b6", "house", 1800],
   ["Utilities", "Bills", "#8f84a8", "receipt", 250],
@@ -47,7 +41,7 @@ export async function seed() {
   const { auth } = await import("../auth");
   const ctx = await auth.$context;
   const password = await ctx.password.hash("Example-Demo-2026!");
-   
+
   await db.insert(s.users).values({ email: "demo@example.test", name: "Demo User" }).onConflictDoNothing();
   const [owner] = await db.select({ id: s.users.id }).from(s.users).where(eq(s.users.email, "demo@example.test"));
   if (!owner) throw new Error("Could not create the demo account.");
@@ -67,7 +61,6 @@ export async function seed() {
   console.log(`✓ seed done: ${accounts} accounts, ${envelopes} envelopes, ${allocations} allocations`);
 }
 
- 
 async function seedInto(tx: DbTransaction, ownerId: string): Promise<{ accounts: number; envelopes: number; allocations: number }> {
   await tx.delete(s.budgets).where(eq(s.budgets.userId, ownerId)); // cascade removes only demo budget data
 
@@ -116,7 +109,6 @@ async function seedInto(tx: DbTransaction, ownerId: string): Promise<{ accounts:
   await tx.insert(s.categories).values(CATEGORIES.map((name) => ({ budgetId: bid, name })));
   await tx.insert(s.places).values(PLACES.map((name) => ({ budgetId: bid, name })));
 
-   
   const month = new Date().toISOString().slice(0, 7);
   const allocs = ENVELOPES.filter(([, , , , add]) => add > 0).map(([name, , , , add]) => ({
     budgetId: bid,
@@ -126,7 +118,6 @@ async function seedInto(tx: DbTransaction, ownerId: string): Promise<{ accounts:
   }));
   if (allocs.length) await tx.insert(s.allocations).values(allocs);
 
-   
   const cat = async (name: string) => {
     const rows = await tx.select().from(s.categories).where(eq(s.categories.budgetId, bid));
     return rows.find((c) => c.name === name)?.id ?? null;

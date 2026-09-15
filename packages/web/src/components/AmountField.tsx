@@ -8,40 +8,6 @@ import { useWideHost } from "../lib/shellContext";
 import { font } from "../lib/theme";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 
-/**
- * PR6b Task 5 — the shared desktop-input-or-pad amount field (pr6b-context.md ground truth #9,
- * the `AllocCell` desktop pattern from Budget.tsx:454, copied verbatim for a plain FORM FIELD
- * instead of a tap-to-edit table cell): `useWideHost()?.mode === "desktop"` renders a real
- * `<input inputMode="decimal">`; every other host (fold, phone, no host at all) keeps today's
- * readOnly `localizePadExpression` display that opens `AmountPadHost` on click/focus — byte-
- * identical to what every pad-trigger field in the app already does.
- *
- * `value`/`onCommit` stay on the CANONICAL `fmtSignedTrim` string, never a raw minor number:
- * this is exactly the shape the callers already hold (Accounts.tsx's `bl`), so adopting the
- * field costs the caller nothing beyond swapping its own input markup for this component. An
- * empty string is a valid value (unset — every caller already treats `parseAmount("") ?? 0` as
- * the empty-balance default; this field preserves that instead of forcing a "0" prefill).
- *
- * `externalPad` (PR6b Task 6 fix, review finding): an opt-in escape hatch for callers that render
- * this field INSIDE a `Surface`'s own body. The self-contained default (below) nests the pad's
- * `AmountPadHost` — and therefore its `Sheet` — as a CHILD of the field, which is a child of the
- * Surface. On phone (and any un-hosted mount) `Surface` IS `Sheet`, whose content div carries an
- * always-on `transform` (chrome.tsx) — a non-`none` transform is a containing block for
- * `position:fixed` descendants regardless of its value, so the nested pad's fixed backdrop+numpad
- * get sized/positioned against that small sheet instead of the viewport (the exact ancestor-
- * transform pitfall, CLAUDE.md). Wide panel surfaces dodge this only because `PaneSurface`
- * re-provides `host:"panel"` to nested `Sheet`s (Task 1); phone surfaces have no such signal.
- * Every other `AmountPadHost` caller in the app (FillGoalsSheet, BudgetSuggestSheet, Budget.tsx,
- * Onboarding.tsx) avoids this by keeping the pad a SIBLING of its enclosing Surface/Sheet, never a
- * descendant — `externalPad` lets the Surface-hosted callers (ReconcileSheet, Accounts.tsx's
- * "Starting balance") do the same: hoist the pad TARGET into their own state and render
- * `AmountPadHost` themselves, as a sibling of their `Surface`. Omitted (every other caller,
- * unchanged), the field keeps today's fully self-contained pad. THE RULE, pinned by
- * `AmountField.test.ts`'s source scan: an `<AmountField>` rendered inside a `<Surface>`/`<Sheet>`
- * body MUST pass `externalPad` (and host the pad as a sibling), and a raw `<AmountPadHost>` must
- * never sit inside one.
- */
- 
 const inlineFigureStyle = (underline: string, color: string): React.CSSProperties => ({
   width: 120,
   maxWidth: "50%",
@@ -68,19 +34,18 @@ export function AmountField({
   externalPad,
   inline = false,
 }: {
-   
   value: string;
   /** Called with a NEW canonical `fmtSignedTrim` string on a valid commit (pad ✓, or the desktop
    *  input's Enter/blur) — never with raw/partial text. */
   onCommit: (raw: string) => void;
-   
+
   label: string;
   placeholder?: string;
   /** Account balances (credit cards) may be negative; most other amounts may not. */
   allowNegative?: boolean;
-   
+
   externalPad?: readonly [AmountPadTarget | null, (target: AmountPadTarget | null) => void];
-   
+
   inline?: boolean;
 }) {
   const C = useTheme();
@@ -91,8 +56,6 @@ export function AmountField({
   const [pad, setPad] = externalPad ?? [internalPad, setInternalPad];
   const [input, setInput] = useState(value);
   const [err, setErr] = useState(false);
-  
-
 
   const cancelingRef = useRef(false);
 
@@ -174,8 +137,6 @@ export function AmountField({
   return (
     <>
       <input
-        
-
         value={inline && parseAmount(value) !== null ? formatMoney(parseAmount(value)!, currency, lang) : localizePadExpression(value, lang)}
         readOnly
         placeholder={placeholder}
@@ -198,8 +159,7 @@ export function AmountField({
               }
         }
       />
-      {
-}
+      {}
       {!externalPad && <AmountPadHost target={pad} onClose={() => setPad(null)} />}
     </>
   );

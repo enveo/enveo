@@ -128,7 +128,6 @@ describe("plain durable import adapter", () => {
   });
 
   it("completes only through the tenant-asserted remote boundary and publishes the minimal summary", async () => {
-     
     const calls: Array<{ id: string; budgetId: string; appliedCount: number; skippedCount: number }> = [];
     const api = remote({
       complete: async (id, input) => {
@@ -144,15 +143,11 @@ describe("plain durable import adapter", () => {
       },
     });
     const activity = createImportActivityStore();
-    activity.upsert(
-       
-      {
-        ...importActivityFromServer(detail({ status: "ready", phase: "ready", result: { rows: [], proposals: [] }, proposalCount: 2 })),
-      },
-    );
+    activity.upsert({
+      ...importActivityFromServer(detail({ status: "ready", phase: "ready", result: { rows: [], proposals: [] }, proposalCount: 2 })),
+    });
     const adapter = new PlainImportJobAdapter({ scope: SCOPE, activity, remote: api });
 
-     
     await adapter.complete(ID, { appliedCount: 1, skippedCount: 1 });
 
     // then: counts cross the server boundary with the manager-owned budget assertion, never result data
@@ -177,7 +172,6 @@ describe("plain durable import adapter", () => {
   });
 
   it("exposes the durable uploading item before the server acknowledges creation", async () => {
-     
     const response = deferred<ImportJobDetail>();
     const adapter = new PlainImportJobAdapter({
       scope: SCOPE,
@@ -186,11 +180,9 @@ describe("plain durable import adapter", () => {
     });
     const observed: ImportActivityItem[] = [];
 
-     
     const creation = adapter.create(input(), (created) => observed.push(created));
     while (observed.length === 0 && !(await importJobStorage.getDraft(SCOPE, ID))) await Promise.resolve();
 
-     
     expect(observed).toHaveLength(1);
     expect(observed[0]).toMatchObject({ id: ID, source: "plain-draft", status: "queued", phase: "uploading" });
 

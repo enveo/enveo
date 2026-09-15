@@ -1,20 +1,3 @@
-/**
- * The "Edit widgets" sheet — reorder (drag handle), enable/disable toggles and per-widget
- * options for Start's configurable widget stack.
- *
- * Split out of `widgets.tsx` into its own module so it can be loaded lazily (§3f): the six
- * `START_WIDGETS` bodies are eager (Start renders them at boot), but this whole editing surface
- * — the sheet itself, its three options bodies (`AccountsOptions`/`EnvelopesOptions`/
- * `QuickActionsOptions`) and the row/toggle/checkbox/chip primitives only they use — is needed
- * only once someone taps the edit pencil. Mounted via `lazy()` + `LazyChunk`/`useOpenedOnce`
- * from `Start.tsx`, the same idiom `App.tsx` already uses for `EnvActionsSheet`.
- *
- * Imports FROM `./widgets` (the eager module) for the action-catalogue it needs
- * (`QUICK_ACTION_DEFS`, `QUICK_ACTION_ORDER`) — never the other way around, so `widgets.tsx` never
- * pulls this chunk into the eager closure. Row membership is checked against `WIDGET_CATALOG`
- * (every `WidgetId`, PR5 onward), NOT `START_WIDGETS` (only the six EAGER bodies) — this sheet
- * lists and toggles all twelve widgets, eager or lazy alike; it never renders a widget BODY itself.
- */
 import { type CSSProperties, useEffect, useState } from "react";
 import type { StateResponse } from "../lib/api";
 import type { WidgetConfig, WidgetId, WidgetOpts } from "../lib/contexts";
@@ -64,10 +47,10 @@ function widgetSubtitle(w: WidgetConfig, state: StateResponse, t: (m: Message, p
       return t("Overspends, pace risks and shortfalls");
     case "recent":
       return t("latest transactions");
-     
+
     case "spending":
       return t("current month");
-     
+
     case "goals":
       return t("Monthly goals");
     case "trends":
@@ -128,7 +111,6 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
   );
 }
 
- 
 function chipStyle(C: Theme, active: boolean): CSSProperties {
   return {
     padding: "5px 10px",
@@ -141,8 +123,6 @@ function chipStyle(C: Theme, active: boolean): CSSProperties {
     border: `1px solid ${active ? "var(--accent)" : C.line}`,
   };
 }
-
-
 
 function CheckBox({ checked }: { checked: boolean }) {
   const C = useTheme();
@@ -165,9 +145,6 @@ function CheckBox({ checked }: { checked: boolean }) {
     </span>
   );
 }
-
-
-
 
 function PickRow({
   icon,
@@ -228,7 +205,7 @@ function AccountsOptions({ w, state, onChange }: { w: WidgetConfig; state: State
   const { t } = useT();
   const collapsed = w.opts?.collapsed ?? true;
   const count = w.opts?.count ?? 4;
-  const picked = w.opts?.picked;  
+  const picked = w.opts?.picked;
   const accounts = state.accounts.filter((a) => !a.archived);
   const [q, setQ] = useState("");
   // reset only on the "all"→"picked" transition (undefined→array) — NOT on every checkbox toggle,
@@ -326,15 +303,11 @@ function AccountsOptions({ w, state, onChange }: { w: WidgetConfig; state: State
   );
 }
 
-/** Exported for `PanelHost`'s `widgets` panel body (PR5 Task 6) — the wide board's gear target
- *  reuses this SAME options UI (one implementation, not a parallel one), dynamically imported
- *  there exactly like this module already is from `Start.tsx`, so Vite dedupes the two into one
- *  chunk rather than shipping the body twice. */
 export function EnvelopesOptions({ w, state, onChange }: { w: WidgetConfig; state: StateResponse; onChange: (o: WidgetOpts) => void }) {
   const C = useTheme();
   const { t } = useT();
   const mode = w.opts?.mode ?? "all";
-  const base = mode.split(":")[0]!;  
+  const base = mode.split(":")[0]!;
   const groups = state.groups;
   const envelopes = state.envelopes.filter((e) => !e.archived);
   const [q, setQ] = useState("");
@@ -416,7 +389,6 @@ export function EnvelopesOptions({ w, state, onChange }: { w: WidgetConfig; stat
 function QuickActionsOptions({ w, onChange }: { w: WidgetConfig; onChange: (o: WidgetOpts) => void }) {
   const C = useTheme();
   const { t } = useT();
-  
 
   const selected = w.opts?.actions ?? [];
   return (
@@ -431,7 +403,7 @@ function QuickActionsOptions({ w, onChange }: { w: WidgetConfig; onChange: (o: W
               const set = new Set(selected);
               if (checked) set.delete(key);
               else set.add(key);
-               
+
               onChange({ actions: QUICK_ACTION_ORDER.filter((k) => set.has(k)) });
             }}
             style={{
@@ -487,9 +459,6 @@ export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; stat
   const toggle = (id: WidgetId) => setSettings({ ...settings, startWidgets: list.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)) });
   const setOpts = (id: WidgetId, opts: WidgetOpts) =>
     setSettings({ ...settings, startWidgets: list.map((w) => (w.id === id ? { ...w, opts: { ...w.opts, ...opts } } : w)) });
-
-  
-
 
   return (
     <Sheet show={show} onClose={onClose} tall>

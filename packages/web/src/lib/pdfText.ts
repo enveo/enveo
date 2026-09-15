@@ -10,12 +10,6 @@ export class PdfWithoutTextError extends Error {
   }
 }
 
-
-
-
-
-
-
 export async function statementPagesFromPdf(file: File): Promise<string[]> {
   // The LEGACY build: the modern one assumes the newest engines (Promise.withResolvers and
   // friends), which the iPhone this app lives on does not guarantee; legacy is transpiled and

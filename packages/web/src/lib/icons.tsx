@@ -1,7 +1,6 @@
 import { useTheme } from "./contexts";
 import { type Message, msg } from "./i18n";
 
- 
 export const ICONS: Record<string, string[]> = {
   briefcase: ["M3 8h18v11a1 1 0 01-1 1H4a1 1 0 01-1-1V8z", "M8 8V6a2 2 0 012-2h4a2 2 0 012 2v2"],
   card: ["M3 6.5h18v11H3z", "M3 10h18"],
@@ -47,7 +46,6 @@ export const ICONS: Record<string, string[]> = {
   ],
   dots: ["M5 12h.4", "M12 12h.4", "M19 12h.4"],
 
-   
   banknote: ["M3 7h18v10H3z", "M12 14.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z", "M6 12h.4", "M17.6 12h.4"],
   coins: ["M12 8c4.4 0 8-1.3 8-3s-3.6-3-8-3-8 1.3-8 3 3.6 3 8 3z", "M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5", "M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"],
   piggy: [
@@ -118,7 +116,6 @@ export const ICONS: Record<string, string[]> = {
   envelope: ["M3.5 5.5h17v13h-17z", "M3.5 6.5L12 13l8.5-6.5"],
 };
 
- 
 export const ICON_CATEGORIES: Array<{ label: Message; icons: string[] }> = [
   {
     label: msg("Finance & shopping"),
@@ -133,7 +130,6 @@ export const ICON_CATEGORIES: Array<{ label: Message; icons: string[] }> = [
   { label: msg("Other"), icons: ["star", "umbrella", "globe", "calendar", "shield", "leaf", "envelope"] },
 ];
 
- 
 export const D_INSTALL = "M12 4v10 M8 10l4 4 4-4 M5 20h14";
 
 export function Glyph({ name, size = 20, color, sw = 1.7 }: { name: string; size?: number; color: string; sw?: number }) {

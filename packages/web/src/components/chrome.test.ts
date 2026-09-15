@@ -18,9 +18,6 @@ describe("StyleInjector's shared `.fi` fade class", () => {
     const source = readFileSync(join(import.meta.dir, "chrome.tsx"), "utf8");
     expect(source).toContain(".fi{animation:fi .25s ease-out}");
     expect(source).not.toContain(".fi{animation:fi .25s ease-out both}");
-    
-
-
 
     expect(source).toContain(".fu{animation:fu .4s ease-out both}");
   });

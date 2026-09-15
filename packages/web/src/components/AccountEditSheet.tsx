@@ -10,17 +10,6 @@ import { EnvelopePickerSheet } from "../screens/add/EnvelopePickerSheet";
 import { Surface } from "./chrome";
 import { IconColorPicker } from "./IconColorPicker";
 
-
-
-
-
-
-
-
-
-
-
-
 export function AccountEditSheet({
   account,
   envelopes,
@@ -151,10 +140,7 @@ export function AccountEditSheet({
                 />
               </button>
             </div>
-            {
-
-
-}
+            {}
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 onClick={close}

@@ -48,16 +48,11 @@ export function BudgetScreen({
   onPrev: () => void;
   onNext: () => void;
   onOpenEnvelope: (envId: string, month: string) => void;
-  
-
-
-
 
   sheet: BudgetSheetState;
-  
 
   onSheet: (event: BudgetSheetEvent) => void;
-   
+
   manageOpen: boolean;
   onManageOpen: (open: boolean) => void;
   /** Design parity wave C1 (gap 5): the envelope App's `resolvePanel` is currently showing in the
@@ -72,35 +67,21 @@ export function BudgetScreen({
   const { t } = useT();
   const wideHost = useWideHost();
   const inWide = wideHost !== null;
-  
-
 
   const desktopInput = wideHost?.mode === "desktop";
-  // READ from the prop on every render, never latched into local state — lib/budgetSheet.ts owns
-  // the whole rule and budgetSheet.test.ts pins it, because a `useState` seeded from `sheet` here
-  // behaves identically on first render and dead-ends every entry point pressed afterwards
-  // (owner round 8 item 32). `…Opened` are the lazy-chunk latches: mount on first open, stay
-  // mounted, so a sheet's state survives close→reopen (same idiom as Add.tsx).
+
   const { suggest, fillGoals, suggestOpened, fillGoalsOpened } = useBudgetSheets(sheet);
   const closeSheet = () => onSheet({ kind: "close" });
-  
-
-
 
   const fillGoalsPossible = canFillGoals(state);
-  
-
-
 
   const [editing, setEditing] = useState<{ envelopeId: string; pad: PadState; err?: boolean; input?: string } | null>(null);
 
   const groups = [...state.groups].sort((a, b) => a.sort - b.sort);
   const envs = state.envelopes.filter((e) => !e.archived);
-  
 
   const COLS = "1fr 104px 108px";
 
-   
   const persistAllocation = (envelopeId: string, minor: number) => {
     const env = envs.find((x) => x.id === envelopeId);
     if (env && minor !== env.allocated) local.setDisplayedAllocation({ envelopeId, month, amount: minor });
@@ -111,13 +92,7 @@ export function BudgetScreen({
     const minor = ed.input !== undefined ? evalExpression(ed.input) : padPreview(ed.pad.expr);
     if (minor !== null) persistAllocation(ed.envelopeId, minor);
   };
-  // Desktop input's Enter/blur commit (Task 3b; owner round 5 item 27): same persistAllocation
-  // write as the pad's ✓, but the typed text is EVALUATED first — `evalExpression` (the CSP-safe
-  // `evalArith` behind the pad) makes the C1 hint's "+ − × ÷ work, ⏎ saves" literally true for
-  // "500+1"-style entry, and falls back to `parseAmount` itself for a plain number, so the
-  // fmtSignedTrim prefill round-trip is unchanged (comma decimal + space grouping — never Intl
-  // grouping). An uncomputable/unfinished value flags `err` and keeps the cell open instead of
-  // silently discarding — the same contract as DockedNumpad's `target.onInvalid`.
+
   const commitDesktopInput = (envelopeId: string, raw: string) => {
     const minor = evalExpression(raw);
     if (minor === null) {
@@ -166,15 +141,12 @@ export function BudgetScreen({
       cancelAnimationFrame(raf2);
     };
   }, [editing?.envelopeId]);
-   
+
   useEffect(() => {
     const cell = document.querySelector('[data-pad-cell="1"]') as HTMLElement | null;
     if (cell) cell.scrollLeft = cell.scrollWidth;
   }, [editing?.pad.expr]);
   const activeEnv = editing ? envs.find((x) => x.id === editing.envelopeId) : undefined;
-  
-
-
 
   const activePreview = editing ? (editing.input !== undefined ? evalExpressionLive(editing.input) : padPreviewLive(editing.pad.expr)) : null;
   // Live "To be budgeted" header: with a computable preview, subtract the allocation delta.
@@ -184,9 +156,6 @@ export function BudgetScreen({
   const { band, hc } = useBand();
 
   return (
-    // The 300px reserve is DockedNumpad's own footprint (bar + keypad) — desktop never renders
-    // it (Task 3b: allocation editing there is an inline <input>, no docked pad), so it must not
-    // reserve the space or the list would show a large empty gap while editing.
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: editing && !desktopInput ? 300 : 6 }}>
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
         {!inWide && (
@@ -263,19 +232,7 @@ export function BudgetScreen({
         </CardBox>
       )}
 
-      {/* Owner round 8 item 33: the header's columns must be the ROWS' columns. Both grids share
-          `COLS` and `gap`, so alignment is entirely a question of where each grid's content box
-          starts — and this one used to start at `P` (14) while every data row starts 12px further
-          in: `CardBox` is `margin: 0 14px` + `padding: 0 12px`, and the row's own
-          `padding/margin: ±12px` cancel out (wide) or are absent (phone), leaving the row content
-          box at 26px on BOTH sides in BOTH modes. The header therefore sat 12px right of its own
-          columns — the labels the owner cropped, floating left of the amounts they name. `P + 12`
-          is also literally the design's own header padding (v3:256 `padding: 12px 26px 4px`
-          against rows at 14+1+10 = 25px). The vertical padding stays as it was: the design's 12px
-          top belongs to a header sitting directly under the pane's TBB row, while here the
-          spacing above is already owned by whatever card precedes it. Phone shares this header
-          and shared the defect, so it is fixed there too — the only cost is 24px off the name
-          column's `1fr`, which at 390px still leaves ~120px for "ENVELOPE". */}
+      {}
       <div style={{ display: "grid", gridTemplateColumns: COLS, padding: `0 ${P + 12}px 6px`, gap: 8, alignItems: "start" }}>
         <span style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{t("Envelope")}</span>
         <div style={{ textAlign: "right" }}>
@@ -286,7 +243,7 @@ export function BudgetScreen({
         </div>
       </div>
 
-      { }
+      {}
       {envs.length === 0 && (
         <CardBox style={{ margin: `6px ${P}px 10px`, padding: "12px 14px" }}>
           <button
@@ -317,7 +274,7 @@ export function BudgetScreen({
         const gV = items.reduce((s, e) => s + e.available, previewDelta);
         return (
           <div key={g.id} className="fu" style={{ animationDelay: `${gi * 40}ms`, marginBottom: 2 }}>
-            { }
+            {}
             <div
               style={{
                 display: "grid",
@@ -402,8 +359,6 @@ export function BudgetScreen({
                             display: "block",
                             fontSize: 14.5,
                             fontWeight: selected ? 650 : 400,
-                            
-
 
                             color: selected ? "var(--accent)" : C.text,
                             overflow: "hidden",
@@ -414,13 +369,7 @@ export function BudgetScreen({
                         >
                           {e.name}
                         </span>
-                        {
-
-
-
-
-
-}
+                        {}
                         {e.carryIn !== 0 && (
                           <span
                             aria-label={t("from last month {amount}", { amount: `${e.carryIn < 0 ? "-" : "+"}${M(Math.abs(e.carryIn))}` })}
@@ -487,10 +436,7 @@ export function BudgetScreen({
         );
       })}
 
-      {
-
-
-}
+      {}
       {inWide && (
         <div style={{ padding: `0 ${P}px 10px`, fontSize: 11, color: C.mute }}>{t("Type in an Allocated cell — + − × ÷ work, ⏎ saves, Esc cancels")}</div>
       )}
@@ -506,9 +452,7 @@ export function BudgetScreen({
           <FillGoalsSheet show={fillGoals} state={state} month={month} onClose={closeSheet} />
         </LazyChunk>
       )}
-      {/* Docked numpad instead of a sheet (no backdrop — the list stays visible). Desktop (Task 3b)
-          keeps `target` null: allocation editing there goes through AllocCell's real <input>
-          instead, never this pad. */}
+      {}
       <DockedNumpad
         target={
           editing && activeEnv && !desktopInput
@@ -533,8 +477,6 @@ export function BudgetScreen({
   );
 }
 
-
-
 function AllocCell({
   e,
   editing,
@@ -546,12 +488,11 @@ function AllocCell({
   e: EnvelopeView;
   editing: { expr: string; err?: boolean; input?: string } | null;
   onStart: (cell: HTMLElement | null) => void;
-   
+
   onDesktopChange: (value: string) => void;
-  
 
   onDesktopCommit: () => void;
-   
+
   onDesktopCancel: () => void;
 }) {
   const C = useTheme();
@@ -651,7 +592,7 @@ function AllocCell({
         }}
       >
         {localizePadExpression(editing.expr, lang) || "0"}
-        { }
+        {}
         <span
           style={{
             display: "inline-block",
@@ -701,13 +642,12 @@ function AllocCell({
   );
 }
 
- 
 function EnvManageSheet({ show, state, onClose }: { show: boolean; state: StateResponse; onClose: () => void }) {
   const { t } = useT();
   const [newGroup, setNewGroup] = useState("");
 
   const groups = [...state.groups].sort((a, b) => a.sort - b.sort);
-   
+
   const flat = state.envelopes.filter((e) => !e.archived).sort((a, b) => a.sort - b.sort);
   const archived = state.envelopes.filter((e) => e.archived).sort((a, b) => a.sort - b.sort);
 
@@ -825,9 +765,6 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
   const [adding, setAdding] = useState(false);
   const [addName, setAddName] = useState("");
 
-  
-
-
   const commitMove = (from: number, to: number) => {
     const moved = list[from]!;
     const target = list[to]!;
@@ -836,14 +773,14 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
     order.splice(from < to ? ti + 1 : ti, 0, moved.id);
     const sortOf = new Map(flat.map((e) => [e.id, e.sort]));
     const ch = order.map((id, i) => ({ id, sort: i })).filter((c) => sortOf.get(c.id) !== c.sort);
-     
+
     for (const c of ch) local.updateEnvelope(c.id, { sort: c.sort });
   };
   const dnd = useDragReorder(commitMove);
 
   const addEnvelope = () => {
     const name = addName.trim();
-     
+
     if (name)
       local.createEnvelope({ groupId: g.id, name, color: ENV_PALETTE[flat.length % ENV_PALETTE.length]!, sort: (flat[flat.length - 1]?.sort ?? -1) + 1 });
     setAddName("");
@@ -947,8 +884,6 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
                   local.deleteEnvelope(e.id);
               }}
               aria-label={t("Delete {name}", { name: e.name })}
-              
-
               style={{
                 background: "none",
                 border: "none",
@@ -991,7 +926,6 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
           />
           <button
             onClick={addEnvelope}
-             
             style={{
               padding: "7px 12px",
               minHeight: 30,
@@ -1013,7 +947,6 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
             setAdding(true);
             setAddName("");
           }}
-           
           style={{
             marginTop: 8,
             padding: "6px 0",
@@ -1033,7 +966,6 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
   );
 }
 
- 
 export function EnvEdit({
   env,
   groups,
@@ -1073,7 +1005,7 @@ export function EnvEdit({
     setPad({
       label: t("Monthly target (optional)"),
       initial: target.trim() === "" ? 0 : (parseAmount(target) ?? 0),
-       
+
       onCommit: (minor) => setTarget(minor === 0 ? "" : fmtTrim(minor)),
     });
   return (
@@ -1105,7 +1037,7 @@ export function EnvEdit({
                         { name },
                       ),
                     );
-                    if (!ok) return;  
+                    if (!ok) return;
                   }
                   const mt = target.trim() === "" ? null : parseAmount(target);
                   local.updateEnvelope(env.id, { name, groupId, color, icon, archived, monthlyTarget: mt, isSavings: saving });
@@ -1163,8 +1095,6 @@ export function EnvEdit({
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
               <input
-                
-
                 value={localizePadExpression(target, lang)}
                 readOnly
                 onClick={openTargetPad}

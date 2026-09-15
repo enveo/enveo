@@ -129,14 +129,13 @@ describe("selectImportHistoryCandidates", () => {
   });
 
   test("keeps a conflicting merchant descriptor even beside an exact full bank row", () => {
-     
     const rawPlace = "12.34 PLN\nBANK FUEL 123\nCARD 9876";
     const result = selectImportHistoryCandidates(
       query({ proposal: { ...query().proposal, rawPlace, tag: "" } }),
       [record({ sourceRef: rawPlace }), record({ envelope: "Travel" })],
       1,
     );
-     
+
     expect(result.candidates).toHaveLength(1);
     expect(result.conflict).toBe(true);
     expect(result.metadata).toMatchObject({ place: "Fuel station", envelope: null, category: "Fuel" });
@@ -191,11 +190,10 @@ describe("normalizeImportHistoryText", () => {
 
 describe("history for uncertain bank entries", () => {
   test("offers prior income when the screenshot did not establish a type or direction", () => {
-     
     const uncertain = query({ proposal: { ...query().proposal, type: null, semanticKind: "unknown" }, direction: "unknown" });
-     
+
     const result = selectImportHistoryCandidates(uncertain, [record({ type: "income" })]);
-     
+
     expect(result.candidates).toMatchObject([{ type: "income" }]);
   });
 

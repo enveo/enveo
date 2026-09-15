@@ -25,26 +25,24 @@
 export const NANO_USD_PER_USD = 1_000_000_000n;
 
 export interface LongContextRule {
-   
   thresholdPromptTokens: number;
-   
+
   inputNanoUsdPerToken: bigint;
-   
+
   outputNanoUsdPerToken: bigint;
 }
 
 export interface ModelPriceEntry {
-   
   requestModel: string;
-   
+
   responseModelAliases: readonly string[];
   /** Effective price version — diagnostics only, never persisted with the counter. */
   priceVersion: string;
   inputNanoUsdPerToken: bigint;
   cachedInputNanoUsdPerToken: bigint;
-   
+
   cacheWriteNanoUsdPerToken: bigint;
-   
+
   outputNanoUsdPerToken: bigint;
   longContext: LongContextRule | null;
 }
@@ -81,7 +79,6 @@ export function assertOperatorModelPriced(model: string): void {
   }
 }
 
- 
 export function responseModelMatches(entry: ModelPriceEntry, responseModel: string): boolean {
   return entry.responseModelAliases.some((a) => responseModel === a || responseModel.startsWith(`${a}-`));
 }
@@ -100,7 +97,6 @@ export type CostOutcome =
  */
 export const MAX_CHARGEABLE_NANO_USD = 1_000_000_000_000_000n;
 
- 
 const counter = (v: unknown): number | null => (typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null);
 
 /**
@@ -148,7 +144,6 @@ export function chatCostNanoUsd(entry: ModelPriceEntry, responseModel: string, u
   return boundedCost(nanoUsd, entry, responseModel);
 }
 
- 
 function boundedCost(nanoUsd: bigint, entry: ModelPriceEntry, responseModel: string): CostOutcome {
   if (nanoUsd < 0n || nanoUsd > MAX_CHARGEABLE_NANO_USD) return { ok: false, reason: "cost_out_of_range" };
   return { ok: true, nanoUsd, priceVersion: entry.priceVersion, responseModel };

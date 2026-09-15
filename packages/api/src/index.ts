@@ -34,7 +34,6 @@ import { txnRoutes } from "./routes/transactions";
 import { API_CACHE_CONTROL } from "./securityHeaders";
 import { AutomaticEnvelopeViolation, ScopeViolation, TransactionSemanticViolation } from "./sync/apply";
 
- 
 export const vaultMasterKeyProvider = loadVaultMasterKeyProvider({
   nodeEnv: process.env.NODE_ENV ?? "development",
   filePath: env.AI_VAULT_KEY_RING_FILE,
@@ -43,10 +42,6 @@ export const vaultMasterKeyProvider = loadVaultMasterKeyProvider({
 
 const importJobRepository = createImportJobRepository(db);
 let importJobWorker: ReturnType<typeof startImportJobWorker> | null = null;
-
-
-
-
 
 if (import.meta.main) {
   assertAuthEnv();
@@ -89,9 +84,6 @@ app.use("/api/*", async (c, next) => {
 // ~7× smaller. The middleware skips already-compressed, HEAD and <1 KB. Must be
 // OUTERMOST (before cors/routes) to wrap the final response.
 app.use("*", compress());
-
-
-
 
 const allowedOrigins = staticAllowedOrigins();
 
@@ -187,7 +179,6 @@ app.post(CSP_REPORT_PATH, async (c) => {
 });
 app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 
-
 app.use("/api/*", async (c, next) => {
   if (c.req.path.startsWith("/api/auth/") || c.req.path === "/api/health" || c.req.path === CSP_REPORT_PATH) return next();
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -213,19 +204,14 @@ api.route("/", demoRoutes);
 app.route("/api", api);
 
 app.onError((err, c) => {
-  
-
   if (c.req.path.startsWith("/api/")) c.header("Cache-Control", API_CACHE_CONTROL);
   if (err instanceof ZodError) {
     return c.json({ error: "validation", issues: err.issues }, 400);
   }
-   
-  if (err instanceof TierMismatch) {
-    
 
+  if (err instanceof TierMismatch) {
     return c.json({ error: "tier_mismatch", tier: err.meta.tier, epoch: err.meta.epoch, cipherVersion: err.meta.cipherVersion }, 409);
   }
-  
 
   if (err instanceof ScopeViolation) {
     return c.json({ error: "foreign_ref" }, 400);
@@ -240,7 +226,6 @@ app.onError((err, c) => {
   return c.json({ error: "internal" }, 500);
 });
 
- 
 if (env.WEB_DIST) {
   app.use("/*", serveStatic({ root: env.WEB_DIST }));
   app.notFound(async (c) => {

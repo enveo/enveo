@@ -26,7 +26,6 @@ import { useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
 import { font, TEAL } from "../lib/theme";
 
- 
 function ScreenPending() {
   const C = useTheme();
   const { t } = useT();
@@ -121,7 +120,6 @@ class ChunkErrorBoundary extends Component<BoundaryProps, { failed: boolean }> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-     
     console.error("lazy chunk failed to load", error, info.componentStack);
   }
 

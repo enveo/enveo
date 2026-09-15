@@ -17,7 +17,6 @@ afterEach(() => {
   __resetStorageForTests();
 });
 
- 
 const oldLedger = (): ClientLedger =>
   ({
     accounts: [],

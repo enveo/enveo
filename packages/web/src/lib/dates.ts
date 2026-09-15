@@ -4,22 +4,12 @@ import { type Lang, type Message, translate, translatePlural } from "./i18n";
 export const todayISO = (): string => new Date().toISOString().slice(0, 10);
 export const currentMonth = (): string => new Date().toISOString().slice(0, 7);
 
- 
 export function monthLabel(month: string, lang: Lang): string {
   const [y, m] = month.split("-").map(Number) as [number, number];
   const s = new Intl.DateTimeFormat(LOCALE_OF[lang], { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, 1)));
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** Short month name per locale, e.g. "Jul" / "Lip" — no year, for chart axes where a full
- *  `monthLabel` ("Lipiec 2026"/"July 2026") does not fit (a phone-width row of twelve months).
- *  Uses `Intl`'s own CLDR abbreviation, not a substring of the long form: CLDR's short-month
- *  rule is not "first N characters" in every locale, so slicing would be correct by accident
- *  in some languages and wrong in others — the same reasoning `CURRENCY_DIGITS` and every other
- *  locale-derived table in this codebase already follows (pin CLDR behavior, never hand-roll it).
- *  `withYear` adds the year (e.g. "Aug 2025") — the net-worth range caption's endpoints (design
- *  parity wave D task 2, `v3:3195`'s `nwChart.range`) need it; the chart axis row below the plot
- *  never does (same convention as `shortDate`'s own `withYear` flag). */
 export function monthShortLabel(month: string, lang: Lang, withYear = false): string {
   const [y, m] = month.split("-").map(Number) as [number, number];
   const s = new Intl.DateTimeFormat(LOCALE_OF[lang], { month: "short", ...(withYear ? { year: "numeric" } : {}), timeZone: "UTC" }).format(
@@ -28,7 +18,6 @@ export function monthShortLabel(month: string, lang: Lang, withYear = false): st
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
- 
 export function monthNames(lang: Lang): string[] {
   const f = new Intl.DateTimeFormat(LOCALE_OF[lang], { month: "long", timeZone: "UTC" });
   return Array.from({ length: 12 }, (_, i) => f.format(new Date(Date.UTC(2020, i, 1))));
@@ -49,7 +38,6 @@ export function shiftDay(iso: string, delta: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
- 
 export function shortDate(iso: string, lang: Lang, withYear = false): string {
   return new Intl.DateTimeFormat(LOCALE_OF[lang], {
     day: "numeric",
@@ -66,14 +54,10 @@ export function dayMonth(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(LOCALE_OF[lang], { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
 }
 
-
-
-
 export function weekdayShortDate(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(LOCALE_OF[lang], { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
 }
 
- 
 export function formatDateLong(iso: string, lang: Lang): string {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
   return new Intl.DateTimeFormat(LOCALE_OF[lang], { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(
@@ -81,7 +65,6 @@ export function formatDateLong(iso: string, lang: Lang): string {
   );
 }
 
- 
 export function relSync(iso: string | null, lang: Lang): string {
   if (!iso) return translate(lang, "not yet");
   const t = new Date(iso).getTime();
@@ -97,7 +80,6 @@ export function relSync(iso: string | null, lang: Lang): string {
   return new Date(iso).toLocaleDateString(LOCALE_OF[lang], { dateStyle: "short" });
 }
 
- 
 export function dayHeading(iso: string, lang: Lang, t: (key: Message) => string): string {
   const today = todayISO();
   if (iso === today) return t("today");

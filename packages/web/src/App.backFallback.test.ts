@@ -1,18 +1,3 @@
-/**
- * Pure unit tests for `App.tsx`'s `backFallback` — the entry-0 fallback chain `back()` runs when
- * `history.state !== true` (no real history depth yet: a deep-loaded page, or a direct `back()`
- * call from a chevron/onBack prop with nothing pushed). Kept as its own test file rather than
- * folded into `components/wide/panel.test.ts` because `backFallback` deliberately lives in the
- * EAGER `App.tsx`, not the lazy wide chunk (see the doc comment on `backFallback` itself) — this
- * file exercises exactly that exported function, not the component.
- *
- * Two things this file pins:
- *  1. Every rung PR6 Task 1 adds (`close-env-edit`, `close-env-actions`, `reports-overview`) fires
- *     in the right circumstance and at the right PRIORITY relative to the others.
- *  2. Phone parity: for every state PR4's original inline fallback handled (envView open / Add
- *     open / anything else), the extended function returns the semantically equivalent rung —
- *     the extension changes nothing PR4 already relied on.
- */
 import { describe, expect, mock, test } from "bun:test";
 import type { BackFallback } from "./App";
 import type { ScreenId } from "./components/chrome";
@@ -82,7 +67,7 @@ describe("backFallback — the six rungs, most specific first", () => {
     for (const screen of ["budget", "transactions", "accounts", "settings"] as const satisfies readonly ScreenId[]) {
       expect(backFallback(s({ screen }))).toBe("to-start");
     }
-     
+
     expect(backFallback(s({ screen: "reports", reportsView: "overview" }))).toBe("to-start");
   });
 
@@ -92,16 +77,10 @@ describe("backFallback — the six rungs, most specific first", () => {
 });
 
 describe("backFallback — phone parity with PR4's original inline fallback", () => {
-  
-
-
-
-
-
   function phoneEquivalent(v: BackFallback): "close-envelope" | "close-add" | "to-start-or-nothing" {
     if (v === "close-envelope") return "close-envelope";
     if (v === "close-add") return "close-add";
-    return "to-start-or-nothing";  
+    return "to-start-or-nothing";
   }
 
   test("every screen/envView/reportsView combination, with no sheet layer open, resolves to the SAME action PR4's original fallback would have taken", () => {
@@ -110,12 +89,6 @@ describe("backFallback — phone parity with PR4's original inline fallback", ()
     for (const screen of screens) {
       for (const reportsView of reportsViews) {
         for (const envView of [null, ENV]) {
-          // `screen === "addExpense"` is checked FIRST here (D2's flipped priority — see the
-          // dedicated coexistence test above), while PR4's original checked `envView` first. The
-          // two orders only disagree on the (addExpense, envView open) combination, which is not
-          // a phone-reachable state at all (openEnvelope only ever sets envView when
-          // `mode !== "phone"` — App.tsx), so this loop's phone-parity claim holds regardless of
-          // which rung is checked first.
           const got = backFallback(s({ screen, reportsView, envView }));
           const expected = screen === "addExpense" ? "close-add" : envView ? "close-envelope" : "to-start-or-nothing";
           expect(phoneEquivalent(got)).toBe(expected);

@@ -18,21 +18,17 @@ const request = () => ({
 
 describe("durable import request identity", () => {
   test("hashes canonical metadata and ordered image content", () => {
-     
     const input = request();
 
     // when: the repository derives its idempotency identity
     const identity = computeImportJobRequestHash(input);
 
-     
     expect(identity).toBe("6900bc28551ac749e0195d45e151f37fe64d53739a58122574a579628057666b");
   });
 
   test("treats image order and request metadata as part of request identity", () => {
-     
     const original = request();
 
-     
     const reversed = { ...original, images: [...original.images].reverse() };
     const translated = { ...original, locale: "en-GB" };
 

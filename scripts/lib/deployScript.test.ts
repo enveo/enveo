@@ -17,13 +17,7 @@ import { join } from "node:path";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 
- 
 const EXIT = { ok: 0, failed: 1, noDocker: 2, noCompose: 3, noDaemon: 4, noTool: 5, badSecret: 6 } as const;
-
-
-
-
-
 
 const BASE_TOOLS = ["dirname", "cp", "sed", "grep", "sleep", "cat", "tr", "head", "rm", "mv", "date"];
 
@@ -47,7 +41,6 @@ function resolveTool(name: string): string | null {
   return null;
 }
 
- 
 function writeStub(binDir: string, name: Stub): void {
   const bodies: Record<Stub, string> = {
     docker: `
@@ -87,7 +80,6 @@ exit 0`,
   chmodSync(path, 0o755);
 }
 
- 
 function makeSandbox(stubs: readonly Stub[]): { dir: string; bin: string; log: string } {
   const dir = mkdtempSync(join(tmpdir(), "enveo-deploy-"));
   mkdirSync(join(dir, "scripts"));
@@ -129,7 +121,6 @@ async function runDeploy(stubs: readonly Stub[] = ["docker", "curl", "openssl"],
   return { code, stdout, stderr, calls, env };
 }
 
- 
 const output = (run: Run): string => `${run.stdout}\n${run.stderr}`;
 
 beforeEach(() => {
@@ -222,7 +213,7 @@ describe("the success path", () => {
     const run = await runDeploy([...(["docker", "curl", "openssl"] as const)], { FAKE_SECRET: "abc123secret" });
     expect(run.env).toContain("POSTGRES_PASSWORD=abc123secret");
     expect(run.env).toContain("BETTER_AUTH_SECRET=abc123secret");
-    expect(run.env).toContain("DEPLOYMENT=selfhost");  
+    expect(run.env).toContain("DEPLOYMENT=selfhost");
   });
 
   it("never prints a generated secret or the contents of `.env`", async () => {
@@ -238,11 +229,6 @@ describe("the success path", () => {
   });
 
   it("a FAILING openssl aborts before `.env` exists — never an empty password", async () => {
-    
-
-
-
-
     const run = await runDeploy(undefined, { FAKE_OPENSSL_FAIL: "1" });
     expect(run.code).not.toBe(EXIT.ok);
     expect(run.env).toBeNull();
@@ -278,8 +264,6 @@ describe("the success path", () => {
   });
 
   it("never passes a secret in another command's argv", async () => {
-    
-
     const run = await runDeploy(undefined, { FAKE_SECRET: "argv-must-not-show-this" });
     expect(run.calls.join("\n")).not.toContain("argv-must-not-show-this");
   });
@@ -295,7 +279,7 @@ describe("idempotency", () => {
   it("leaves a complete existing `.env` byte-identical", async () => {
     const { dir, bin, log } = makeSandbox(["docker", "curl", "openssl"]);
     sandbox = dir;
-     
+
     const existingSecret = "a".repeat(64);
     const existing = `POSTGRES_PASSWORD=mine\nBETTER_AUTH_SECRET=${existingSecret}\nDEPLOYMENT=selfhost\n`;
     writeFileSync(join(dir, ".env"), existing);

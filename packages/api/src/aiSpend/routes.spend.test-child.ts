@@ -10,7 +10,6 @@
  * BEFORE the lazy imports, which no in-process test could do.
  */
 
-
 import type postgresT from "postgres";
 import { assertThrowawayDb, emitChildResult } from "../api.test-support";
 
@@ -19,9 +18,9 @@ export const SENTINEL = "__AI_SPEND_ROUTES_CHILD__";
 export type SpendRoutesChildOutput = {
   proxyOk: {
     status: number;
-     
+
     usagePreserved: boolean;
-     
+
     chargedExactCost: boolean;
     checks: number;
     records: number;
@@ -31,9 +30,9 @@ export type SpendRoutesChildOutput = {
     body: { error?: string; retryAfterSeconds?: number };
     retryAfterHeaderMatchesBody: boolean;
     retryAfterIsPositiveInt: boolean;
-     
+
     upstreamNotCalled: boolean;
-     
+
     records: number;
   };
   deprecatedChatDenied: { status: number; error: string | undefined; hasRetryAfterHeader: boolean };
@@ -46,18 +45,16 @@ export type SpendRoutesChildOutput = {
     upstreamNotCalled: boolean;
   };
   stalledCounter: {
-     
     status: number;
     contentOk: boolean;
     upstreamCalled: boolean;
-     
+
     elapsedMs: number;
     withinDeadlines: boolean;
   };
 };
 
 async function main() {
-   
   process.env.DEPLOYMENT = "cloud";
   process.env.OPENAI_API_KEY = "sk-test-never-used-upstream-is-stubbed";
   process.env.OPENAI_MODEL = "gpt-5.6-luna";
@@ -80,7 +77,6 @@ async function main() {
   const THRESHOLD = spendThresholdNanoUsd(SPEND_POLICY.operatorAi);
   if (!operatorAiDeps.meteringActive()) throw new Error("expected metering active under DEPLOYMENT=cloud + operator key");
 
-   
   const counters = { checks: 0, records: 0 };
   operatorAiDeps.checkSpend = async (i) => {
     counters.checks++;
@@ -102,7 +98,7 @@ async function main() {
   };
 
   const USAGE = { prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100 };
-  const COST = 1000n * 200n + 100n * 1_200n;  
+  const COST = 1000n * 200n + 100n * 1_200n;
   const chatBody = (content: string) => ({ model: "gpt-5.6-luna", choices: [{ message: { role: "assistant", content } }], usage: USAGE });
 
   const newUser = async (tag: string) => {
@@ -121,7 +117,7 @@ async function main() {
     return BigInt(rows[0]?.spent ?? "-1");
   };
   const exhaust = async (userId: string) => {
-    const check = await checkSpend({ policy: SPEND_POLICY.operatorAi, userId });  
+    const check = await checkSpend({ policy: SPEND_POLICY.operatorAi, userId });
     await pooled`update ai_user_monthly_spend set spent_nano_usd = ${THRESHOLD.toString()}::bigint
       where user_id = ${userId} and period_key = ${check.periodKey}`;
   };
@@ -155,7 +151,6 @@ async function main() {
     transactions: [],
   };
 
-   
   const u1 = await newUser("proxy-ok");
   const app1 = appFor(u1.userId);
   script = [chatBody("hello")];
@@ -170,7 +165,6 @@ async function main() {
     records: counters.records - c0.records,
   };
 
-   
   const u2 = await newUser("proxy-denied");
   await exhaust(u2.userId);
   const app2 = appFor(u2.userId);
@@ -187,7 +181,6 @@ async function main() {
     records: counters.records - recBefore,
   };
 
-   
   const res3 = await post(app2, "/ai/chat", { messages: [{ role: "user", content: "hi" }] });
   const body3 = (await res3.json()) as { error?: string };
   const deprecatedChatDenied = { status: res3.status, error: body3.error, hasRetryAfterHeader: res3.headers.get("retry-after") !== null };
@@ -199,7 +192,6 @@ async function main() {
   const body4 = (await res4.json()) as { content?: string };
   const deprecatedChatOk = { status: res4.status, content: body4.content, charged: (await spentOf(u3.userId)) === COST };
 
-   
   const u4 = await newUser("suggest-denied");
   await exhaust(u4.userId);
   const app4 = appFor(u4.userId);
@@ -213,8 +205,6 @@ async function main() {
     upstreamNotCalled: upstreamCalls === before4,
   };
 
-  
-
   const u7 = await newUser("stalled");
   const app7 = appFor(u7.userId);
   const locker = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
@@ -227,7 +217,6 @@ async function main() {
   };
   await locker
     .begin(async (tx: postgresT.TransactionSql) => {
-       
       await tx`lock table ai_user_monthly_spend in access exclusive mode`;
       script = [chatBody("stalled but served")];
       const before = upstreamCalls;
@@ -240,7 +229,7 @@ async function main() {
         contentOk: body.content === "stalled but served",
         upstreamCalled: upstreamCalls === before + 1,
         elapsedMs,
-         
+
         withinDeadlines: elapsedMs < 10_000,
       };
       throw new Error("release the lock via rollback");

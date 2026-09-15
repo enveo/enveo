@@ -5,10 +5,6 @@ import { useT } from "../../lib/i18n";
 import { tint } from "../../lib/theme";
 import type { Tab } from "./types";
 
-
-
-
-
 export function AmountSection({
   tab,
   isRefund,
@@ -29,10 +25,6 @@ export function AmountSection({
   amtRef: MutableRefObject<HTMLDivElement | null>;
   onOpenPad: () => void;
   onToggleRefund: () => void;
-  
-
-
-
 
   onConfirm?: () => void;
 }) {

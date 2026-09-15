@@ -9,9 +9,8 @@
  */
 
 export interface ParsedChatCompletion {
-   
   json: Record<string, unknown>;
-   
+
   content: string;
   /** Response `model` (possibly a dated snapshot), or null when absent/not a string. */
   responseModel: string | null;

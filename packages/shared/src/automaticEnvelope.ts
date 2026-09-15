@@ -38,7 +38,6 @@ export function resolveAllocationFlow(
     next.accountId === previous.accountId &&
     (next.type !== "transfer" || (next.toAccountId ?? null) === previous.toAccountId)
   ) {
-     
     return {
       allocationFromEnvelopeId: previous.allocationFromEnvelopeId ?? null,
       allocationToEnvelopeId: previous.allocationToEnvelopeId ?? null,

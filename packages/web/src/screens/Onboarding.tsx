@@ -1,15 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
 import { lazy, type ReactNode, useEffect, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { LogoMark } from "../components/chrome";
@@ -41,10 +29,8 @@ import { useViewMode } from "../lib/viewMode";
 // lists BootShellWide.tsx as a static import.
 const BootShellWide = lazy(() => import("../components/BootShellWide"));
 
- 
 type TplRow = { name?: Message; custom?: string; isSavings?: boolean; checked: boolean; color: string; icon: string };
 
- 
 function BigButton({
   label,
   onClick,
@@ -80,7 +66,6 @@ function BigButton({
   );
 }
 
- 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   const C = useTheme();
   return (
@@ -160,7 +145,6 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   // otherwise leave straight away — the card must never block completion.
   const { state: installState } = useInstall();
   const [showInstall, setShowInstall] = useState(false);
-  
 
   const doneWithInstall = () => {
     markInstallOffered();
@@ -173,28 +157,21 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     if (isInstallable(getInstallState())) setShowInstall(true);
     else completeWizard();
   };
-  
-
 
   useEffect(() => {
     if (showInstall && !isInstallable(installState)) doneWithInstall();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showInstall, installState]);
 
-  
-
-
   const [currency, setCurrency] = useState<string>(
     () => onboardingDraft.currency ?? wizardCurrency(store.getLedger()?.budgets?.[0]?.currency, browserLocales()),
   );
 
-   
   const commitCurrency = () => {
     const budget = store.getLedger()?.budgets?.[0];
     if (budget && budget.currency !== currency) local.updateBudget(budget.id, currency);
   };
 
-   
   const [accName, setAccName] = useState(onboardingDraft.accName);
   const [accBal, setAccBal] = useState(onboardingDraft.accBal);
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
@@ -203,19 +180,16 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     setPad({
       label: t("Starting balance"),
       initial: parseAmount(accBal) ?? 0,
-      allowNegative: true,  
+      allowNegative: true,
       onCommit: (minor) => setAccBal(fmtSignedTrim(minor)),
     });
 
-   
   const [rows, setRows] = useState<TplRow[][]>(
     () =>
       onboardingDraft.rows ??
       TEMPLATE.map((g) => g.envelopes.map((e) => ({ name: e.name, color: e.color, icon: e.icon, ...(e.isSavings ? { isSavings: true } : {}), checked: true }))),
   );
   const [drafts, setDrafts] = useState<string[]>(() => onboardingDraft.drafts ?? TEMPLATE.map(() => ""));
-
-  
 
   useEffect(() => {
     onboardingDraft.step = step;
@@ -230,13 +204,11 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      
-
       commitCurrency();
-       
-      const userId = await assertOwnReplica();  
+
+      const userId = await assertOwnReplica();
       await api.demoSeed(lang === "pl" ? "pl" : "en", userId);
-      await fullResync();  
+      await fullResync();
       finish();
     } catch (e) {
       setError(apiErrorMessage(e));
@@ -258,7 +230,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const addCustom = (gi: number) => {
     const name = drafts[gi]?.trim();
     if (!name) return;
-     
+
     const customCount = rows.reduce((n, g) => n + g.filter((r) => r.custom !== undefined).length, 0);
     const style = customEnvelopeStyle(customCount);
     setRows((prev) => prev.map((g, i) => (i === gi ? [...g, { custom: name, checked: true, ...style }] : g)));
@@ -266,7 +238,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   };
 
   const anyChecked = rows.some((g) => g.some((r) => r.checked));
-   
+
   const picked = rows.reduce((n, g) => n + g.filter((r) => r.checked).length, 0);
 
   const createEnvelopes = () => {
@@ -285,16 +257,9 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
         });
       });
     });
-    finish();  
+    finish();
   };
 
-  // Wide (fold/desktop): the wizard hosts itself inside the boot shell (PR7 Task 3) — it is a
-  // boot state, not an app screen, so it leaves App's rail/BottomNav/SyncBadge/InstallBanner
-  // entirely behind (App.tsx renders this component unwrapped, before any of those mount — see
-  // App.tsx's own comment at that branch). `BootShellWide` above is its own `lazy()` (not a
-  // static import): being inside a lazily-loaded module does NOT stop a plain static import from
-  // shipping in the SAME chunk group, only a nested dynamic import does that — see its own
-  // comment.
   const mode = useViewMode();
   const wide = mode !== "phone";
   // ONE step/install tree for both hosts (do not fork it per mode): the step wrappers' own
@@ -336,7 +301,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     </div>
   ) : (
     <>
-      { }
+      {}
       {step === 0 && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 26 }}>
@@ -350,8 +315,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           </div>
 
           <Row label={t("Language")}>
-            {
-}
+            {}
             <select
               value={settings.lang}
               /* the locale chunk is fetched BEFORE the switch — otherwise the wizard stays English until a reload */
@@ -416,7 +380,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
         </div>
       )}
 
-      { }
+      {}
       {step === 1 && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Your first account")}</div>
@@ -434,8 +398,6 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
 
           <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{`${t("Starting balance")} (${currency})`}</div>
           <input
-            
-
             value={localizePadExpression(accBal, lang)}
             readOnly
             onClick={openBalancePad}
@@ -476,7 +438,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
         </div>
       )}
 
-      { }
+      {}
       {step === 2 && (
         <div>
           <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8, marginTop: 6 }}>{t("Your envelopes")}</div>
@@ -484,11 +446,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
             {t("Pick the envelopes you want to start with — you can change them or add new ones anytime.")}
           </div>
 
-          {
-
-
-
-}
+          {}
           <div
             style={
               wide ? { display: "grid", gridTemplateColumns: `repeat(${mode === "desktop" ? 3 : 2}, minmax(0, 1fr))`, gap: 12, alignItems: "start" } : undefined

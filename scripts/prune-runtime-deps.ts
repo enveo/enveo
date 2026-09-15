@@ -21,15 +21,9 @@ import { type Dirent, readdirSync, readFileSync, readlinkSync, rmSync, statSync 
 import { resolve } from "node:path";
 import { closureProblems, computeClosure, deadStoreEntries, type Link, type Manifest, type StoreReader } from "./lib/runtimeClosure";
 
- 
 const WORKSPACES = ["packages/api", "packages/shared"] as const;
 
- 
 const MUST_KEEP = ["hono", "drizzle-orm", "postgres", "better-auth", "zod"] as const;
-
-
-
-
 
 export function packageNameFromStoreId(storeId: string): string {
   const at = storeId.lastIndexOf("@");
@@ -69,7 +63,7 @@ function makeReader(appDir: string): StoreReader {
     try {
       entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
     } catch {
-      return links;  
+      return links;
     }
     for (const entry of entries) {
       const full = resolve(dir, entry.name);

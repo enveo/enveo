@@ -228,7 +228,7 @@ describe("transaction mutation preparation", () => {
 
   it("keeps an opted-out transfer opted out when an edit does not reroute it", () => {
     const ledger = flowLedger();
-     
+
     ledger.transactions.push({
       ...splitTxn(),
       type: "transfer",
@@ -260,7 +260,6 @@ describe("transaction mutation preparation", () => {
       allocationToEnvelopeId: null,
     });
 
-     
     expect(
       prepareTxnUpdate(ledger, TXN, txnPayload({ type: "transfer", toAccountId: PLACE, envelopeId: null }), { skipAutomaticAllocation: false }),
     ).toMatchObject({ allocationFromEnvelopeId: ENV1, allocationToEnvelopeId: ENV2 });
@@ -344,10 +343,8 @@ describe("displayed allocation mutation preparation", () => {
 
 describe("local account mutations", () => {
   it("persists a non-zero starting balance and automatic envelope as one account operation", () => {
-     
     const before = store.getLedger()!;
 
-     
     local.createAccount(
       accountFormPayload({
         name: "Everyday account",
@@ -360,7 +357,6 @@ describe("local account mutations", () => {
       }),
     );
 
-     
     const queued = outbox.snapshot();
     expect(queued).toHaveLength(1);
     expect(queued[0]!.op).toMatchObject({

@@ -29,12 +29,10 @@ describe("shared import duplicate classification", () => {
   });
 
   it.each(["◷", "🕒"])("ignores the %s status clock when matching a repeated payment", (clock) => {
-     
     const payment = { date: "2031-09-06", amount: 3187, rawPlace: "31.87 EUR\nCEDAR TABLE CAFE\n8642" };
     const withClock = `${clock} ${payment.rawPlace}`;
     const existing = buildImportDupIndex([{ ...payment, sourceRef: withClock }]);
 
-     
     expect(classifyImportDup(payment, existing)).toBe("exists");
     const batch = buildImportDupIndex([]);
     batch.markSeen(payment);
@@ -74,7 +72,7 @@ describe("transfers as duplicate evidence", () => {
     // transfer never makes an unrelated same-day amount "probable"
     expect(classifyImportDup({ ...topUp, direction: "out" }, index)).toBe("new");
     expect(classifyImportDup(topUp, index)).toBe("new");
-     
+
     expect(classifyImportDup({ date: "2031-09-03", amount: 6729, rawPlace: "TRANSFER", direction: "out" }, index)).toBe("exists");
     expect(classifyImportDup({ date: "2031-09-03", amount: 6729, rawPlace: "TRANSFER" }, index)).toBe("probable");
   });

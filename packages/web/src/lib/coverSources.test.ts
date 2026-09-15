@@ -53,7 +53,6 @@ describe("donorSlack", () => {
     sort: 0,
     archived: false,
   });
-  
 
   const ledger: ClientLedger = {
     accounts: [],
@@ -78,7 +77,7 @@ describe("donorSlack", () => {
 
   test("for a past month the slack is the minimum available from that month up to today", () => {
     const slack = donorSlack(ledger, "2026-07", "2026-09");
-    expect(slack.get("groceries")).toBe(5_00);  
+    expect(slack.get("groceries")).toBe(5_00);
     expect(slack.get("fun")).toBe(30_00);
   });
 

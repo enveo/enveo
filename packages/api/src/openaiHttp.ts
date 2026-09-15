@@ -24,21 +24,17 @@ import { AI_CHAT_TIMEOUT_MS } from "@enveo/shared";
 export const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 export const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
 
- 
 export class UpstreamTimeoutError extends Error {
   constructor(readonly timeoutMs: number) {
     super(`openai timeout after ${timeoutMs}ms`);
   }
 }
 
- 
 export class UpstreamNetworkError extends Error {
   constructor(cause: unknown) {
     super(`openai unreachable: ${(cause as Error)?.message ?? String(cause)}`);
   }
 }
-
-
 
 export class UpstreamHttpError extends Error {
   constructor(readonly status: number) {

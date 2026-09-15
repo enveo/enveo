@@ -1,4 +1,3 @@
- 
 import type { Dict } from "../index";
 
 export const ptBR: Dict = {
@@ -648,7 +647,6 @@ export const ptBR: Dict = {
       many: "Mesclar {n} entradas em uma chamada “{name}”? Todas as suas transações serão movidas.",
       other: "Mesclar {n} entradas em uma chamada “{name}”? Todas as suas transações serão movidas.",
     },
-  
 
   "Needs attention": "Precisa de atenção",
   "Recent activity": "Atividade recente",
@@ -688,13 +686,12 @@ export const ptBR: Dict = {
   "No spending this month.": "Nenhum gasto neste mês.",
   "Not enough history yet — trends appear after two months of spending.":
     "Ainda não há histórico suficiente — as tendências aparecem após dois meses de gastos.",
-   
+
   "Add widget": "Adicionar widget",
   "Every widget is already on the grid.": "Todos os widgets já estão na grade.",
   "Widget settings": "Configurações do widget",
   "latest transactions": "últimas transações",
 
-   
   "+ {n} more | + {n} more": { one: "+ {n} a mais", many: "+ {n} a mais", other: "+ {n} a mais" },
   "A local copy means the app opens instantly and keeps working on a plane.":
     "Uma cópia local significa que o app abre na hora e continua funcionando até em um avião.",

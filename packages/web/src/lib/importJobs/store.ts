@@ -12,7 +12,6 @@ import type { PlainImportUploadDraft, StoredE2eeImportJob } from "../importJobSt
 
 export type ImportActivitySource = "plain-draft" | "plain" | "e2ee";
 
- 
 export interface ImportActivityItem extends ImportJobProgress {
   id: string;
   budgetId: string;
@@ -32,7 +31,6 @@ export interface ImportActivityItem extends ImportJobProgress {
   expiresAt: string;
 }
 
- 
 export function importScreenshotProgress(
   item: Pick<ImportActivityItem, "status" | "phase" | "resumePhase" | "screenshots">,
 ): ImportJobScreenshotProgress | null {
@@ -56,7 +54,6 @@ export function canRemoveImportActivity(item: ImportActivityItem): boolean {
   return item.status === "ready" || item.status === "failed" || item.status === "completed" || item.status === "cancelled";
 }
 
- 
 export interface ImportJobScopeCapability {
   isCurrent(): boolean;
 }

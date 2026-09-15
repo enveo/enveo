@@ -109,13 +109,13 @@ const legacy: LegacySettings = {
 };
 
 async function finish(f: ReturnType<typeof fixture>) {
-  await runLegacySettingsMigration(f.deps);  
+  await runLegacySettingsMigration(f.deps);
   f.acknowledgeAccount();
-  await runLegacySettingsMigration(f.deps);  
+  await runLegacySettingsMigration(f.deps);
   f.acknowledgeBudget();
-  await runLegacySettingsMigration(f.deps);  
+  await runLegacySettingsMigration(f.deps);
   f.acknowledgeBudget();
-  await runLegacySettingsMigration(f.deps);  
+  await runLegacySettingsMigration(f.deps);
 }
 
 describe("legacy settings migration", () => {

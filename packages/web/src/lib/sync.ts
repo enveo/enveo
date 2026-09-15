@@ -60,7 +60,6 @@ import { isReplacePending, isResyncPending } from "./sync/obligations";
 import { getSyncStatus, installOutboxStatusListener } from "./sync/status";
 import { configureTransport } from "./sync/transport";
 
- 
 export { bootOnce, getLastBootSource, retryBoot } from "./sync/boot";
 export type { BootSource, IdentityVerdict, PendingE2eeUpgrade, SyncState, SyncStatus } from "./sync/contracts";
 export { E2eeUpgradeRequiredError, EMPTY_LEDGER, TierMismatchError } from "./sync/contracts";
@@ -86,37 +85,27 @@ export { discardPendingE2eeUpgrade, hasPendingE2eeUpgrade, upgradeServerE2eeV2 }
 // explicit, idempotent installation (sync/status.ts), done at composition time
 installOutboxStatusListener();
 
-
-
-
-
-
-
-
 export async function discardLocalReplica(): Promise<void> {
   await clearLocalAccountData();
   if (typeof location !== "undefined") location.reload();
 }
 
- 
 export async function clearLocalAccountData(): Promise<void> {
   outbox.clearAll();
-  e2ee.clearDek();  
+  e2ee.clearDek();
   store.clearMemory();
   await persist.flushed();
   await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
-  await clearLocalData();  
+  await clearLocalData();
   postMsg("wipe");
 }
 
- 
 export async function clearLocalAccountDataForSignOut(
   lease: import("./sync/multitab").CoordinatedSignOutLease,
   clearAdditionalAccountState: () => void = () => {},
 ): Promise<void> {
   await runCoordinatedLocalClear(lease, async (permit) => {
     clearAdditionalAccountState();
-    
 
     outbox.clearMemory();
     e2ee.clearDekMemory();
@@ -144,7 +133,7 @@ function installTriggers(): Promise<void> {
     });
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") void syncNow("visible");
-      else if (outbox.size() > 0) postMsg("poke");  
+      else if (outbox.size() > 0) postMsg("poke");
     });
     // Closing / bfcaching a tab with unsent ops: poke (BroadcastChannel
     // "poke") a possibly-live leader so it absorbs+pushes right away. Correctness
@@ -153,9 +142,6 @@ function installTriggers(): Promise<void> {
     window.addEventListener("pagehide", () => {
       if (outbox.size() > 0) postMsg("poke");
     });
-    
-
-
 
     window.addEventListener("beforeunload", (e) => {
       if (storageMode() === "memory-session" && outbox.size() > 0) {
@@ -164,25 +150,17 @@ function installTriggers(): Promise<void> {
       }
     });
     setInterval(() => {
-      
-
       if (isLeaderTab() && document.visibilityState === "visible") void syncNow("interval");
     }, INTERVAL_MS);
   });
   return triggerInstallPromise;
 }
 
- 
-
-
-
 configureTransport({
   enterUnauthed,
   assertOwnReplica,
   notePeersMayNeedUpdate,
 });
-
-
 
 configureCycle({
   notePeersMayNeedUpdate,
@@ -191,15 +169,11 @@ configureCycle({
   ensureE2eeProviderPreference,
 });
 
-
-
 configureIdentity({ discardForeignReplica: discardLocalReplica });
 
 const securityBoundaryReady = installTriggers();
 configureBootSecurityBoundary(() => securityBoundaryReady);
 configureDevicePreferencesSecurityBoundary(() => securityBoundaryReady);
-
- 
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).__sync = {

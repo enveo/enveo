@@ -18,13 +18,7 @@ import { LazyChunk, useOpenedOnce } from "./lazy";
 import { Sparkline } from "./sparkline";
 import { AccCell, accountIconColor, EnvRow } from "./tiles";
 
-
-
-
-
 const ReconcileSheet = lazy(() => import("./ReconcileSheet").then((m) => ({ default: m.ReconcileSheet })));
-
-
 
 export interface WidgetProps {
   state: StateResponse;
@@ -33,30 +27,23 @@ export interface WidgetProps {
   onOpenEnvelope: (envId: string, month: string) => void;
   onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
-   
+
   onOpenReport?: (tab: ReportTab) => void;
-   
+
   onOpenMonthDay?: (date: string) => void;
   /** Opens the multi-envelope "Fill by goals" sheet (App.openBudgetFillGoals) — the Goals widget's
    *  footer "Fill all ›" link, wide-only (waveB-t4-brief.md, B4); undefined on phone, where the
    *  Goals widget body never renders that control at all. */
   onFillGoals?: () => void;
-  
 
   chromeless?: boolean;
-  
-
-
-
 
   tile?: { w: number; h: number };
   opts?: WidgetOpts;
 }
 
- 
 const maskWhole = (M: (minor: number) => string, minor: number) => M(minor).replace(/[.,]\d\d(?!\d)/, "");
 
- 
 export type QuickActionKey = "expense" | "transfer" | "import" | "suggest" | "discreet" | "darkMode" | "reports";
 
 /** Canonical order (also the QuickActionsOptions checklist order) — a stale persisted key not in this
@@ -78,13 +65,10 @@ export const QUICK_ACTION_DEFS: Record<QuickActionKey, { label: Message; glyph?:
   reports: { label: msg("Reports"), d: "M4 20V10M9 20V4M14 20v-6M19 20v-9" },
 };
 
- 
 function resolveActions(actions: string[] | undefined): QuickActionKey[] {
   const kept = (actions ?? []).filter((a): a is QuickActionKey => a in QUICK_ACTION_DEFS);
   return kept.length > 0 ? kept : DEFAULT_QUICK_ACTIONS;
 }
-
-
 
 export function QuickActions({ onNav, onQuickAdd, opts }: WidgetProps) {
   const C = useTheme();
@@ -135,7 +119,6 @@ export function QuickActions({ onNav, onQuickAdd, opts }: WidgetProps) {
   );
 }
 
- 
 export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
@@ -152,7 +135,6 @@ export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
   const allAccounts = [...accountsNow].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
-  
 
   const picked = opts?.picked;
   const accounts = picked && picked.length > 0 ? allAccounts.filter((a) => picked.includes(a.id)) : allAccounts;
@@ -163,7 +145,6 @@ export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) 
   const [selAcc, setSelAcc] = useState<AccountView | null>(null);
   const [reconcileAccountId, setReconcileAccountId] = useState<string | null>(null);
   const reconcileAccount = currentReconciliationAccount(accountsNow, reconcileAccountId);
-  
 
   const reconcileMounted = useOpenedOnce(reconcileAccountId !== null);
   const activeEnvelopes = state.envelopes.filter((envelope) => !envelope.archived);
@@ -184,13 +165,10 @@ export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) 
         )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 16, rowGap: 0 }}>
           {shown.map((a, i) => {
-            
-
             const lastRow = Math.floor(i / 2) === Math.ceil((shown.length + 1) / 2) - 1;
             return <AccCell key={a.id} a={a} onClick={() => setSelAcc(a)} last={lastRow} />;
           })}
-          {
-}
+          {}
           <button
             onClick={() => onNav("accounts")}
             style={{
@@ -312,7 +290,6 @@ export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) 
   );
 }
 
- 
 function envelopeSections(
   state: StateResponse,
   mode: string,
@@ -329,14 +306,13 @@ function envelopeSections(
     const ids = new Set(mode.slice("picked:".length).split(",").filter(Boolean));
     return [{ label: t("Envelopes · Selected"), list: envelopes.filter((e) => ids.has(e.id)) }];
   }
-   
+
   return (["daily", "savings"] as const).map((kind) => ({
     label: kind === "daily" ? t("Envelopes · Everyday") : t("Envelopes · Savings"),
     list: envelopes.filter((e) => e.isSavings === (kind === "savings")),
   }));
 }
 
- 
 export function EnvelopesWidget({ state, month, onOpenEnvelope, opts, chromeless }: WidgetProps) {
   const M = useMask();
   const { t } = useT();
@@ -360,13 +336,10 @@ export function EnvelopesWidget({ state, month, onOpenEnvelope, opts, chromeless
   );
 }
 
-
-
 function EnvelopesSavingsWidget(props: WidgetProps) {
   return <EnvelopesWidget {...props} opts={{ mode: "savings" }} />;
 }
 
- 
 export function CashflowWidget({ state, onNav, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
@@ -388,7 +361,6 @@ export function CashflowWidget({ state, onNav, chromeless }: WidgetProps) {
       ))}
     </div>
   );
-  
 
   if (chromeless) return trio;
   return (
@@ -458,7 +430,7 @@ export function NetWorthWidget({ month, onNav, chromeless, tile }: WidgetProps) 
       <Sparkline points={netWorth} />
     </>
   );
-   
+
   if (chromeless) return body;
   return (
     <div>
@@ -487,13 +459,6 @@ export function NetWorthWidget({ month, onNav, chromeless, tile }: WidgetProps) 
   );
 }
 
-
-
-
-
-
-
-
 export const START_WIDGETS: Partial<Record<WidgetId, (p: WidgetProps) => ReactNode>> = {
   quickActions: QuickActions,
   accounts: AccountsWidget,
@@ -502,9 +467,6 @@ export const START_WIDGETS: Partial<Record<WidgetId, (p: WidgetProps) => ReactNo
   reportCashflow: CashflowWidget,
   reportNetWorth: NetWorthWidget,
 };
-
-
-
 
 const AttentionWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.AttentionWidget })));
 const RecentWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.RecentWidget })));
@@ -523,8 +485,6 @@ export const LAZY_WIDGETS: Record<LazyWidgetId, LazyExoticComponent<(p: WidgetPr
   trends: TrendsWidget,
   heatmap: HeatmapWidget,
 };
-
-
 
 function WidgetPending({ title }: { title: string }) {
   return (

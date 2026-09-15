@@ -1,11 +1,3 @@
-/**
- * `accountDebtShareText`/`accountTransactionCount` (Accounts.tsx, design parity wave E task 1) —
- * the wide hero card's "Card debt is {debtShare} of what you hold" caption and each card's
- * "{n} transactions · {month}" sub-line. Extracted so the three-way rounding/threshold branch
- * (no debt/no cash → "0%"; sub-1% → "under 1%"; otherwise a rounded, 100%-clamped percent) and
- * the two-sided (`accountId`/`toAccountId`) transaction membership test are pinned rather than
- * eyeballed — mirrors the `netWorthDeltaPct`/`netWorthRangeLabel` precedent this same epic set.
- */
 import { describe, expect, test } from "bun:test";
 import type { Transaction } from "@enveo/shared";
 import type { Message } from "../lib/i18n";
@@ -29,17 +21,14 @@ describe("accountDebtShareText", () => {
   });
 
   test("a debt share under 1% says 'under 1%' instead of rounding down to a bare '0%'", () => {
-     
     expect(accountDebtShareText(10_000_00, -50, t)).toBe("under 1%");
   });
 
   test("exactly 1% is NOT the 'under 1%' branch — it rounds and renders numerically", () => {
-     
     expect(accountDebtShareText(10_000_00, -10_000, t)).toBe("1%");
   });
 
   test("a mid-range share rounds to the nearest whole percent", () => {
-     
     expect(accountDebtShareText(10_000_00, -2_500_00, t)).toBe("25%");
   });
 
@@ -52,7 +41,6 @@ describe("accountDebtShareText", () => {
   });
 });
 
- 
 function tx(accountId: string, toAccountId: string | null = null): Pick<Transaction, "accountId" | "toAccountId"> {
   return { accountId, toAccountId };
 }

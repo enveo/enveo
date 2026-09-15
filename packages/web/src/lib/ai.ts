@@ -1,6 +1,3 @@
-
-
-
 import {
   type AiLocale,
   type BudgetSuggestionBasis,
@@ -40,13 +37,6 @@ export class AiConsentRequired extends Error {
   }
 }
 
- 
-
-
-
-
-
-
 function buildSuggestChat(args: { ledger: ClientLedger; month: string; profile: BudgetSuggestProfile; customPrompt?: string; locale: AiLocale }): {
   basis: BudgetSuggestionBasis;
   request: ChatRequest;
@@ -55,12 +45,6 @@ function buildSuggestChat(args: { ledger: ClientLedger; month: string; profile: 
   const basis = buildBudgetSuggestionBasis({ ledger, month, profile, customPrompt });
   return { basis, request: buildSuggestPrompt({ basis, ledger, month, profile, customPrompt, locale }) };
 }
-
-
-
-
-
-
 
 function buildAgentChat(args: { ledger: ClientLedger; month: string; customPrompt?: string; locale: AiLocale }): {
   basis: BudgetSuggestionBasis;
@@ -72,14 +56,7 @@ function buildAgentChat(args: { ledger: ClientLedger; month: string; customPromp
   return { basis, request: buildAgentSuggestPrompt(ctx) };
 }
 
- 
 const messageText = (m: ChatMessage | undefined): string => (typeof m?.content === "string" ? m.content : JSON.stringify(m?.content ?? ""));
-
-
-
-
-
-
 
 export function previewSuggestPrompt(
   ledger: ClientLedger,
@@ -105,9 +82,6 @@ export async function runSuggest(args: {
   provider: AiProvider;
 }): Promise<BudgetSuggestResponse> {
   const { ledger, month, profile, customPrompt, locale, provider } = args;
-
-  
-
 
   const generatedAt = new Date().toISOString();
   const agent = profile === "custom" ? buildAgentChat({ ledger, month, customPrompt, locale }) : null;
@@ -165,8 +139,6 @@ export async function runSuggest(args: {
     return wrap({ ...rules, warnings: [...rules.warnings, "warn.aiUnavailable"] }, "rules");
   }
 }
-
- 
 
 export async function runImportExtract(args: {
   images: string[];

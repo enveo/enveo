@@ -37,7 +37,7 @@ describe("envelope→categories index", () => {
     const ledger = L([{ envelopeId: "E1", categoryId: "C1" }]);
     const a = categoryCountsFor(ledger, 7, "E1");
     const b = categoryCountsFor(ledger, 7, "E1");
-    expect(a).toBe(b);  
+    expect(a).toBe(b);
     const c = categoryCountsFor(ledger, 8, "E1");
     expect(c).not.toBe(a);
   });

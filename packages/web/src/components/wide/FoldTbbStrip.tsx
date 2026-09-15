@@ -11,25 +11,8 @@ import { font } from "../../lib/theme";
 import { sumBalances, tbbState } from "../../lib/uiState";
 import type { ScreenId } from "../chrome";
 
-/** New this task (pr4-task-5-brief.md) — outside a direct `t()`/`tp()` call (a ternary), so
- *  `msg()` marks both for the extractor per the house i18n convention.
- *  Task 9 i18n hygiene (`bun run i18n:ambiguity`): `"Collapse"` is flagged as reused (the other
- *  call site is `ChipPicker.tsx`'s section toggle) — checked and kept as-is, not renamed to a
- *  longer form: both sites are the same gender-neutral Polish imperative ("Zwiń", no referent to
- *  inflect for), and both mean the identical action (collapse an expandable section). `"Show
- *  all"` is brand-new here and not (yet) reused anywhere, so it isn't a collision candidate. */
 const CHIPS_TOGGLE: Record<"open" | "closed", Message> = { open: msg("Collapse"), closed: msg("Show all") };
 
-/**
- * Fold-only "to be budgeted" strip, above the primary pane's content (spec demo 212-240 +
- * 4169-4173) — the ONE surface this PR implements for the fold's money card (mockup
- * inconsistency 8 rejects the demo's second, overlapping band pill). Desktop never mounts this:
- * its rail already carries the equivalent card (`Rail.tsx`'s `TbbCard`).
- *
- * `compact` is the demo's third density tier for Transactions (tighter padding, smaller amount,
- * no income/expense line) — three inline ternaries on ONE boolean, not a new `dense` enum
- * (pr4-task-5-brief.md, following the shell inventory's recommendation).
- */
 export function FoldTbbStrip({
   state,
   screen,
@@ -61,16 +44,6 @@ export function FoldTbbStrip({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
 
-  // Design parity fix-review (mirrors Rail.tsx's TbbCard, demo 220-221): Suggest is a FILLED ink
-  // pill (background `T.text`, text `T.card` — the surrounding CARD's own background, so it
-  // inverts correctly whatever the theme), NOT an accent-tinted outline. Fill-by-goals stays the
-  // plain `line`-outline it already was — this strip sits on the ordinary content surface
-  // (`T.card`), not the rail, so unlike Rail.tsx's TbbCard it never needs the rail-specific
-  // `railRuler`/`railBorder` tokens.
-  // Owner round 8b item B — the fold copy of Rail.tsx's gate, same shared `canFillGoals` and the
-  // same disabled-not-hidden call (see that file for the reasoning): these two pills are one
-  // fixed-width group at the strip's right edge, so removing one would slide "✨ Suggest" sideways
-  // every time the pool empties or the last goal is funded.
   const fillPossible = canFillGoals(state);
   const pill = (primary: boolean, disabled = false): React.CSSProperties => ({
     minHeight: 30,

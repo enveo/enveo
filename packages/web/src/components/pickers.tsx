@@ -126,7 +126,6 @@ export function Numpad({
   variant = "docked",
 }: {
   onKey: (k: string) => void;
-  
 
   onOk?: () => void;
   okGlyph?: "check" | "equals";
@@ -134,7 +133,7 @@ export function Numpad({
 }) {
   const C = useTheme();
   const { lang } = useT();
-   
+
   const keyLabel = (k: string): string => numpadKeyLabel(k, lang, okGlyph);
 
   if (variant === "sheet") {

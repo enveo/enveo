@@ -10,7 +10,6 @@ import { describe, expect, it } from "bun:test";
 import { openAiChatFetch, openAiModelFetch, timeoutSignal, transportFailureJson, UpstreamNetworkError, UpstreamTimeoutError } from "./openaiHttp";
 
 describe("timeoutSignal — AbortSignal.timeout built from AbortController + setTimeout (WebKit < 16)", () => {
-   
   function fakeTimers() {
     let fire: (() => void) | null = null;
     const cleared: unknown[] = [];
@@ -43,7 +42,7 @@ describe("timeoutSignal — AbortSignal.timeout built from AbortController + set
     const { timers, cleared } = fakeTimers();
     const t = timeoutSignal(120_000, timers);
     t.clear();
-    expect(cleared).toEqual(["handle-1"]);  
+    expect(cleared).toEqual(["handle-1"]);
     expect(t.signal.aborted).toBe(false);
     expect(t.timedOut()).toBe(false);
   });
@@ -86,7 +85,7 @@ describe("openAiChatFetch", () => {
   it("types a dead upstream (connection refused) UpstreamNetworkError, not a timeout", async () => {
     const probe = Bun.serve({ port: 0, fetch: () => Response.json({}) });
     const deadPort = probe.port;
-    probe.stop(true);  
+    probe.stop(true);
     await expect(openAiChatFetch({ messages: [] }, { apiKey: "k", url: `http://127.0.0.1:${deadPort}/`, timeoutMs: 5_000 })).rejects.toBeInstanceOf(
       UpstreamNetworkError,
     );

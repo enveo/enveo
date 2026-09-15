@@ -3,14 +3,7 @@ import { type DbExecutor, type DbTransaction, db } from "./db/client";
 import { OPERATION_LOCK, operationLockKey, withOperationLock, withOperationLockInTx } from "./db/operationLock";
 import { budgets } from "./db/schema";
 
- 
 type UserCtx = { get: (k: "userId") => string | undefined } | null;
-
-
-
-
-
-
 
 export function sessionUserId(c: UserCtx): string | undefined {
   return c?.get("userId");
@@ -52,26 +45,23 @@ export function sessionUserId(c: UserCtx): string | undefined {
  */
 export async function getBudgetId(c: UserCtx, x: DbExecutor = db): Promise<string> {
   if (c === null) {
-     
     const rows = await x.select({ id: budgets.id }).from(budgets).limit(1);
     if (!rows[0]) throw new Error("No budget found.");
     return rows[0].id;
   }
   const userId = requireUserId(c);
-   
+
   const existing = await firstBudgetIdOf(x, userId);
   if (existing) return existing;
 
   const key = operationLockKey(OPERATION_LOCK.ensureInitialBudget, userId);
   const ensure = async (tx: DbTransaction): Promise<string> => {
-     
     const winner = await firstBudgetIdOf(tx, userId);
     if (winner) return winner;
     const [created] = await tx.insert(budgets).values({ userId, name: "Budget" }).returning({ id: budgets.id });
     if (!created) throw new Error("Failed to create the user's budget.");
     return created.id;
   };
-  
 
   return isPooledDb(x) ? withOperationLock(key, ensure) : withOperationLockInTx(asTx(x), key, ensure);
 }
@@ -102,14 +92,12 @@ function asTx(x: DbExecutor): DbTransaction {
   return x;
 }
 
- 
 function requireUserId(c: NonNullable<UserCtx>): string {
   const userId = c.get("userId");
   if (!userId) throw new Error("No user in context — session middleware did not set userId.");
   return userId;
 }
 
- 
 async function firstBudgetIdOf(x: DbExecutor, userId: string): Promise<string | null> {
   const rows = await x.select({ id: budgets.id }).from(budgets).where(eq(budgets.userId, userId)).orderBy(budgets.id).limit(1);
   return rows[0]?.id ?? null;
@@ -150,28 +138,17 @@ const toBudgetMeta = (id: string, row: { tier: string | null; epoch: number | nu
   cipherVersion: row?.cipherVersion === 1 ? 1 : 2,
 });
 
- 
 export class TierMismatch extends Error {
   constructor(public meta: BudgetMeta) {
     super("tier_mismatch");
   }
 }
 
-
-
-
-
-
 export async function requireTier(c: UserCtx, want: "plain" | "e2ee", x: DbExecutor = db): Promise<BudgetMeta> {
   const meta = await getBudgetMeta(c, x);
   if (meta.tier !== want) throw new TierMismatch(meta);
   return meta;
 }
-
-
-
-
-
 
 export class BudgetVanished extends Error {
   constructor() {

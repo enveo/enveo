@@ -1,4 +1,3 @@
- 
 import type { Dict } from "../index";
 
 export const cs: Dict = {
@@ -650,7 +649,6 @@ export const cs: Dict = {
       many: "Sloučit {n} položky do jedné s názvem „{name}“? Všechny jejich transakce se přesunou.",
       other: "Sloučit {n} položek do jedné s názvem „{name}“? Všechny jejich transakce se přesunou.",
     },
-  
 
   "Needs attention": "Vyžaduje pozornost",
   "Recent activity": "Nedávná aktivita",
@@ -692,13 +690,12 @@ export const cs: Dict = {
   "total {amount} this month": "celkem {amount} tento měsíc",
   "No spending this month.": "Žádné výdaje tento měsíc.",
   "Not enough history yet — trends appear after two months of spending.": "Zatím není dost historie — trendy se zobrazí po dvou měsících výdajů.",
-   
+
   "Add widget": "Přidat widget",
   "Every widget is already on the grid.": "Všechny widgety jsou už v mřížce.",
   "Widget settings": "Nastavení widgetu",
   "latest transactions": "poslední transakce",
 
-   
   "+ {n} more | + {n} more": { one: "+ ještě {n}", few: "+ ještě {n}", many: "+ ještě {n}", other: "+ ještě {n}" },
   "A local copy means the app opens instantly and keeps working on a plane.":
     "Lokální kopie znamená, že se aplikace otevře okamžitě a funguje dál i v letadle.",

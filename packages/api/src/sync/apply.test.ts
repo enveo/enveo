@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 import { describe, expect, it } from "bun:test";
 import type { ClientLedgerInput } from "@enveo/shared";
 import { collectFkChecks, findForeignLedgerRef } from "./apply";
@@ -43,8 +36,6 @@ describe("collectFkChecks", () => {
     ]);
   });
 });
-
- 
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const FOREIGN = U(666);

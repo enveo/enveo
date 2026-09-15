@@ -22,7 +22,7 @@ describe("price registry", () => {
   it("prices gpt-5.6-luna at the rates revalidated on 2026-08-12 (200/20/250/1200 nanoUsd per token)", () => {
     expect(luna.inputNanoUsdPerToken).toBe(200n);
     expect(luna.cachedInputNanoUsdPerToken).toBe(20n);
-    expect(luna.cacheWriteNanoUsdPerToken).toBe(250n);  
+    expect(luna.cacheWriteNanoUsdPerToken).toBe(250n);
     expect(luna.outputNanoUsdPerToken).toBe(1_200n);
     expect(luna.longContext).toEqual({ thresholdPromptTokens: 272_000, inputNanoUsdPerToken: 400n, outputNanoUsdPerToken: 1_800n });
   });
@@ -61,14 +61,14 @@ describe("chatCostNanoUsd — official fixed examples", () => {
     // longContext disabled for this check: 1M input tokens would otherwise (correctly) hit the 272K rule.
     const flat: ModelPriceEntry = { ...luna, longContext: null };
     const inOnly = chatCostNanoUsd(flat, "gpt-5.6-luna", usage(1_000_000, 0));
-    expect(inOnly.ok && inOnly.nanoUsd).toBe(200_000_000n);  
+    expect(inOnly.ok && inOnly.nanoUsd).toBe(200_000_000n);
     const outOnly = chatCostNanoUsd(luna, "gpt-5.6-luna", usage(0, 1_000_000));
     expect(outOnly.ok && outOnly.nanoUsd).toBe(1_200_000_000n); // $1.20 (output alone does not trigger the rule)
   });
 
   it("cached tokens are billed at the cached rate, cache writes at 1.25x input", () => {
     const r = chatCostNanoUsd(luna, "gpt-5.6-luna", usage(1000, 0, { cached_tokens: 600, cache_write_tokens: 100 }));
-     
+
     expect(r.ok && r.nanoUsd).toBe(97_000n);
   });
 
@@ -125,7 +125,7 @@ describe("chatCostNanoUsd — invalid usage and unknown models (no charge, never
       usage(0, 2.5),
       usage(Number.MAX_SAFE_INTEGER + 2, 0),
       { prompt_tokens: "10", completion_tokens: 0 },
-      { prompt_tokens: 10 },  
+      { prompt_tokens: 10 },
       usage(10, 0, { cached_tokens: -1 }),
       usage(10, 0, { cache_write_tokens: 1.2 }),
       usage(10, 0, { cached_tokens: "3" }),
@@ -137,15 +137,13 @@ describe("chatCostNanoUsd — invalid usage and unknown models (no charge, never
 
   it("subdivisions exceeding prompt_tokens are rejected (would produce a negative uncached count)", () => {
     expect(chatCostNanoUsd(luna, "gpt-5.6-luna", usage(100, 0, { cached_tokens: 60, cache_write_tokens: 41 }))).toEqual({ ok: false, reason: "invalid_usage" });
-     
+
     const r = chatCostNanoUsd(luna, "gpt-5.6-luna", usage(100, 0, { cached_tokens: 60, cache_write_tokens: 40 }));
     expect(r.ok && r.nanoUsd).toBe(60n * 20n + 40n * 250n);
   });
 });
 
 describe("chatCostNanoUsd — arithmetic properties (seeded randomized boundary sweep)", () => {
-  
-
   let seed = 0xdecaf;
   const rnd = () => {
     seed = (seed * 1664525 + 1013904223) >>> 0;
@@ -174,13 +172,11 @@ describe("chatCostNanoUsd — arithmetic properties (seeded randomized boundary 
   });
 
   it("an absurd cost is capped by the checked-arithmetic ceiling — a pricing failure, never a bigint INSERT error", () => {
-    
-
     const big = Number.MAX_SAFE_INTEGER;
     const entry: ModelPriceEntry = { ...luna, longContext: null };
     expect(chatCostNanoUsd(entry, "gpt-5.6-luna", usage(big, big))).toEqual({ ok: false, reason: "cost_out_of_range" });
     // exactly AT the ceiling still charges; one nano-USD above does not
-    const atCeiling = MAX_CHARGEABLE_NANO_USD / 200n;  
+    const atCeiling = MAX_CHARGEABLE_NANO_USD / 200n;
     const rAt = chatCostNanoUsd(entry, "gpt-5.6-luna", usage(Number(atCeiling), 0));
     expect(rAt.ok && rAt.nanoUsd).toBe(MAX_CHARGEABLE_NANO_USD);
     const above = chatCostNanoUsd(entry, "gpt-5.6-luna", { ...usage(Number(atCeiling), 0), completion_tokens: 1 });

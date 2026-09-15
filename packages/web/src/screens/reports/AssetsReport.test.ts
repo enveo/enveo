@@ -21,7 +21,6 @@ const wealth: EnvelopeView = {
   available: 190000,
 };
 
- 
 function report(net: number, envelopes = [wealth], mask = (n: number) => `«${n}»`) {
   const state: StateResponse = {
     month: "2026-09",

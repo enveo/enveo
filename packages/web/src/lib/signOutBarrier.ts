@@ -10,7 +10,6 @@ interface ActiveAttempt {
   phase: Exclude<SignOutPhase, "idle">;
 }
 
- 
 export interface SignOutPermit {
   readonly __signOutPermit: unique symbol;
 }
@@ -70,7 +69,6 @@ export function subscribeSignOutPhase(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
- 
 export function activateSignOutAttempt(attemptId: string, sourceId: string, kind: SignOutAttemptKind): void {
   const existing = attempts.get(attemptId);
   if (existing) {
@@ -86,7 +84,6 @@ export function activateSignOutAttempt(attemptId: string, sourceId: string, kind
   }
 }
 
- 
 export function releaseSignOutAttempt(attemptId: string): void {
   const before = visiblePhase();
   attempts.delete(attemptId);
@@ -119,7 +116,6 @@ export function isSignOutPermitActive(permit: SignOutPermit | undefined): boolea
   }
 }
 
-/** Compatibility entry point consumed by the Task 5 UI orchestration. */
 export function beginSignOut(): void {
   const phase = visiblePhase();
   if (phase !== "idle") throw new Error(`sign_out_barrier_invalid_transition:${phase}->blocking`);

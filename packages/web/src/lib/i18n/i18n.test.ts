@@ -20,7 +20,7 @@ import { pl } from "./locales/pl";
 import { MESSAGES, type Message } from "./messages.generated";
 import { LOCALES } from "./registry";
 
-const TRANSLATED = LOCALES.filter((l) => l.code !== "en");  
+const TRANSLATED = LOCALES.filter((l) => l.code !== "en");
 
 describe("i18n runtime", () => {
   it("English is the source: the message IS the answer, with {params} filled", () => {
@@ -47,13 +47,13 @@ describe("i18n runtime", () => {
       code,
       endonym: "Test",
       community: true,
-      load: async (): Promise<Dict> => ({ Transactions: "Zy" }),  
+      load: async (): Promise<Dict> => ({ Transactions: "Zy" }),
     };
     LOCALES.unshift(entry);
     try {
       await loadLocale(code);
-      expect(translate(code, "Transactions")).toBe("Zy");  
-      expect(translate(code, "Settings")).toBe("Settings");  
+      expect(translate(code, "Transactions")).toBe("Zy");
+      expect(translate(code, "Settings")).toBe("Settings");
       expect(translatePlural(code, "{n} transaction | {n} transactions", 2)).toBe("2 transactions");
     } finally {
       LOCALES.splice(LOCALES.indexOf(entry), 1);
@@ -98,7 +98,7 @@ describe("i18n runtime", () => {
     LOCALES.unshift(entry);
     try {
       await loadLocale(code); // must RESOLVE, not throw
-      expect(translate(code, "Transactions")).toBe("Transactions");  
+      expect(translate(code, "Transactions")).toBe("Transactions");
 
       await loadLocale(code); // the failure was not cached → a later attempt still loads
       expect(translate(code, "Transactions")).toBe("Zz");
@@ -122,7 +122,7 @@ describe("i18n messages", () => {
     const call = (name: string, ...body: string[]) => [`const x = ${name}` + String.fromCharCode(40), ...body, ");"].join("\n");
     const src = `${call("t", '  "A long message that was wrapped by the formatter.",')}\n${call("tp", '  "{n} thing | {n} things",', "  n,")}\n`;
     expect(matchMessages(src).map((m) => m.message)).toEqual(["A long message that was wrapped by the formatter.", "{n} thing | {n} things"]);
-     
+
     expect(matchMessages(src).map((m) => m.line)).toEqual([1, 4]);
   });
 
@@ -188,7 +188,7 @@ describe("i18n messages", () => {
     for (const l of TRANSLATED) {
       const dict = await l.load();
       for (const [message, value] of Object.entries(dict)) {
-        const want = placeholders(message);  
+        const want = placeholders(message);
         const forms = typeof value === "string" ? { other: value } : value;
         for (const [cat, form] of Object.entries(forms)) {
           expect({ locale: l.code, message, cat, placeholders: placeholders(form as string) }).toEqual({ locale: l.code, message, cat, placeholders: want });
@@ -208,9 +208,9 @@ describe("i18n — ambiguity report", () => {
   it("flags a short message reused across call sites, and ignores a whole sentence", () => {
     const report = ambiguous(
       new Map([
-        ["Type", ["a.tsx:1", "b.tsx:2"]],  
-        ["Transactions", ["a.tsx:3"]],  
-        ["Delete everything and start over", ["a.tsx:4", "b.tsx:5"]],  
+        ["Type", ["a.tsx:1", "b.tsx:2"]],
+        ["Transactions", ["a.tsx:3"]],
+        ["Delete everything and start over", ["a.tsx:4", "b.tsx:5"]],
       ]),
     );
     expect(report.map((r) => r.message)).toEqual(["Type"]);
@@ -230,9 +230,6 @@ describe("i18n — ambiguity report", () => {
  * The literal that goes on the WIRE is separate and fixed (E2EE_DISABLE_CONFIRM).
  */
 describe("i18n — typed confirmation words", () => {
-  
-
-
   const CONFIRM_WORDS: Message[] = ["DISABLE-E2EE", "RESET"];
 
   it("the English words are printable ASCII (typeable on a US keyboard)", () => {
@@ -244,14 +241,13 @@ describe("i18n — typed confirmation words", () => {
       const dict = await l.load();
       for (const w of CONFIRM_WORDS) {
         const translated = dict[w];
-        if (typeof translated !== "string") continue;  
+        if (typeof translated !== "string") continue;
         expect(translated).toBe(translated.toUpperCase());
       }
     }
   });
 
   it("the E2EE wire literal is locale-independent, not the localized word", () => {
-     
     expect(pl["DISABLE-E2EE"]).toBe("WYŁĄCZ-E2EE");
     expect(E2EE_DISABLE_CONFIRM).toMatch(/^[\x20-\x7e]+$/);
   });

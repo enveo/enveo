@@ -17,14 +17,13 @@
  * Pure by design: the collector takes text, so the repository-wide assertion is one focused test.
  */
 
- 
 export type ActionUse = Readonly<{
   file: string;
-   
+
   reference: string;
-   
+
   comment: string | null;
-   
+
   line: number;
 }>;
 
@@ -32,10 +31,8 @@ const USES = /^\s*(?:-\s+)?uses:\s*([^\s#]+)\s*(?:#\s*(.*?))?\s*$/;
 
 const FULL_SHA = /^[0-9a-f]{40}$/;
 
- 
 const VERSION_COMMENT = /\bv\d+(\.\d+)*\b/;
 
- 
 export function collectActionUses(file: string, yaml: string): ActionUse[] {
   const uses: ActionUse[] = [];
   yaml.split("\n").forEach((text, index) => {
@@ -53,13 +50,6 @@ export function collectActionUses(file: string, yaml: string): ActionUse[] {
 
 /** True for a same-repository reusable workflow, which must NOT be pinned. */
 export const isLocalReference = (reference: string): boolean => reference.startsWith("./");
-
-
-
-
-
-
-
 
 export function findPinProblems(uses: readonly ActionUse[]): string[] {
   const problems: string[] = [];

@@ -1,15 +1,6 @@
 import { useRef, useState } from "react";
 import { haptic } from "./haptics";
 
-
-
-
-
-
-
-
-
-
 export function useDragReorder(onCommit: (from: number, to: number) => void) {
   const items = useRef(new Map<number, HTMLElement>());
   const drag = useRef<{ from: number; x: number; y: number; el: HTMLElement; r0: DOMRect; sc: HTMLElement | null; scroll0: number } | null>(null);
@@ -82,7 +73,7 @@ export function useDragReorder(onCommit: (from: number, to: number) => void) {
       }
     },
     onPointerCancel: reset,
-     
+
     onTouchStart: (e: React.TouchEvent) => e.stopPropagation(),
     style: {
       touchAction: "none" as const,

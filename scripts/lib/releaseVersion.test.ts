@@ -116,7 +116,6 @@ describe("parseReleaseTag — rejected", () => {
   });
 
   it("rejects arbitrary suffix garbage that the old shell glob accepted", () => {
-     
     expect(rejected("v3.8.0rc1")).toMatch(/MAJOR\.MINOR\.PATCH/);
     expect(rejected("v3.8.0_final")).toMatch(/MAJOR\.MINOR\.PATCH/);
     expect(rejected("v3.8.0.deploy")).toMatch(/MAJOR\.MINOR\.PATCH/);
@@ -201,7 +200,7 @@ describe("compareVersions", () => {
 
   it("orders by numeric core, not lexically", () => {
     expect(cmp("3.8.0", "3.8.1")).toBe(-1);
-    expect(cmp("3.10.0", "3.9.0")).toBe(1);  
+    expect(cmp("3.10.0", "3.9.0")).toBe(1);
     expect(cmp("4.0.0", "3.99.99")).toBe(1);
     expect(cmp("3.8.0", "3.8.0")).toBe(0);
   });
@@ -215,8 +214,8 @@ describe("compareVersions", () => {
     expect(cmp("3.8.0-rc.1", "3.8.0-rc.2")).toBe(-1);
     expect(cmp("3.8.0-rc.2", "3.8.0-rc.10")).toBe(-1); // numeric, not lexical
     expect(cmp("3.8.0-alpha", "3.8.0-beta")).toBe(-1);
-    expect(cmp("3.8.0-1", "3.8.0-alpha")).toBe(-1);  
-    expect(cmp("3.8.0-rc", "3.8.0-rc.1")).toBe(-1);  
+    expect(cmp("3.8.0-1", "3.8.0-alpha")).toBe(-1);
+    expect(cmp("3.8.0-rc", "3.8.0-rc.1")).toBe(-1);
     expect(cmp("3.8.0-rc.1", "3.8.0-rc.1")).toBe(0);
   });
 });
@@ -243,9 +242,6 @@ describe("planAliasMoves — aliases only ever move FORWARD", () => {
   });
 
   it("SKIPS an alias serving a NEWER version — the downgrade this exists to prevent", () => {
-    
-
-
     const [decision] = plan("v3.8.0", [{ alias: "latest", present: true, version: "3.8.1" }]);
 
     expect(decision?.action).toBe("skip");

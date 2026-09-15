@@ -220,9 +220,7 @@ export class PlainImportJobAdapter {
         } else {
           await this.upload(draft);
         }
-      } catch {
-         
-      }
+      } catch {}
     }
     return drafts.length > 0;
   }
@@ -280,9 +278,7 @@ export class PlainImportJobAdapter {
         if (inFlight) {
           try {
             await inFlight;
-          } catch {
-             
-          }
+          } catch {}
         }
         if (!this.isCurrent()) return;
         try {
@@ -300,9 +296,7 @@ export class PlainImportJobAdapter {
       }
       try {
         await this.uploads.get(id);
-      } catch {
-         
-      }
+      } catch {}
       const remaining = await importJobStorage.getDraft(this.options.scope, id);
       if (this.isCurrent() && remaining?.cancelRequestedAt) await this.settleCancellation(remaining);
       return;

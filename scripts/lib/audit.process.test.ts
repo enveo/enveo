@@ -11,7 +11,7 @@ import { EXIT_FAILED_CLOSED, EXIT_OK, EXIT_POLICY_VIOLATION, runAudit, sanitizeT
 const FAKE = new URL("./fixtures/fake-audit.ts", import.meta.url).pathname;
 const POLICY = new URL("../../security/audit-policy.json", import.meta.url).pathname;
 const LOCK = new URL("../../bun.lock", import.meta.url).pathname;
-const NOW = new Date("2026-08-12T00:00:00Z");  
+const NOW = new Date("2026-08-12T00:00:00Z");
 
 function silent(): { log: (line: string) => void; lines: string[] } {
   const lines: string[] = [];

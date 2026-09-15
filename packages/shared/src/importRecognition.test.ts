@@ -329,7 +329,7 @@ describe("screenshot import proposal validation", () => {
     expect(result.proposals).toMatchObject([
       { rowId: "missing", disposition: "unresolved", selected: true, rawPlace: "unreadable amount", reviewReasons: ["missing_fact"] },
       { rowId: "support", disposition: "supporting", selected: false, reviewReasons: [] },
-       
+
       { rowId: "pending", disposition: "candidate", selected: true, reviewReasons: [] },
       { rowId: "declined", disposition: "declined", selected: false, reviewReasons: ["pending_or_declined"] },
       { rowId: "pending-missing", disposition: "unresolved", selected: true, reviewReasons: ["missing_fact"] },
@@ -383,7 +383,7 @@ describe("screenshot import proposal validation", () => {
       reviewReasons: ["fx_converted"],
     });
     expect(result.proposals[2]).toMatchObject({ rowId: "software", amount: 2264, currency: "USD", reviewReasons: ["fx_converted"] });
-     
+
     expect(result.rows[0]).toMatchObject({ amount: 2149, currency: "EUR" });
     expect(result.proposals[4]).toMatchObject({ rowId: "lonely", amount: 500, currency: "GBP", reviewReasons: [] });
   });

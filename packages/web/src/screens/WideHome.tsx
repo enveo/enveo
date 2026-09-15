@@ -1,31 +1,3 @@
-/**
- * The wide Home board (pr5-task-6-brief.md) — a dense CSS grid of the same report-backed widgets
- * Start's phone stack offers, laid out and sized by the user rather than stacked in a fixed
- * order. Mounted by `WideShell` in place of the phone `StartScreen` once `mode !== "phone"` — this
- * module is statically imported BY `WideShell` (itself behind `LazyChunk` from `App.tsx`), so it
- * ships in the wide chunk at zero eager cost; nothing here is ever reachable from the phone
- * bundle's static-import graph.
- *
- * Persistence is `preferences.wideWidgets` (`@enveo/shared` schemaVersion 2) via
- * `useBudgetPreferences()` directly — NOT `useSettings()`, which only projects the phone stack
- * (`startWidgets`). The two lists are independent (spec §7's table row, PR5 reconciliation
- * decision 3): resizing/reordering/toggling here never touches the phone Start stack, and vice
- * versa.
- *
- * Edit mode (`edit`, App-owned — see `WideShell`'s band right-slot handoff) only changes the tile
- * CHROME: dashed border, jiggle, drag handle, size hint, gear (configurable widgets only), remove
- * ✕, and the corner resize handle. The widget BODY is unaffected either way — `renderWidget` is
- * called with `chromeless: true` so a body that supports it (the six PR5 report-backed widgets)
- * skips its own phone SectionEyebrow+CardBox; the four "original" wide-capable widgets
- * (envelopes/envelopesSavings/reportCashflow/reportNetWorth) do not read `chromeless` at all
- * (widgets.tsx's own doc comment: "stay untouched") and keep rendering their own inner eyebrow —
- * an accepted, pre-existing scoping decision from Task 4, not something this task revisits.
- *
- * Resize and reorder each commit exactly ONE `update({ wideWidgets })` op per gesture (pointerup /
- * drop), never one per pointermove — the outbox is not a scroll buffer. A resize's live feedback
- * lives in local `draft` state only; a reorder's live feedback is `useDragReorder`'s own direct
- * DOM transform (no React state during the drag at all, same as `EditWidgetsSheet`).
- */
 import type { StateResponse, WideWidgetConfig, WideWidgetId } from "@enveo/shared";
 import { useRef, useState } from "react";
 import type { ScreenId } from "../components/chrome";
@@ -49,25 +21,15 @@ export interface WideHomeProps {
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
   onOpenReport: (tab: ReportTab) => void;
   onOpenMonthDay: (date: string) => void;
-  
 
   edit: boolean;
-   
+
   onWidgetSettings: (id: WideWidgetId) => void;
-  /** Owner round 6 item 28: the edit-mode "+" tile → `WideShell`'s panel picker. The board itself
-   *  never renders the candidate list any more (see `AddTile`); the PLACEMENT still happens through
-   *  the same `toggleEnabled`/`update({ wideWidgets })` path every other edit gesture uses, just
-   *  from the picker body (PanelHost) instead of from this cell. */
+
   onAddWidget: () => void;
-  
 
   onFillGoals: () => void;
 }
-
-
-
-
-
 
 const WIDGET_REPORT_TAB: Partial<Record<WideWidgetId, ReportTab>> = {
   attention: "budgets",
@@ -79,18 +41,7 @@ const WIDGET_REPORT_TAB: Partial<Record<WideWidgetId, ReportTab>> = {
   heatmap: "month",
 };
 
-
-
 const ROW_H = 104;
-
-
-
-
-
-
-
-
-
 
 const HEADER_HIT_MARGIN = "-8.5px 0";
 
@@ -114,24 +65,6 @@ const chromeBtn = (color: string): React.CSSProperties => ({
   flexShrink: 0,
 });
 
-/**
- * The board's trailing EDIT-MODE cell: the design's own ghost tile (v3.dc.html:614-621 — `span 1`
- * column × `span 2` rows, 1.5px dashed `T.line`, radius 14, centered, muted, its label the design's
- * literal "＋ Add widget" copy at 13px/650).
- *
- * What this deliberately does NOT port is the design's own `homeAddOpen` behaviour, which expanded
- * that same tile into an internally-scrolling list of widget names INSIDE the cell (v3:3670-3676).
- * Owner round 6 item 28 rejects that outright ("tragiczne"): a picker squeezed into one 1×2 grid
- * cell can show ~2 rows of a ten-widget catalogue. The affordance stays exactly the design's; the
- * choosing moves to the right panel (`PanelView` kind `widgetPicker`), which is where every other
- * board-editing surface already lives (the gear's `widgets` kind) — ONE pane machine, one more kind.
- *
- * EXHAUSTED STATE (requirement (d), decided from the design): the design keeps the tile mounted and
- * answers with its own copy, "Every widget is already on the grid." — so this tile stays visible
- * with that text and simply stops being a button (no picker to open, nothing to place). Hiding it
- * would also drop the "Reset layout" rhythm's last grid cell and make the board silently change
- * shape at the exact moment the user is arranging it.
- */
 function AddTile({ candidates, onOpenPicker }: { candidates: number; onOpenPicker: () => void }) {
   const C = useTheme();
   const { t } = useT();
@@ -248,7 +181,6 @@ export function WideHome({
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      
 
       setDraft((current) => {
         if (current) update({ wideWidgets: current });
@@ -299,7 +231,6 @@ export function WideHome({
                 padding: "12px 14px",
                 display: "flex",
                 flexDirection: "column",
-                
 
                 gap: 9,
                 overflow: "hidden",
@@ -332,8 +263,6 @@ export function WideHome({
                 )}
                 <button
                   type="button"
-                  
-
                   onClick={edit ? undefined : () => openWidget(w.id)}
                   style={{
                     flex: 1,
@@ -365,11 +294,7 @@ export function WideHome({
                     <span style={{ fontSize: 9, fontWeight: 700, color: C.mute, fontVariantNumeric: "tabular-nums", marginRight: 2 }}>
                       {spanW}×{w.h}
                     </span>
-                    {/* The gear panel offers Size + Scrolling for every wide widget now (owner round
-                        3 item 14) — the design's own `HAS_SETTINGS` map is `true` for every id
-                        (v3.dc.html:3606), so unlike the phone catalogue's `configurable` flag
-                        (quickActions/accounts/envelopes only, a DIFFERENT "has an options body"
-                        concept) this is never gated per widget. */}
+                    {}
                     <button onClick={() => onWidgetSettings(w.id)} aria-label={t("Widget settings")} style={chromeBtn(C.soft)}>
                       ⚙
                     </button>
@@ -380,11 +305,6 @@ export function WideHome({
                 )}
               </div>
               <div
-                // gsh (chrome.tsx): tile-body scrollbars stay invisible until hovered — owner
-                // ruling, parity owner round 1 item 2. `resolveWidgetScroll` is the gear panel's
-                // "Scroll inside the tile" toggle (owner round 3 item 14) resolved to an effective
-                // boolean — false clips (a stat/chart block never legitimately scrolls, so a
-                // native scrollbar there is always a layout bug showing through).
                 className="gsh"
                 style={{
                   flex: 1,

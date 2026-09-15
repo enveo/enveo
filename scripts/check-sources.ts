@@ -26,7 +26,7 @@ const ROOT = new URL("../", import.meta.url);
 
 export function runSourcePolicy(
   log: (line: string) => void = console.log,
-   
+
   paths: readonly string[] = [...SELF_HOST_DOCS, DEPLOY_SCRIPT],
 ): number {
   const violations: PolicyViolation[] = [];

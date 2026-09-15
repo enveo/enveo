@@ -7,7 +7,6 @@ import type { Lang } from "./i18n";
 import { LOCALES } from "./i18n/registry";
 import { NUMPAD_KEYS, numpadKeyLabel } from "./numpad";
 
- 
 const emit = (key: string) => (key === "DEL" ? "⌫" : key);
 
 /**
@@ -121,12 +120,8 @@ describe("round trip — the same visible keystrokes commit identical minor unit
   });
 });
 
-
-
-
-
 describe("one key definition, one renderer", () => {
-  const SRC = new URL("../", import.meta.url).pathname;  
+  const SRC = new URL("../", import.meta.url).pathname;
   const walk = (dir: string, acc: string[] = []): string[] => {
     for (const name of readdirSync(dir)) {
       const p = join(dir, name);
@@ -135,7 +130,7 @@ describe("one key definition, one renderer", () => {
     }
     return acc;
   };
-   
+
   const ALLOWED = new Set(["lib/numpad.ts", "components/pickers.tsx", "lib/numpad.test.ts"]);
 
   test("NUMPAD_KEYS is named only by its home, the Numpad renderer and this gate", () => {
@@ -156,7 +151,7 @@ describe("one key definition, one renderer", () => {
   test("`Numpad` is imported from exactly one module", () => {
     const homes = walk(SRC)
       .map((p) => p.slice(SRC.length))
-      .filter((rel) => rel !== "lib/numpad.test.ts")  
+      .filter((rel) => rel !== "lib/numpad.test.ts")
       .filter((rel) => /export function Numpad\b/.test(readFileSync(join(SRC, rel), "utf8")));
     expect(homes).toEqual(["components/pickers.tsx"]);
   });
@@ -171,7 +166,6 @@ describe("switching language mid-edit changes presentation only", () => {
     expect(localizePadExpression(state.expr, "pl")).toBe("12,50+2,70");
     expect(numpadKeyLabel(",", "en")).not.toBe(numpadKeyLabel(",", "pl"));
 
-     
     expect(state).toEqual(before);
     expect(state.expr).toBe("12,50+2,70");
     expect(padPreview(state.expr)).toBe(1520);

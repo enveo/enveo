@@ -29,8 +29,6 @@ import { checkSpend, recordSpend, SPEND_POLICY, type SpendCheck } from "./counte
 import { assertOperatorModelPriced, chatCostNanoUsd, priceEntryFor } from "./pricing";
 import { safetyIdentifierFor } from "./safetyIdentifier";
 
-
-
 export class SpendDenied extends Error {
   constructor(readonly retryAfterSeconds: number) {
     super("ai_budget_exhausted");
@@ -44,14 +42,10 @@ export function aiBudgetExhaustedBody(retryAfterSeconds: number): { error: "ai_b
 }
 
 export type OperatorChatOutcome =
-   
   | { kind: "denied"; retryAfterSeconds: number }
-   
   | { kind: "upstream_error"; status: number; detail: string; requestId: string | null }
   /** 2xx whose body is not a JSON object. No charge. */
   | { kind: "invalid_body"; requestId: string | null }
-  
-
   | { kind: "ok"; json: Record<string, unknown>; content: string; requestId: string | null };
 
 /**

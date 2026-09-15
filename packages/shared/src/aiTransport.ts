@@ -18,16 +18,12 @@
  *    the user, who then sees a generic failure instead of the honest one.
  */
 
- 
 export const AI_CHAT_TIMEOUT_MS = 120_000;
 
- 
 export const AI_VISION_TIMEOUT_MS = 300_000;
 
- 
 export const AI_PROXY_MARGIN_MS = 30_000;
 
- 
 export const AI_PROXY_CHAT_TIMEOUT_MS = AI_CHAT_TIMEOUT_MS + AI_PROXY_MARGIN_MS;
 
 /** Client cap for POST /import/extract: the route runs one vision cycle plus one

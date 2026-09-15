@@ -1,12 +1,3 @@
-
-
-
-
-
-
-
-
-
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { ClientLedger, SyncOp } from "@enveo/shared";
 import { generateDek } from "../crypto";
@@ -101,7 +92,7 @@ beforeEach(async () => {
   await clearLocalData();
   store.replace(emptyLedger(), 0, BUDGET_A);
   store.setBootStatus("ready");
-  await idbPut("meta", "user-A", "userId");  
+  await idbPut("meta", "user-A", "userId");
   void persist.persistLedger(store.snapshotForPersist());
   await persist.flushed();
 });
@@ -130,7 +121,7 @@ describe("wire shapes: v1 plain endpoints", () => {
     expect(ops).toHaveLength(1);
     expect(ops[0]!.opId).toBe(op.opId);
     expect(ops[0]!.kind).toBe("category.create");
-     
+
     const pushIdx = requests.findIndex((r) => r.url.startsWith("/api/sync/push"));
     const pullIdx = requests.findIndex((r) => r.url.startsWith("/api/sync/pull"));
     expect(pushIdx).toBeGreaterThanOrEqual(0);
@@ -226,7 +217,7 @@ describe("wire shapes: v2 E2EE endpoints", () => {
 
   it("GET /api/sync2/snapshot — the identity/bootstrap read carries no body", async () => {
     e2eeReplica();
-    await clearLocalData();  
+    await clearLocalData();
     store.replace(emptyLedger(), 0, BUDGET_A);
     void persist.persistLedger(store.snapshotForPersist());
     await persist.flushed();

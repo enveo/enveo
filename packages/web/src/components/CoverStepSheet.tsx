@@ -14,10 +14,6 @@ import { CTA, font, TEAL } from "../lib/theme";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Surface } from "./chrome";
 
-
-
-
-
 export interface CoverDelta {
   envelopeId: string;
   delta: number;
@@ -116,7 +112,7 @@ export function CoverStepSheet({
     if (moved > 0) {
       const deltas: CoverDelta[] = [];
       for (const { id, take } of takes) {
-        const fresh = live.envelopes.find((e) => e.id === id)!;  
+        const fresh = live.envelopes.find((e) => e.id === id)!;
         deltas.push({ envelopeId: id, delta: -take });
         local.setDisplayedAllocation({ envelopeId: id, month: state.month, amount: fresh.allocated - take });
       }
@@ -195,8 +191,7 @@ export function CoverStepSheet({
                 : t("{available} available", { available: M(s.available) })}
           </div>
         </div>
-        {
-}
+        {}
         {settings.discreet ? (
           <div style={{ display: "flex", alignItems: "center", border: `1px solid ${C.line}`, background: C.inset, borderRadius: 9, padding: "6px 9px" }}>
             <span style={{ fontSize: 13, color: C.text }}>•••• {symbol}</span>

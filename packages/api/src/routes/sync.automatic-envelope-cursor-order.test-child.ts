@@ -1,13 +1,3 @@
-
-
-
-
-
-
-
-
-
-
 import type { SQL } from "drizzle-orm";
 
 export const SENTINEL = "__SYNC_AUTOMATIC_ENVELOPE_CURSOR_ORDER__";

@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,19 +7,17 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { type Lang, loadLocale, type Message, translatePlural } from "../lib/i18n";
 import { gridTicks, heatWeeks, netWorthRangeLabel, TrendRow, TrendSpark } from "./reportKit";
 
-
-
 function daysFor(month: string, count: number): DailySpendingPoint[] {
   return Array.from({ length: count }, (_, i) => ({ date: `${month}-${String(i + 1).padStart(2, "0")}`, total: i }));
 }
 
 describe("heatWeeks", () => {
   test("2026-06-01 is a Monday — the first week has zero leading nulls", () => {
-    const weeks = heatWeeks(daysFor("2026-06", 30));  
+    const weeks = heatWeeks(daysFor("2026-06", 30));
     expect(weeks.length).toBe(5);
     expect(weeks[0]!.every((c) => c !== null)).toBe(true);
     expect(weeks[0]![0]!.date).toBe("2026-06-01");
-     
+
     expect(weeks[4]!.slice(0, 2).map((c) => c?.date)).toEqual(["2026-06-29", "2026-06-30"]);
     expect(weeks[4]!.slice(2)).toEqual([null, null, null, null, null]);
   });
@@ -43,9 +35,9 @@ describe("heatWeeks", () => {
   test("a leap February (2024-02-01, 29 days) produces one more real cell than 2026's non-leap February, and a different trailing count", () => {
     const weeks = heatWeeks(daysFor("2024-02", 29));
     expect(weeks.length).toBe(5);
-    expect(weeks[0]!.slice(0, 3)).toEqual([null, null, null]);  
+    expect(weeks[0]!.slice(0, 3)).toEqual([null, null, null]);
     expect(weeks[0]![3]!.date).toBe("2024-02-01");
-     
+
     expect(weeks[4]!.slice(0, 4).map((c) => c?.date)).toEqual(["2024-02-26", "2024-02-27", "2024-02-28", "2024-02-29"]);
     expect(weeks[4]!.slice(4)).toEqual([null, null, null]);
   });
@@ -72,14 +64,12 @@ describe("gridTicks", () => {
   });
 
   test("all three colliding draws exactly one tick — the mid one", () => {
-    
-
     const ticks = gridTicks(0, 100, () => "••••");
     expect(ticks).toEqual([{ value: 50, label: "••••" }]);
   });
 
   test("min and mid colliding, max distinct: extremes win, mid is dropped — MIN survives", () => {
-    const ticks = gridTicks(0, 100, (v) => (v <= 60 ? "LOW" : "HIGH"));  
+    const ticks = gridTicks(0, 100, (v) => (v <= 60 ? "LOW" : "HIGH"));
     expect(ticks).toEqual([
       { value: 100, label: "HIGH" },
       { value: 0, label: "LOW" },
@@ -87,7 +77,7 @@ describe("gridTicks", () => {
   });
 
   test("max and mid colliding, min distinct: extremes win, mid is dropped", () => {
-    const ticks = gridTicks(0, 100, (v) => (v >= 40 ? "HIGH" : "LOW"));  
+    const ticks = gridTicks(0, 100, (v) => (v >= 40 ? "HIGH" : "LOW"));
     expect(ticks).toEqual([
       { value: 100, label: "HIGH" },
       { value: 0, label: "LOW" },
@@ -100,14 +90,7 @@ describe("gridTicks", () => {
   });
 });
 
-/**
- * `netWorthRangeLabel` (design parity wave D task 2) — the "last {n} months · {start}–{end}"
- * caption shared by the reports hub hero and the Wealth report. `tp()` is exercised via the
- * real `translatePlural` (same pattern as `i18n.test.ts`: `await loadLocale("pl")` then call it
- * directly) so this pins the actual CLDR one/few/many/other boundary for pl, not a stub.
- */
 describe("netWorthRangeLabel", () => {
-   
   function points(n: number, startMonth: string): { month: string; total: number }[] {
     const [y, m] = startMonth.split("-").map(Number) as [number, number];
     return Array.from({ length: n }, (_, i) => {
@@ -141,13 +124,6 @@ describe("netWorthRangeLabel", () => {
   });
 });
 
-
-
-
-
-
-
-
 describe("TrendSpark median line", () => {
   function medianLineY(series: number[], median: number): string {
     const html = renderToStaticMarkup(createElement(TrendSpark, { series, color: "#000", median }));
@@ -157,7 +133,6 @@ describe("TrendSpark median line", () => {
   }
 
   test("a median equal to the series max sits at the top pad", () => {
-     
     expect(medianLineY([0, 10], 10)).toBe("2");
   });
 
@@ -215,7 +190,7 @@ describe("NetWorthChart stays under the discreet-mode mask", () => {
     const FORMAT_MODULE = /import\s+(type\s+)?(?:{([^}]*)}|\*\s+as\s+\w+)\s+from\s*["']\.\.\/lib\/format["']/g;
     const bypassing = new Set<string>();
     for (const m of src.matchAll(FORMAT_MODULE)) {
-      if (m[1]) continue;  
+      if (m[1]) continue;
       if (m[2] === undefined) {
         throw new Error(`reportKit.tsx namespace-imports "../lib/format", which reaches every formatter in it. ${BYPASS_MSG}`);
       }
@@ -230,22 +205,6 @@ describe("NetWorthChart stays under the discreet-mode mask", () => {
   });
 });
 
-/**
- * Owner round 7 item 29 put the Trends REPORT's row grammar on the wide home board's trends tile.
- * The point of the requirement was that the two must READ IDENTICALLY — his side-by-side showed a
- * tile that had drifted into its own grammar — so the fix was to give both hosts ONE component,
- * `TrendRow`. Nothing about the types stops a future edit from re-inlining a lookalike row in
- * either place (that is exactly how the drift happened the first time: the tile grew its own
- * `<TrendSpark>` + name + amount block beside the report's), and no rendering test would fail —
- * both would still render "a trends row", just different ones.
- *
- * So this scans both hosts' own source for the shared row: each must IMPORT `TrendRow` and RENDER
- * it, and neither may reach for the row's own ingredients (`TrendSpark`/`DeltaTag`) inside a
- * hand-built trends row again. `widgetsBoard.tsx` legitimately still uses `TrendSpark` for the
- * PHONE trends body (a different, deliberately compact grammar owner round 7 did not touch) and
- * `ReportsHub`'s mini uses it too, so the check is not "never mentions TrendSpark" — it is
- * "renders <TrendRow>", the one fact that makes the two grammars the same object.
- */
 describe("the Trends report and the wide trends tile render ONE shared row", () => {
   const HOSTS = [
     { file: "../screens/reports/TrendsReport.tsx", what: "the Trends report subscreen" },
@@ -258,26 +217,12 @@ describe("the Trends report and the wide trends tile render ONE shared row", () 
       const imports = src.match(/import\s*{([^}]*)}\s*from\s*["'][^"']*reportKit["']/);
       const named = (imports?.[1] ?? "").split(",").map((s) => s.trim().split(/\s+as\s+/)[0]);
       expect(named).toContain("TrendRow");
-      
 
       expect(src).toMatch(/<TrendRow[\s/>]/);
     });
   }
 });
 
-/**
- * `TrendRow`'s two opposite overflow rules, pinned because they look like an inconsistency and a
- * future tidy-up would "fix" them into one: the NAME ellipsizes (unbounded label, identity already
- * carried by the colour dot), the SUB-LINE wraps (two amounts — truncating it eats the median digit
- * by digit, which is exactly what the wide 2×2 trends tile did in Polish before owner round 7).
- * Also pins that BOTH sub-line figures go through the caller's mask: formatting either one directly
- * would print a real amount to someone who turned discreet mode on, and the row's own types would
- * not notice.
- *
- * Rendered with `renderToStaticMarkup` and no providers on purpose — `useTheme`/`useSettings` both
- * have real defaults (light theme, English), so the row is renderable in isolation, and asserting
- * the emitted `style` attribute is stronger than asserting the source text of a style object.
- */
 describe("TrendRow overflow rules", () => {
   const TR = { id: "e1", name: "Groceries", color: "#abcdef", series: [10, 20, 30], last: 120, baseline: 100, deltaPct: 0.2 };
   const html = renderToStaticMarkup(createElement(TrendRow, { tr: TR, M: (n: number) => `«${n}»`, onClick: () => {} }));
@@ -292,7 +237,6 @@ describe("TrendRow overflow rules", () => {
   });
 
   test("every amount in the row goes through the caller's mask", () => {
-     
     expect(html).toContain("«120» · median «100»");
     expect(html).toContain("+«20»");
     expect(html).not.toContain("120.00");

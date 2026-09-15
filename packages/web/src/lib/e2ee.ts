@@ -44,23 +44,18 @@ export interface OpCryptoContext {
   epoch: number;
 }
 
- 
 export interface SnapshotCryptoContext {
   budgetId: string;
   epoch: number;
   uptoSeq: number;
 }
 
- 
 export interface CipherOp {
   opId: string;
   ciphertext: string;
 }
 
- 
 export const SNAPSHOT_EVERY_OPS = 200;
-
- 
 
 /**
  * Where the DEK on this device came from — DURABLE (IDB meta "e2eeDekOrigin"), because the
@@ -80,11 +75,6 @@ export type DekOrigin = "store" | "session";
 
 let dek: Uint8Array | null = null;
 let dekOrigin: DekOrigin | null = null;
-
-
-
-
-
 
 let dekTouched = false;
 /**
@@ -124,7 +114,6 @@ export function hydrate(): Promise<void> {
       // The key state of THIS page load wins over IDB: setDek/clearDek already told us the
       // provenance first-hand (and a re-run of hydrate must not launder it into "store").
       if (!dekTouched) {
-         
         if (d instanceof Uint8Array) dek = d;
         else if (d instanceof ArrayBuffer) dek = new Uint8Array(d);
         else dek = null;
@@ -136,7 +125,7 @@ export function hydrate(): Promise<void> {
         dekEpoch = dek && typeof de === "number" ? de : null;
       }
       if (t === "plain" || t === "e2ee") tierMeta = { tier: t, epoch: e ?? 0 };
-      cipherVersion = cv === 1 ? 1 : 2;  
+      cipherVersion = cv === 1 ? 1 : 2;
       opsSinceSnap = n ?? 0;
     })();
     p.catch(() => {
@@ -146,8 +135,6 @@ export function hydrate(): Promise<void> {
   }
   return hydratePromise;
 }
-
- 
 
 export const getDek = (): Uint8Array | null => dek;
 
@@ -204,7 +191,6 @@ export function markDekValidated(epoch: number): void {
   void persist.putMeta("e2eeDekEpoch", epoch);
 }
 
- 
 export function clearDek(): void {
   clearDekMemory();
   void persist.putMeta("e2eeDek", null);
@@ -216,7 +202,6 @@ export function clearDek(): void {
   void persist.putMeta("e2eePendingUpgrade", null);
 }
 
- 
 export function clearDekMemory(): void {
   dek = null;
   dekOrigin = null;
@@ -237,7 +222,6 @@ export async function rehydrateKeysFromPeer(): Promise<void> {
   await hydrate();
 }
 
- 
 export function __resetDekForTests(): void {
   dek = null;
   dekOrigin = null;
@@ -245,10 +229,6 @@ export function __resetDekForTests(): void {
   dekTouched = false;
   hydratePromise = null;
 }
-
-
-
-
 
 export function __forgetHydrationForTests(): void {
   hydratePromise = null;
@@ -274,8 +254,6 @@ export function setCipherVersion(next: CipherVersion): void {
   cipherVersion = next;
   void persist.putMeta("e2eeCipherVersion", next);
 }
-
- 
 
 /** An outbox op → a push v2 row: opId in the clear (idempotency) AND inside the authenticated
  *  context — the ciphertext cannot later be paired with another op's clear opId. */
@@ -312,16 +290,12 @@ export async function decryptSnapshot(blob: string, key: Uint8Array, ctx: Snapsh
   return JSON.parse(await decryptPayload(blob, key, snapshotAadContext(ctx.budgetId, ctx.epoch, ctx.uptoSeq))) as ClientLedger;
 }
 
- 
-
- 
 export function noteOpsSeen(n: number): void {
   if (n <= 0) return;
   opsSinceSnap += n;
   void persist.putMeta("e2eeOpsSinceSnap", opsSinceSnap);
 }
 
- 
 export function resetOpsCounter(): void {
   opsSinceSnap = 0;
   void persist.putMeta("e2eeOpsSinceSnap", 0);
@@ -365,6 +339,6 @@ export async function maybeUploadSnapshot(
       }),
     permit,
   );
-  if (!res.ok) return;  
+  if (!res.ok) return;
   resetOpsCounter();
 }

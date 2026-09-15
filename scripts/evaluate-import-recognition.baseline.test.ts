@@ -298,8 +298,6 @@ describe("exact legacy production baseline", () => {
   });
 
   test("emits byte-identical cycle requests to the specified base route for blank source references", async () => {
-    
-
     const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
     expect(typeof evaluator.loadSnapshotSource).toBe("function");
     expect(typeof evaluator.runBaselineProductionAdapter).toBe("function");
@@ -413,8 +411,6 @@ describe("exact legacy production baseline", () => {
   });
 
   test("serializes fixture DB replacement and restores the exact original query method", async () => {
-    
-
     const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
     const runAdapter = evaluator.runBaselineProductionAdapter as (input: Record<string, unknown>) => Promise<unknown>;
     const source = (await loadBaselineSnapshot(evaluator)) as Record<string, unknown>;

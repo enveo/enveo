@@ -132,9 +132,6 @@ export function SpendingReport({
 
   const excludedNames = spending.filter((r) => excluded.has(r.key)).map((r) => dimNullLabel(r.name, dim, t));
 
-  
-
-
   const shown = expanded ? spending : spending.slice(0, 10);
   const restRows = spending.slice(shown.length);
   const restCount = restRows.length;
@@ -152,9 +149,6 @@ export function SpendingReport({
     else if (dim === "category") onOpenTxns({ catId: key });
     else if (dim === "place") onOpenTxns({ placeId: key });
     else {
-      
-
-
       const ids = new Set(state.envelopes.filter((e) => e.groupId === key && !e.isSavings).map((e) => e.id));
       onOpenTxns(ids.size > 0 ? { envIds: ids } : {});
     }
@@ -349,9 +343,6 @@ export function SpendingReport({
                 }
                 title={isExcluded ? t("Include again") : t("Exclude from the total")}
                 aria-label={isExcluded ? t("Include again") : t("Exclude from the total")}
-                
-
-
                 style={{
                   flexShrink: 0,
                   width: 30,
@@ -400,8 +391,6 @@ export function SpendingReport({
       {effectiveSelectedKey !== null &&
         detail &&
         (() => {
-          
-
           const key = effectiveSelectedKey!;
           const row = spending.find((r) => r.key === key)!;
           const baseline = spBaseline.get(key) ?? 0;
@@ -444,7 +433,6 @@ export function SpendingReport({
                   onClick={() => setSelectedKey(null)}
                   aria-label={t("Close details")}
                   title={t("Close details")}
-                   
                   style={{
                     flexShrink: 0,
                     width: 30,

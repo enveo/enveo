@@ -1,19 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { describe, expect, it } from "bun:test";
 import { runChild } from "../api.test-support";
 import { SENTINEL, type Sync2DbOutput } from "./sync2.db.test-child";
@@ -71,11 +55,11 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
       expect({ name, status: r.status }).toEqual({ name, status: 409 });
       expect({ name, error: r.error }).toEqual({ name, error: "e2ee_upgrade_required" });
       expect({ name, cipherVersion: r.cipherVersion }).toEqual({ name, cipherVersion: 1 });
-      expect(r.budgetId).toBeTruthy();  
+      expect(r.budgetId).toBeTruthy();
       expect(r.epoch).toBe(1);
     }
     expect(Object.keys(out.legacyStatuses).sort()).toEqual(["disable", "pull", "pushV2", "rekey", "reset", "snapshotGet", "snapshotPost"]);
-    expect(out.legacyJournalIntactAfterRefusals).toBe(true);  
+    expect(out.legacyJournalIntactAfterRefusals).toBe(true);
   });
 
   it("an old client pushing v1. ciphertext is rejected at the boundary (400), not stored", () => {
@@ -98,13 +82,13 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
   });
 
   it("a retry of the SAME committed attempt is idempotent; a DIFFERENT attempt is a stale-epoch 409", () => {
-    expect(out.retryStatus).toBe(200);  
+    expect(out.retryStatus).toBe(200);
     expect(out.retryEpoch).toBe(2);
     expect(out.epochAfterRetry).toBe(2); // never two epoch increments
     expect(out.staleAttemptStatus).toBe(409);
-    expect(out.staleAttemptEpochInBody).toBe(2);  
-    expect(out.staleAttemptCipherVersionInBody).toBe(2);  
-    expect(out.rowAfterStaleAttempt).toEqual({ epoch: 2, wrappedDek: "v2.newWrapWINNER" });  
+    expect(out.staleAttemptEpochInBody).toBe(2);
+    expect(out.staleAttemptCipherVersionInBody).toBe(2);
+    expect(out.rowAfterStaleAttempt).toEqual({ epoch: 2, wrappedDek: "v2.newWrapWINNER" });
   });
 
   it("a forced mid-transaction failure rolls back ALL effects (envelope, version, epoch, journal)", () => {
@@ -116,8 +100,8 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
 
   it("two concurrent upgrades produce ONE generation: one winner, one 409, one epoch bump", () => {
     expect(out.concurrentStatuses).toEqual([200, 409]);
-    expect(out.concurrentEpoch).toBe(5);  
-    expect(out.concurrentEnvelopeIsAWinner).toBe(true);  
+    expect(out.concurrentEpoch).toBe(5);
+    expect(out.concurrentEnvelopeIsAWinner).toBe(true);
   });
 
   it("a cookie-swapped tenant and a foreign budgetId write NOTHING — the budget_mismatch CODE, not a tier guard", () => {

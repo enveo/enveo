@@ -35,7 +35,6 @@ import { e2eeReplicaBudgetId, isEmptyUnboundReplica, replayOutbox } from "./repl
 
 let deps: TransportDeps | null = null;
 
- 
 export function configureTransport(d: TransportDeps): void {
   deps = d;
 }
@@ -70,10 +69,9 @@ export async function throwIfUpgradeRequired(res: Response): Promise<void> {
   }
 }
 
- 
 export async function throwIfTierMismatch(res: Response): Promise<void> {
   if (res.status !== 409) return;
-   
+
   const body = (await res
     .clone()
     .json()
@@ -89,7 +87,6 @@ export async function throwIfTierMismatch(res: Response): Promise<void> {
   }
 }
 
- 
 export async function throwIfBudgetMismatch(res: Response): Promise<void> {
   if (res.status !== 409) return;
   const body = (await res
@@ -98,8 +95,6 @@ export async function throwIfBudgetMismatch(res: Response): Promise<void> {
     .catch(() => null)) as { error?: string; budgetId?: string } | null;
   if (body?.error === "budget_mismatch") throw new BudgetMismatchError(body.budgetId ?? null);
 }
-
- 
 
 let clientIdPromise: Promise<string> | null = null;
 
@@ -112,9 +107,7 @@ export function getClientId(): Promise<string> {
         const id = crypto.randomUUID();
         try {
           await idbPut("meta", id, "clientId");
-        } catch {
-           
-        }
+        } catch {}
         return id;
       } catch {
         // IDB read failed — id memory-only (persist best-effort); push must
@@ -128,12 +121,10 @@ export function getClientId(): Promise<string> {
   return clientIdPromise;
 }
 
- 
-
 export async function fetchSnapshot(): Promise<void> {
   const res = await fetch("/api/sync/snapshot");
   if (res.status === 401) throw unauthorized();
-  await throwIfTierMismatch(res);  
+  await throwIfTierMismatch(res);
   if (!res.ok) throw new Error(`snapshot: ${res.status}`);
   const snap = (await res.json()) as SnapshotResponse;
   const ledger: ClientLedger = {
@@ -144,19 +135,12 @@ export async function fetchSnapshot(): Promise<void> {
     allocations: snap.allocations,
     categories: snap.categories,
     places: snap.places,
-    budgets: snap.budgets ?? [],  
+    budgets: snap.budgets ?? [],
   };
-  store.replace(ledger, snap.cursor, snap.budgetId);  
-  void persist.persistLedger(store.snapshotForPersist());  
+  store.replace(ledger, snap.cursor, snap.budgetId);
+  void persist.persistLedger(store.snapshotForPersist());
   void requestPersistentStorage(); // persistent storage (anti-eviction iOS) — idempotent
 }
-
-
-
-
-
-
-
 
 async function fetchSnapshotE2ee(): Promise<"ready" | "locked"> {
   const dek = e2ee.getDek();
@@ -164,7 +148,7 @@ async function fetchSnapshotE2ee(): Promise<"ready" | "locked"> {
   const res = await fetch("/api/sync2/snapshot");
   if (res.status === 401) throw unauthorized();
   await throwIfUpgradeRequired(res); // legacy v1-format budget → the explicit upgrade ceremony
-  await throwIfTierMismatch(res);  
+  await throwIfTierMismatch(res);
   if (!res.ok) throw new Error(`sync2 snapshot: ${res.status}`);
   const body = (await res.json()) as E2eeSnapshotResponse;
   e2ee.setTierMeta({ tier: "e2ee", epoch: body.epoch });
@@ -213,11 +197,6 @@ async function fetchSnapshotE2ee(): Promise<"ready" | "locked"> {
   return "ready";
 }
 
-
-
-
-
-
 export async function bootstrapReplica(): Promise<"ready" | "locked"> {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -235,14 +214,12 @@ export async function bootstrapReplica(): Promise<"ready" | "locked"> {
   }
 }
 
- 
-
 export async function doPull(): Promise<void> {
   const budgetId = store.getBudgetId();
-  if (!store.getLedger() || !budgetId) return;  
+  if (!store.getLedger() || !budgetId) return;
   const res = await fetch(`/api/sync/pull?since=${store.getCursor()}`);
   if (res.status === 401) throw unauthorized();
-  await throwIfTierMismatch(res);  
+  await throwIfTierMismatch(res);
   if (!res.ok) throw new Error(`pull: ${res.status}`);
   const body = (await res.json()) as PullResponse;
   if (body.budgetId !== budgetId || body.resetRequired) {
@@ -257,9 +234,9 @@ export async function doPull(): Promise<void> {
     return;
   }
   if (body.changes.length > 0) {
-    store.applyPulled(body.changes, body.cursor, outbox.pendingKeys());  
-    void persist.persistLedger(store.snapshotForPersist());  
-    requireDeps().notePeersMayNeedUpdate();  
+    store.applyPulled(body.changes, body.cursor, outbox.pendingKeys());
+    void persist.persistLedger(store.snapshotForPersist());
+    requireDeps().notePeersMayNeedUpdate();
   } else if (body.cursor !== store.getCursor()) {
     // The cursor is the GLOBAL `changes` sequence, so it also advances on OTHER tenants' writes
     // (their rows are filtered out of our delta — see the pull route). Take the new cursor in
@@ -300,7 +277,6 @@ export async function doPullE2ee(dek: Uint8Array, userId: string, permit?: SignO
       ops: Array<{ seq: number; opId: string; ciphertext: string }>;
     };
     if (body.ops.length === 0 && body.cursor === store.getCursor()) return;
-    
 
     const ops = await e2ee.decryptOps(body.ops, dek, { budgetId, epoch });
     const ownPending = new Set(outbox.snapshot().map((en) => en.op.opId));
@@ -315,11 +291,9 @@ export async function doPullE2ee(dek: Uint8Array, userId: string, permit?: SignO
     // cycle verified: fired in the background, it is the LAST thing to reach the server in a
     // cycle and the widest open window for a cookie swapped in another tab.
     void e2ee.maybeUploadSnapshot(store.getLedger(), store.getCursor(), userId, budgetId, permit).catch(() => {});
-    if (body.ops.length === 0 || nextCursor >= body.cursor) return;  
+    if (body.ops.length === 0 || nextCursor >= body.cursor) return;
   }
 }
-
- 
 
 /**
  * POST /api/sync/push — one v1 batch. Every request NAMES the budget it is for (PER-REQUEST
@@ -346,10 +320,9 @@ async function pushPlainBatchImpl(ops: SyncOp[]): Promise<PushResponse> {
   });
   if (!res.ok) {
     if (res.status === 401) throw unauthorized();
-    await throwIfTierMismatch(res);  
+    await throwIfTierMismatch(res);
     await throwIfBudgetMismatch(res); // not the session's budget → nothing was written
     if (res.status < 500 && res.status !== 429) {
-       
       console.error("sync push: unexpected 4xx", res.status, await res.text().catch(() => ""));
     }
     throw new Error(`push: ${res.status}`);
@@ -378,12 +351,6 @@ async function pushE2eeBatchImpl(epoch: number, budgetId: string, ops: e2ee.Ciph
   await throwIfBudgetMismatch(res); // not the session's budget → nothing was written
   if (!res.ok) throw new Error(`sync2 push: ${res.status}`);
 }
-
- 
-
-
-
-
 
 export async function fetchServerBudgetId(): Promise<string | null> {
   const res = await fetch(`/api/sync/pull?since=${store.getCursor()}`);
@@ -441,8 +408,6 @@ export async function fetchServerE2eeIdentity(): Promise<{ budgetId: string | nu
   return { budgetId: body.budgetId ?? null, blob: body.blob, epoch: body.epoch, uptoSeq: body.uptoSeq };
 }
 
- 
-
 /**
  * POST /sync/replace — full replacement of the server replica with the given ledger. Returns
  * the cursor (maxSeq after the write). Throws with the server message (apiErrorMessage-compatible)
@@ -454,7 +419,7 @@ async function replaceServer(ledger: ClientLedger): Promise<{ budgetId: string; 
   // check cannot live in doCycle alone: replacing ANOTHER account's budget with this replica
   // is the worst write of all. The verdict for an already-verified session is reused, so
   // inside a cycle this costs one cheap /api/auth/get-session.
-  const userId = await requireDeps().assertOwnReplica();  
+  const userId = await requireDeps().assertOwnReplica();
   const res = await fetch("/api/sync/replace", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -467,11 +432,11 @@ async function replaceServer(ledger: ClientLedger): Promise<{ budgetId: string; 
     body: JSON.stringify({ ledger, userId }),
   });
   if (res.status === 401) throw unauthorized();
-  await throwIfTierMismatch(res);  
-  await throwIfBudgetMismatch(res);  
+  await throwIfTierMismatch(res);
+  await throwIfBudgetMismatch(res);
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${txt}`);  
+    throw new Error(`${res.status} ${txt}`);
   }
   return (await res.json()) as { budgetId: string; cursor: number };
 }
@@ -487,7 +452,6 @@ export function pushLocalToServer(): Promise<void> {
   return runServerWriteOperation("backup-replace", () => pushLocalToServerImpl());
 }
 
- 
 export function pushLocalToServerForSignOut(permit: SignOutPermit): Promise<void> {
   return runServerWriteOperation("backup-replace", () => pushLocalToServerImpl(), permit);
 }
@@ -497,15 +461,13 @@ async function pushLocalToServerImpl(): Promise<void> {
   // Error CODES, never prose: this is reachable from the UI (backup import)
   // and lib/api.ts owns the wording in every locale (ERROR_KEYS → apiErrorMessage).
   if (!ledger) throw new Error("no_local_replica");
-  
-
 
   if (isEmptyUnboundReplica()) throw new Error("empty_unbound_replica");
   const { budgetId, cursor } = await replaceServer(ledger);
-  outbox.clearAll();  
-  store.replace(ledger, cursor, budgetId);  
+  outbox.clearAll();
+  store.replace(ledger, cursor, budgetId);
   void persist.persistLedger(store.snapshotForPersist());
-  clearReplacePending();  
+  clearReplacePending();
 }
 
 /**
@@ -522,7 +484,6 @@ export function resetServerE2ee(dek?: Uint8Array): Promise<void> {
   return runServerWriteOperation("e2ee-reset", () => resetServerE2eeImpl(dek));
 }
 
- 
 export function resetServerE2eeForSignOut(dek: Uint8Array, permit: SignOutPermit): Promise<void> {
   return runServerWriteOperation("e2ee-reset", () => resetServerE2eeImpl(dek), permit);
 }
@@ -532,7 +493,7 @@ async function resetServerE2eeImpl(dek?: Uint8Array): Promise<void> {
   // journal and swaps their checkpoint, and it is reachable outside a cycle (disable local
   // mode, JSON import). Two independently-e2ee budgets both sit at epoch 1, so the server's
   // epoch check would happily accept another account's ciphertext here.
-  const userId = await requireDeps().assertOwnReplica();  
+  const userId = await requireDeps().assertOwnReplica();
   const ledger = store.getLedger();
   // Error CODES, never prose — see pushLocalToServer (both are reachable from Settings).
   if (!ledger) throw new Error("no_local_replica");
@@ -565,13 +526,13 @@ async function resetServerE2eeImpl(dek?: Uint8Array): Promise<void> {
   });
   if (res.status === 401) throw unauthorized();
   await throwIfUpgradeRequired(res); // legacy v1-format budget → the explicit upgrade ceremony
-  await throwIfTierMismatch(res);  
-  await throwIfBudgetMismatch(res);  
+  await throwIfTierMismatch(res);
+  await throwIfBudgetMismatch(res);
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${txt}`);  
+    throw new Error(`${res.status} ${txt}`);
   }
   outbox.clearAll(); // server == ciphertext of local → pre-import ops are moot
-  e2ee.resetOpsCounter();  
-  clearReplacePending();  
+  e2ee.resetOpsCounter();
+  clearReplacePending();
 }

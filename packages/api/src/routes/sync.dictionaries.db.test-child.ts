@@ -69,7 +69,6 @@ async function main() {
     await push("place.update", { id: used, archived: false });
     const afterRestore = await readPlace(used);
 
-     
     const unused = await place("Typo");
     await push("place.delete", { id: unused });
     const afterDeleteUnused = await readPlace(unused);
@@ -84,7 +83,6 @@ async function main() {
     const afterRaced = await readPlace(raced);
     const racedTxnRow = (await db.select().from(s.transactions).where(eq(s.transactions.id, racedTxn!.id)))[0];
 
-     
     const racedCategory = await category("Coffee");
     const [splitTxn] = await db
       .insert(s.transactions)
@@ -98,7 +96,6 @@ async function main() {
     const afterRacedItem = await readCategory(racedCategory);
     const itemRow = (await db.select().from(s.txnItems).where(eq(s.txnItems.id, item!.id)))[0];
 
-     
     const keep = await place("Zabka");
     const dupe = await place("ZABKA");
     const [dupeTxn] = await db
@@ -170,7 +167,6 @@ async function main() {
   }
 }
 
- 
 if (import.meta.main) {
   main().catch((error) => {
     console.error(error);

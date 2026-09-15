@@ -28,7 +28,6 @@ import { timeoutSignal } from "./timeoutSignal";
 export type ChatTarget = { kind: "server" } | { kind: "direct"; apiKey: string; model: OpenAiModel };
 const CODE = /^[a-z0-9_]+$/;
 
- 
 function transportError(): Error {
   const offline = typeof navigator !== "undefined" && navigator.onLine === false;
   return new Error(offline ? "ai_offline" : "ai_unreachable");
@@ -85,8 +84,6 @@ async function postChatImpl(body: unknown, timeoutMs: number, target: ChatTarget
 function postChat(body: unknown, timeoutMs: number, target: ChatTarget): Promise<unknown> {
   return runServerWriteOperation("openai-post", () => postChatImpl(body, timeoutMs, target));
 }
-
-
 
 export async function chatJson(req: ChatRequest, target: ChatTarget, timeoutMs?: number): Promise<string> {
   const data = (await postChat(

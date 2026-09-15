@@ -81,19 +81,15 @@ describe("screenshot windows", () => {
   });
 
   it("keeps a single-window job byte-identical to the pre-chunking contract", () => {
-     
     const batch = { rows: [row("r1", 0, { relation: { kind: "duplicate_of", rowId: "r0" } }), row("r0", 0)] };
 
-     
     const rebased = rebaseChunkBatch(batch, { index: 0, start: 0, end: 2, leadOverlap: 0 }, 1);
 
-     
     expect(rebased).toBe(batch);
     expect(isChunkRowId("r1")).toBe(false);
   });
 
   it("namespaces rowIds, offsets imageIndex and drops the shared screenshot's rows for a later window", () => {
-     
     const batch = {
       rows: [
         row("ctx", 0),
@@ -126,11 +122,11 @@ describe("seam pairs between windows", () => {
   it("pairs same facts with different text across windows only, nearest earlier row first", () => {
     const rows = [
       row("c0:a", 0, { rawTextLines: ["EXAMPLE MARKET 123 Boston"] }),
-      row("c0:b", 5, { rawTextLines: ["EXAMPLE MKT 123 BOS"] }),  
-      row("c1:c", 6, { rawTextLines: ["EXAMPLE MARKET 123 BOSTON MA"] }),  
-      row("c1:d", 7, { rawTextLines: ["EXAMPLE MARKET 123 BOSTON MA"] }),  
-      row("c2:e", 12, { rawTextLines: ["EXAMPLE MARKET 123 BOSTON MA"] }),  
-      row("c2:f", 12, { amount: 999 }),  
+      row("c0:b", 5, { rawTextLines: ["EXAMPLE MKT 123 BOS"] }),
+      row("c1:c", 6, { rawTextLines: ["EXAMPLE MARKET 123 BOSTON MA"] }),
+      row("c1:d", 7, { rawTextLines: ["EXAMPLE MARKET 123 BOSTON MA"] }),
+      row("c2:e", 12, { rawTextLines: ["EXAMPLE MARKET 123 BOSTON MA"] }),
+      row("c2:f", 12, { amount: 999 }),
     ];
 
     // c1:d repeats c1:c inside its own window (never deduplicated within a window), so it is
@@ -208,7 +204,6 @@ describe("repairing the model's duplicate relations", () => {
     row(rowId, imageIndex, { visualOrder, date, rowRole: "ui_metadata", amount: null, currency: null, direction: "unknown", rawTextLines: [date] });
 
   it("re-points a duplicate claim that landed on an unrelated row at the one row repeating the same entry", () => {
-     
     const rows = [
       row("r23", 8, {
         visualOrder: 1,
@@ -308,8 +303,6 @@ describe("repairing the model's duplicate relations", () => {
     });
 
     it("walks to the neighbour above when the overlap proves which way the screenshots go", () => {
-      
-
       const rows = [
         row("i1-t1", 1, { visualOrder: 0, date: null, amount: 14682, rawTextLines: ["$146.82", "BLUEBELL FLORIST"] }),
         divider("i1-m1", 1, 1, "2031-08-28"),
@@ -327,9 +320,8 @@ describe("repairing the model's duplicate relations", () => {
 
       const byId = new Map(inferImportDates({ rows }).rows.map((r) => [r.rowId, r]));
 
-       
       expect(byId.get("i4-t1")).toMatchObject({ date: "2031-08-31", dateInferred: true });
-       
+
       expect(byId.get("i2-t1")).toMatchObject({ date: "2031-08-29", dateInferred: true });
       expect(byId.get("i2-t5")).toMatchObject({ date: "2031-08-29", dateInferred: true });
       expect(byId.get("i1-t1")).toMatchObject({ date: "2031-08-29", dateInferred: true });
@@ -353,9 +345,6 @@ describe("correcting a leading block dated from the wrong neighbour", () => {
     row(rowId, imageIndex, { visualOrder, date, rowRole: "ui_metadata", amount: null, currency: null, direction: "unknown", rawTextLines: [date] });
 
   it("moves the block to the divider at the bottom of the screenshot above when it was dated like the one below", () => {
-    
-
-
     const rows = [
       divider("i6-m1", 6, 0, "2031-09-02"),
       row("i6-t1", 6, { visualOrder: 1, date: "2031-09-02", amount: 12735, rawTextLines: ["$127.35", "WILLOW GARDEN"] }),
@@ -375,7 +364,7 @@ describe("correcting a leading block dated from the wrong neighbour", () => {
     expect(byId.get("i7-t2")).toMatchObject({ date: "2031-09-03", dateInferred: true });
     // rows under a divider of their own screenshot are never touched
     expect(byId.get("i7-t3")!.dateInferred).toBeUndefined();
-     
+
     expect(byId.get("i8-t1")).toMatchObject({ date: "2031-09-05" });
     expect(byId.get("i8-t1")!.dateInferred).toBeUndefined();
   });

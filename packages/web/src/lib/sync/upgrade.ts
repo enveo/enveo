@@ -1,25 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { budgetPreferences } from "../budgetPreferences";
 import {
   budgetSecretAadContext,
@@ -66,17 +44,15 @@ async function fetchUpgradeCredential(budgetId: string, expectedEpoch: number): 
   return (await response.json()) as { configured: boolean; ciphertext?: string };
 }
 
- 
 async function loadPendingE2eeUpgrade(): Promise<PendingE2eeUpgrade | null> {
   const raw = await idbGet<(Omit<PendingE2eeUpgrade, "dek"> & { dek: Uint8Array | ArrayBuffer }) | null>("meta", "e2eePendingUpgrade").catch(() => null);
   if (!raw?.budgetId || !raw.wrappedDek || !raw.snapshotBlob) return null;
-   
+
   const dek = raw.dek instanceof Uint8Array ? raw.dek : raw.dek instanceof ArrayBuffer ? new Uint8Array(raw.dek) : null;
   if (!dek) return null;
   return { ...raw, credentialAction: raw.credentialAction ?? { kind: "none" }, dek };
 }
 
- 
 export async function hasPendingE2eeUpgrade(): Promise<boolean> {
   return (await loadPendingE2eeUpgrade()) !== null;
 }
@@ -110,7 +86,7 @@ export async function upgradeServerE2eeV2(password: string | null): Promise<void
 }
 
 async function upgradeServerE2eeV2Impl(password: string | null): Promise<void> {
-  const userId = await assertOwnReplica();  
+  const userId = await assertOwnReplica();
   const budgetId = e2eeReplicaBudgetId();
   if (!budgetId) throw new Error("foreign_replica");
   let pending = await loadPendingE2eeUpgrade();
@@ -120,9 +96,9 @@ async function upgradeServerE2eeV2Impl(password: string | null): Promise<void> {
     pending = null;
   }
   if (!pending) {
-    if (password === null) throw new Error("no_encryption_key");  
+    if (password === null) throw new Error("no_encryption_key");
     const ledger = store.getLedger();
-    if (!ledger) throw new Error("no_local_replica");  
+    if (!ledger) throw new Error("no_local_replica");
     const expectedEpoch = e2ee.getTierMeta().epoch;
     const nextEpoch = expectedEpoch + 1;
     const salt = generateSalt();
@@ -160,7 +136,7 @@ async function upgradeServerE2eeV2Impl(password: string | null): Promise<void> {
       snapshotBlob: await e2ee.encryptSnapshot(ledger, dek, { budgetId, epoch: nextEpoch, uptoSeq: 0 }),
       credentialAction,
       ...(!serverCredential.configured && legacyKey && legacy ? { legacySettingsDigest: await settingsDigest(legacy.raw) } : {}),
-      opIds: outbox.snapshot().map((en) => en.op.opId),  
+      opIds: outbox.snapshot().map((en) => en.op.opId),
     };
     // DURABLE before the first POST — a lost response must find the same materials on retry.
     await persist.putMeta("e2eePendingUpgrade", pending);
@@ -186,7 +162,7 @@ async function upgradeServerE2eeV2Impl(password: string | null): Promise<void> {
   if (res.status === 401) throw unauthorized();
   try {
     await throwIfTierMismatch(res); // stale epoch: upgraded/flipped ELSEWHERE — tierMeta fresh
-    await throwIfBudgetMismatch(res);  
+    await throwIfBudgetMismatch(res);
   } catch (err) {
     // A stale-epoch refusal is authoritative: this exact body can never commit (our own
     // committed attempt would have answered 200 via the envelope comparison). Keeping the
@@ -197,10 +173,10 @@ async function upgradeServerE2eeV2Impl(password: string | null): Promise<void> {
   }
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${txt}`);  
+    throw new Error(`${res.status} ${txt}`);
   }
   const body = (await res.json()) as { epoch: number };
-   
+
   e2ee.setDek(pending.dek, body.epoch); // validated for the new epoch by construction
   e2ee.setTierMeta({ tier: "e2ee", epoch: body.epoch });
   e2ee.setCipherVersion(2);
@@ -212,7 +188,7 @@ async function upgradeServerE2eeV2Impl(password: string | null): Promise<void> {
   // post-upgrade rows sort after any old cursor and the first pull converges it.
   outbox.removeAcked(pending.opIds);
   void persist.persistLedger(store.snapshotForPersist());
-  clearReplacePending();  
+  clearReplacePending();
   if (pending.legacySettingsDigest) {
     // The E2EE copy is committed. Point the encrypted budget preferences at it through the
     // ordinary local op, then remove ONLY the exact quarantined plaintext object we consumed.
@@ -221,7 +197,7 @@ async function upgradeServerE2eeV2Impl(password: string | null): Promise<void> {
     if (legacy && (await settingsDigest(legacy.raw)) === pending.legacySettingsDigest) removeLegacySettingsIfUnchanged(legacy.raw);
     await idbDelete("meta", "legacySettingsMigrationV1");
   }
-  await persist.putMeta("e2eePendingUpgrade", null);  
-  await broadcastKeysChanged();  
+  await persist.putMeta("e2eePendingUpgrade", null);
+  await broadcastKeysChanged();
   void syncNow("e2ee-upgrade-v2");
 }

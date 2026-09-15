@@ -12,29 +12,6 @@ import { AccountEditSheet } from "../AccountEditSheet";
 import { ReconcileSheet } from "../ReconcileSheet";
 import { accountIconColor } from "../tiles";
 
-/**
- * PR6b Task 4 — the account detail pane body (v3's `acct` pane): icon+name row → bordered balance
- * box → actions grid → recent activity (waveE-t2-brief.md restructured the top two sections onto
- * the design's exact markup, v3:2001-2018 — the icon+name row and the balance box are plain BODY
- * content, never a second name/✕ band: `PanelHost`'s slim header above this pane stays the ONLY
- * chrome, owner rule 2). Hosted exclusively by `PanelHost`'s `account` kind, which only ever
- * renders on wide (pr6b-context.md D2) — unlike `EnvelopeScreen` (also mounted full-screen on
- * phone), this component never forks on `useWideHost()`; it is a panel body by construction,
- * always.
- *
- * The balance is GLOBAL, always: `computeStateResponse(store.getLedger(), currentMonth())` —
- * NEVER the viewed month's `state.accounts` — the exact Drawer/Rail/AccountsWidget rule (Rail.tsx
- * `TbbCard`, widgets.tsx `AccountsWidget`) this pane exists to make reachable on wide (the 3.6.2
- * incident's screen). Edit renders `AccountEditSheet` (Task 5's extraction, shared verbatim with
- * `Accounts.tsx`'s row-edit and "New account" call sites) as a `Surface` over this pane — saving/
- * archiving goes through the existing `local.updateAccount` path and this pane re-derives from
- * the replica on the next tick, so an archived account simply keeps rendering here with the
- * Closed chip. Reconcile renders `ReconcileSheet` (Task 6's extraction out of eager `widgets.tsx`,
- * shared verbatim with the phone Start `AccountsWidget`'s per-account action sheet) as a `Surface`
- * over this pane, given the SAME global `account` this file already computes — so "Balance in the
- * app" is current whatever month the shell views, the exact rule this pane exists to make
- * reachable on wide.
- */
 export function AccountPanel({
   accountId,
   envelopes,
@@ -53,16 +30,12 @@ export function AccountPanel({
   const { t, tp, lang } = useT();
   const version = useLedgerVersion();
 
-  
-
   const accountsNow = useMemo(() => {
     const l = store.getLedger();
     return l ? computeStateResponse(l, currentMonth()).accounts : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
   const account = accountsNow.find((a) => a.id === accountId) ?? null;
-
-  
 
   const [edit, setEdit] = useState(false);
   const [reconcile, setReconcile] = useState(false);
@@ -209,9 +182,7 @@ export function AccountPanel({
         )}
       </div>
 
-      {
-
-}
+      {}
       <div style={{ border: `1px solid ${C.line}`, borderRadius: 14, padding: "14px 16px", marginBottom: 22 }}>
         <div style={{ fontSize: 9.5, letterSpacing: 0.6, textTransform: "uppercase", color: C.mute, marginBottom: 4 }}>{t("Balance")}</div>
         <div style={{ fontSize: 26, fontWeight: 800, color: account.balance < 0 ? C.neg : C.text, fontVariantNumeric: "tabular-nums" }}>
@@ -223,7 +194,7 @@ export function AccountPanel({
         )}
       </div>
 
-      { }
+      {}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 22 }}>
         <button onClick={() => onOpenTxns({ accId: account.id })} style={actionBtnStyle}>
           {t("Transactions")}
@@ -236,7 +207,7 @@ export function AccountPanel({
         </button>
       </div>
 
-      { }
+      {}
       <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8 }}>{t("Recent in {name}", { name: account.name })}</div>
       {recent.length === 0 ? (
         <div style={{ fontSize: 12, color: C.mute }}>{t("No transactions.")}</div>

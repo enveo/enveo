@@ -33,7 +33,7 @@ import { storageMode } from "./idb";
  * contains the former name. */
 const LEGACY_PREFIX = ["4gros", "ze."].join("");
 const PREFIX = "enveo.";
- 
+
 const DEVICE_KEYS = ["settings", "a2hs"] as const;
 const OBSOLETE_LOCAL_MODE_KEYS = ["localMode", "localOnly"] as const;
 
@@ -45,18 +45,15 @@ export function migrateLegacyLocalStorage(): void {
       const oldVal = localStorage.getItem(oldKey);
       if (oldVal === null) continue;
       if (localStorage.getItem(newKey) === null) localStorage.setItem(newKey, oldVal);
-       
+
       if (localStorage.getItem(newKey) !== null) localStorage.removeItem(oldKey);
     }
-    
 
     for (const k of OBSOLETE_LOCAL_MODE_KEYS) {
       localStorage.removeItem(LEGACY_PREFIX + k);
       localStorage.removeItem(PREFIX + k);
     }
-  } catch {
-     
-  }
+  } catch {}
 }
 
 migrateLegacyLocalStorage();
@@ -70,7 +67,6 @@ let persistRequested = false;
  */
 export async function requestPersistentStorage(): Promise<void> {
   if (persistRequested) return;
-  
 
   if (storageMode() === "memory-session") return;
   persistRequested = true;
@@ -78,21 +74,18 @@ export async function requestPersistentStorage(): Promise<void> {
     const s = navigator.storage;
     if (s?.persisted) persistResult = await s.persisted();
     if (!persistResult && s?.persist) persistResult = await s.persist();
-  } catch {
-     
-  }
+  } catch {}
 }
 
 export interface StorageDiag {
   /** Whether the browser promises NOT to evict the data (null = API unavailable). */
   persisted: boolean | null;
-   
+
   usageBytes: number | null;
-   
+
   quotaBytes: number | null;
 }
 
- 
 export async function getStorageDiag(): Promise<StorageDiag> {
   let persisted: boolean | null = persistResult;
   let usageBytes: number | null = null;
@@ -105,8 +98,6 @@ export async function getStorageDiag(): Promise<StorageDiag> {
       usageBytes = est.usage ?? null;
       quotaBytes = est.quota ?? null;
     }
-  } catch {
-     
-  }
+  } catch {}
   return { persisted, usageBytes, quotaBytes };
 }

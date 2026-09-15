@@ -13,10 +13,7 @@
 import { decimalSeparator } from "./format";
 import type { Lang } from "./i18n";
 
- 
 export type NumpadKey = [string, "n" | "o" | "f" | "k"];
-
-
 
 export const NUMPAD_KEYS: NumpadKey[] = [
   ["1", "n"],
@@ -37,7 +34,6 @@ export const NUMPAD_KEYS: NumpadKey[] = [
   ["OK", "k"],
 ];
 
- 
 export function numpadKeyLabel(key: string, lang: Lang, okGlyph: "check" | "equals" = "check"): string {
   if (key === "DEL") return "⌫";
   if (key === "OK") return okGlyph === "equals" ? "=" : "✓";

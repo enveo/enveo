@@ -29,7 +29,6 @@ export interface E2eeByokDependencies {
 }
 
 export interface E2eeDurableImportInput extends Omit<ImportExtractInput, "images"> {
-   
   images: ReadonlyArray<string | null>;
   checkpoint?: ImportRecognitionResult;
   chunks?: ImportChunkState[];
@@ -172,8 +171,6 @@ export class E2eeByokProvider implements AiProvider {
   extractImport(input: ImportExtractInput): Promise<ImportExtractResult> {
     return this.withCredential((key) => this.runImport(key, input));
   }
-
-  
 
   runDurableImport(input: E2eeDurableImportInput): Promise<ImportExtractResult> {
     return this.withCredential((key) => this.runImport(key, input, input));

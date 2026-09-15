@@ -19,10 +19,6 @@ import { ActionGroup, ActionRow, Helper, Row, Seg } from "./ui";
  *  warns against pasting financial data, which a blank issue does not. */
 const TRANSLATION_ISSUES_URL = "https://github.com/enveo/enveo/issues/new?template=translation_fix.yml";
 
-
-
-
-
 const THEME_IDS: Array<"teal" | "duet"> = ["teal", "duet"];
 const THEME_LABEL: Record<AccountAccentTheme, Message> = {
   auto: msg("Auto"),
@@ -64,7 +60,7 @@ function ThemeTiles() {
       {ids.map((id) => {
         const accent = themeTokens(id === "auto" ? settings.accentTheme : id, isDark).vars["--accent"];
         const active = choice === id;
-         
+
         const halves = id === "auto" ? [preview("duet"), preview("teal")] : [preview(id)];
         return (
           <button
@@ -102,31 +98,6 @@ function ThemeTiles() {
   );
 }
 
-/**
- * Scope control for the theme swatches + Light/Dark/Auto segment above and below it: "All devices"
- * writes straight to the account preference; "This device" freezes the CURRENT effective values
- * into a per-device override so this device can diverge without touching what every other device
- * sees (per-device theme override, 2026-08-27). There is no design mockup for this control — it
- * follows the section's own pill idiom (`Seg`, the same treatment as the Theme mode segment below)
- * per the owner's direction, kept inline with the theme controls it governs rather than moved under
- * "This device" below: the two color/mode pickers and their scope stay in one visual group instead
- * of the reader having to correlate two separate sections to find out where a click will land.
- *
- * The pill's own selected value is fully DERIVED from whether an override is currently set (never a
- * separate "chosen but not applied" state) — so it can never show "This device" while actually
- * following the account, or vice versa ("default state reflects reality", owner round 1 item 7's
- * sibling rule for this control). Once an override exists, clicking a swatch or the mode segment
- * below keeps updating it — `contexts.tsx`'s `splitSettingsPatch` routes there automatically, so
- * those controls need no override-awareness of their own; this component only owns the freeze
- * (all devices → this device) and clear (this device → all devices) transitions.
- *
- * Phone (owner round 4, item 25): the pill `fill`s its container — outside a `Row` the `Seg`
- * stretches to the content column while its buttons stay content-sized, which at 390px left a
- * ~55px dead pill track after "To urządzenie". Evenly split halves read as a deliberate
- * full-width scope switcher and keep both Polish labels inside their half. Wide keeps the
- * design-matched content-sized pills (the owner's phone-only ruling; item 12's override logic
- * is untouched either way).
- */
 function ThemeScope() {
   const { t } = useT();
   const { settings } = useSettings();
@@ -143,8 +114,6 @@ function ThemeScope() {
         value={overridden ? "device" : "account"}
         onChange={(scope) => {
           if (scope === "device") {
-            
-
             if (!overridden) void updateDevice({ themeModeOverride: settings.themeMode, accentThemeOverride: settings.accentTheme });
           } else {
             void updateDevice({ themeModeOverride: null, accentThemeOverride: null });
@@ -159,9 +128,6 @@ function ThemeScope() {
     </div>
   );
 }
-
-
-
 
 function SectionDesc({ children }: { children: ReactNode }) {
   const C = useTheme();
@@ -178,19 +144,6 @@ function AppearanceEyebrow({ children }: { children: ReactNode }) {
   return <div style={{ fontSize: 9.5, fontWeight: 750, color: C.mute, textTransform: "uppercase", letterSpacing: "0.16em", marginBottom: 8 }}>{children}</div>;
 }
 
-/** Appearance-pane card row (v3:726-733: card bg, 1px `T.line` border, radius 12, padding
- *  11px 13px, no shadow; label 13px/650 `T.accent`, sub 11px `T.mute`, `›` chevron 12px `T.mute`)
- *  — a LOCAL variant, not a restyle of the shared `ActionGroup`/`ActionRow`, which every other
- *  Settings section (DataTools/DataSection/SyncSection/E2eeUpgradePanel) still renders with the
- *  hub's radius-14 shadow card and 14px/700 `--cta` labels. Owner round 1 item 11 scopes the
- *  value-for-value design match to Appearance only, so those sections must not be reskinned from
- *  here. Same pattern as `AppearanceEyebrow` above vs. the shared `Eyebrow` (5351e8b).
- *
- *  WIDE-ONLY since owner round 4, item 24: the design-matched values that item 11 mandated for
- *  the wide pane read wrong inside the 390px phone drill-in (a lone bordered card with an
- *  accent-colored 13px label, unlike every other phone Settings row) — the phone branch of
- *  `AppearanceSection` renders the shared `ActionGroup`/`ActionRow` idiom instead, exactly the
- *  pre-d0a6b9e phone rendering. The two rulings fork on host, not on a restyle of either. */
 function AppearanceCardRow({ label, desc, onClick, disabled }: { label: string; desc: string; onClick: () => void; disabled?: boolean }) {
   const C = useTheme();
   return (
@@ -224,17 +177,8 @@ function AppearanceCardRow({ label, desc, onClick, disabled }: { label: string; 
   );
 }
 
- 
 const CURRENCIES = SUPPORTED_CURRENCIES;
 
-/**
- * A native `<select>` styled as the design's pill — "{value} ⌄" (v3:716-723) — on BOTH phone and
- * wide (`WideSettings` renders this SAME component; design parity wave E task 3's own direction:
- * "keep the native `<select>` semantics but style it as the design pill"). `appearance: none`
- * (+ vendor prefixes for older WebKit) hides the OS chrome; the ⌄ is a decorative overlay
- * (`pointerEvents: none`) so every click still lands on the real `<select>` underneath it —
- * keyboard nav, screen readers and `onChange` are all untouched.
- */
 function PillSelect({ children }: { children: ReactNode }) {
   const C = useTheme();
   return (
@@ -250,24 +194,17 @@ function PillSelect({ children }: { children: ReactNode }) {
   );
 }
 
- 
 export function AppearanceSection() {
   const C = useTheme();
   const { settings, setSettings } = useSettings();
   const { t } = useT();
   const currency = useCurrency();
-  
-
-
 
   const wide = useWideHost() !== null;
   const [widgetsOpen, setWidgetsOpen] = useState(false);
   const { data: currentState } = useStateQuery(todayISO().slice(0, 7));
-   
+
   const budgetId = store.getLedger()?.budgets?.[0]?.id;
-  
-
-
 
   const selectStyle = {
     appearance: "none",
@@ -377,8 +314,7 @@ export function AppearanceSection() {
       <div style={{ marginTop: 18 }}>
         <AppearanceEyebrow>{t("This device")}</AppearanceEyebrow>
       </div>
-      {
-}
+      {}
       <Row
         label={
           <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>

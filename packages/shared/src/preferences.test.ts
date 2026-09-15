@@ -118,7 +118,7 @@ describe("schemaVersion 2 — wideWidgets migration", () => {
 
   test("oldest replica shape: a row with NO wideWidgets key (not null — absent) normalises at the boundary", () => {
     const stored = { ...createDefaultBudgetPreferences() } as Record<string, unknown>;
-    delete stored.wideWidgets;  
+    delete stored.wideWidgets;
     const out = reconcileBudgetPreferences(stored);
     expect(out.wideWidgets).toEqual(createDefaultWideWidgets());
   });
@@ -127,10 +127,10 @@ describe("schemaVersion 2 — wideWidgets migration", () => {
     const out = reconcileBudgetPreferences({
       ...createDefaultBudgetPreferences(),
       wideWidgets: [
-        { id: "quickActions", enabled: true, w: 1, h: 1 },  
-        { id: "recent", enabled: true, w: 9, h: 1 },  
+        { id: "quickActions", enabled: true, w: 1, h: 1 },
+        { id: "recent", enabled: true, w: 9, h: 1 },
         { id: "spending", enabled: true, w: 2, h: 2 },
-        { id: "spending", enabled: false, w: 1, h: 1 },  
+        { id: "spending", enabled: false, w: 1, h: 1 },
       ],
     });
     expect(out.wideWidgets.filter((widget) => widget.id === "spending")).toEqual([{ id: "spending", enabled: true, w: 2, h: 2 }]);

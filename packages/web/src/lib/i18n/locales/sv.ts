@@ -1,4 +1,3 @@
- 
 import type { Dict } from "../index";
 
 export const sv: Dict = {
@@ -641,7 +640,6 @@ export const sv: Dict = {
       one: "Slå ihop {n} post till en med namnet ”{name}”? Alla dess transaktioner flyttas över.",
       other: "Slå ihop {n} poster till en med namnet ”{name}”? Alla deras transaktioner flyttas över.",
     },
-  
 
   "Needs attention": "Behöver uppmärksamhet",
   "Recent activity": "Senaste aktivitet",
@@ -674,13 +672,12 @@ export const sv: Dict = {
   "total {amount} this month": "totalt {amount} denna månad",
   "No spending this month.": "Inga utgifter denna månad.",
   "Not enough history yet — trends appear after two months of spending.": "Inte tillräckligt med historik än — trender visas efter två månaders utgifter.",
-   
+
   "Add widget": "Lägg till widget",
   "Every widget is already on the grid.": "Alla widgetar finns redan i rutnätet.",
   "Widget settings": "Widgetinställningar",
   "latest transactions": "senaste transaktioner",
 
-   
   "+ {n} more | + {n} more": { one: "+ {n} till", other: "+ {n} till" },
   "A local copy means the app opens instantly and keeps working on a plane.":
     "En lokal kopia betyder att appen öppnas direkt och fortsätter fungera även på flygplanet.",

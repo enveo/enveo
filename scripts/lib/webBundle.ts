@@ -29,10 +29,8 @@
  */
 import { gzipSync, constants as zlibConstants } from "node:zlib";
 
- 
 export const MANIFEST_PATH = "packages/web/dist/.vite/manifest.json";
 
- 
 export const DIST_DIR = "packages/web/dist";
 
 /**
@@ -55,13 +53,12 @@ export const GZIP_OPTIONS = {
   strategy: zlibConstants.Z_DEFAULT_STRATEGY,
 } as const;
 
- 
 export type ManifestChunk = Readonly<{
   file: string;
   name?: string;
   src?: string;
   isEntry?: boolean;
-   
+
   imports?: readonly string[];
   /** `import()` edges — manifest keys. Deliberately NOT followed. */
   dynamicImports?: readonly string[];
@@ -77,11 +74,9 @@ export class ManifestError extends Error {
   }
 }
 
- 
 export type Contributor = Readonly<{
-   
   key: string;
-   
+
   file: string;
   rawBytes: number;
   gzipBytes: number;
@@ -97,7 +92,7 @@ export type BudgetReport = Readonly<{
   contributors: readonly Contributor[];
   totals: BudgetTotals;
   limits: BudgetLimits;
-   
+
   violations: readonly string[];
 }>;
 
@@ -149,16 +144,6 @@ export function parseManifest(text: string): ViteManifest {
   return manifest;
 }
 
-
-
-
-
-
-
-
-
-
-
 export function initialJsClosure(manifest: ViteManifest): readonly string[] {
   const roots = Object.keys(manifest)
     .filter((key) => manifest[key]?.isEntry === true && JS_FILE.test(manifest[key]?.file ?? ""))
@@ -178,13 +163,10 @@ export function initialJsClosure(manifest: ViteManifest): readonly string[] {
       if (!visited.has(next)) queue.push(next);
     }
   }
-  
-
 
   return [...visited].filter((key) => JS_FILE.test(manifest[key]?.file ?? "")).sort();
 }
 
- 
 export function gzipByteLength(data: Uint8Array): number {
   return gzipSync(data, GZIP_OPTIONS).byteLength;
 }
@@ -208,11 +190,10 @@ export function measureClosure(manifest: ViteManifest, keys: readonly string[], 
     contributors.push({ key, file: chunk.file, rawBytes: data.byteLength, gzipBytes: gzipByteLength(data) });
   }
   if (missing.length > 0) throw new ManifestError(`manifest names ${missing.length} file(s) missing from the build output: ${missing.sort().join(", ")}`);
-   
+
   return contributors.sort((a, b) => b.rawBytes - a.rawBytes || a.key.localeCompare(b.key));
 }
 
- 
 export function evaluateBudget(contributors: readonly Contributor[], limits: BudgetLimits = DEFAULT_LIMITS): BudgetReport {
   const totals: BudgetTotals = {
     rawBytes: contributors.reduce((sum, c) => sum + c.rawBytes, 0),
@@ -228,14 +209,9 @@ export function evaluateBudget(contributors: readonly Contributor[], limits: Bud
   return { contributors, totals, limits, violations };
 }
 
- 
 function kb(bytes: number): string {
   return `${(bytes / 1000).toFixed(2)} kB`;
 }
-
-
-
-
 
 export function formatReport(report: BudgetReport): string {
   const lines: string[] = [];

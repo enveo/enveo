@@ -8,10 +8,6 @@ const buildInfo = (() => {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   const time = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  
-
-
-
 
   const passed = process.env.ENVEO_BUILD_SHA?.trim();
   if (passed) return { time, sha: passed };
@@ -22,7 +18,7 @@ const buildInfo = (() => {
       .toString()
       .trim();
   } catch {
-    sha = "";  
+    sha = "";
   }
   return { time, sha };
 })();
@@ -41,10 +37,6 @@ export default defineConfig({
   },
   plugins: [
     react(),
-    
-
-
-
 
     {
       name: "enveo-emit-version-json",
@@ -85,8 +77,6 @@ export default defineConfig({
       workbox: {
         // version.json must ALWAYS come from the network (see the emit plugin above).
         globIgnores: ["**/version.json"],
-        
-
 
         navigateFallback: null,
         cleanupOutdatedCaches: true,
@@ -96,8 +86,6 @@ export default defineConfig({
             handler: "NetworkFirst",
             options: { cacheName: "shell", networkTimeoutSeconds: 3 },
           },
-          
-
         ],
       },
       devOptions: { enabled: false },
@@ -105,7 +93,7 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
-     
+
     proxy: { "/api": process.env.DEV_API ?? "http://localhost:8080" },
   },
 });

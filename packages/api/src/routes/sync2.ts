@@ -33,8 +33,6 @@ import * as s from "../db/schema";
 import { type Executor, wipeBudgetData } from "../sync/apply";
 import { budgetAssertionFails, ownerAssertionFails, restoreLedger } from "./sync";
 
- 
-
 /** A v2 ciphertext value: "v2." + base64(nonce ∥ ct ∥ tag). The server checks the PREFIX only —
  *  it stays blind to the contents. "v1." (and anything else) is a 400 at the boundary: an old
  *  client must not extend the journal/checkpoint/envelope with unauthenticated ciphertext. */
@@ -95,8 +93,6 @@ export const e2eeDisableInput = z.object({
   ...ownerAssertion,
   budgetId: z.string().uuid(),
   expectedEpoch: z.number().int().min(0),
-  
-
 
   confirm: z.literal(E2EE_DISABLE_CONFIRM),
   ledger: clientLedgerSchema,
@@ -144,12 +140,8 @@ export const e2eeUpgradeV2Input = z.object({
 
 export const e2eeUpgradeCredentialQuery = z.object({ budgetId: z.string().uuid(), expectedEpoch: z.coerce.number().int().min(0) }).strict();
 
- 
 const ownerMismatch = (budgetId: string) => ({ error: "budget_mismatch", budgetId }) as const;
 
- 
-
- 
 async function maxE2eeSeq(x: Executor, budgetId: string): Promise<number> {
   const [row] = await x
     .select({ cursor: dsql<number>`COALESCE(MAX(${s.e2eeOps.seq}), 0)`.mapWith(Number) })
@@ -216,8 +208,6 @@ export function createSync2Routes(options: { masterKeys: VaultMasterKeyProvider 
     const cursor = await maxE2eeSeq(db, meta.id);
     return c.json({ cursor, epoch: meta.epoch, ops: rows });
   });
-
-   
 
   sync2Routes.get("/sync2/snapshot", async (c) => {
     const meta = await requireTier(c, "e2ee");
@@ -615,7 +605,7 @@ export function createSync2Routes(options: { masterKeys: VaultMasterKeyProvider 
       // encrypting the whole replica) takes seconds in which the shared cookie can be swapped.
       if (ownerAssertionFails(body.userId, sessionUserId(c))) return { kind: "mismatch", id: meta.id } as const;
       if (budgetAssertionFails(body.budgetId, meta.id)) return { kind: "mismatch", id: meta.id } as const;
-       
+
       const [row] = await tx
         .select({ tier: s.budgets.tier, epoch: s.budgets.epoch, cipherVersion: s.budgets.cipherVersion, wrappedDek: s.budgets.wrappedDek })
         .from(s.budgets)
@@ -644,7 +634,7 @@ export function createSync2Routes(options: { masterKeys: VaultMasterKeyProvider 
                 credential.ciphertext === body.credentialAction.ciphertext;
           if (credentialMatches) return { kind: "done", id: meta.id, epoch: row.epoch } as const;
         }
-         
+
         return { kind: "stale", meta: { ...meta, epoch: row.epoch, cipherVersion: 2 } } as const;
       }
       if (row.epoch !== body.expectedEpoch)

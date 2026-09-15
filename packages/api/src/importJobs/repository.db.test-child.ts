@@ -152,9 +152,7 @@ async function main() {
         { ...createInput(invalidImageJobId), images: [{ mimeType: "image/png", content: new Uint8Array() }] },
         at("2026-08-24T12:02:30.000Z"),
       );
-    } catch {
-       
-    }
+    } catch {}
     const [invalidImageJob] = await isolated<{ count: number }[]>`select count(*)::int as count from import_jobs where id = ${invalidImageJobId}`;
     const [stored] = await isolated<{ count: number }[]>`select count(*)::int as count from import_job_images where job_id = ${createdId}`;
     const publicDetail = await repository.getForUser(userId, createdId);
@@ -496,7 +494,7 @@ async function main() {
       chunks: {
         windowsCreated: chunkRows?.count === 2 && chunkRows.total === 7,
         claimCarriesWindows,
-         
+
         windowCheckpointReleasedItsImages: windowSaved && afterWindow?.images === 2 && afterWindow.read === 6 && afterWindow.status === "extracted",
         retryableWindowStaysPending:
           retryRecorded && afterRetry?.status === "pending" && afterRetry.attempt === 1 && afterRetry.errorCode === "ai_timeout" && afterRetry.failed === 0,

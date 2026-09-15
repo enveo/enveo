@@ -15,11 +15,11 @@ describe("periodAtUtc — UTC calendar months, half-open [start, nextStart)", ()
   });
 
   it("handles 28/29/30/31-day months", () => {
-    expect(periodAtUtc(utc(2026, 2, 15)).endMs).toBe(utc(2026, 3, 1));  
-    expect(periodAtUtc(utc(2028, 2, 15)).endMs).toBe(utc(2028, 3, 1));  
-    expect(periodAtUtc(utc(2028, 2, 29, 23, 59, 59, 999)).key).toBe("2028-02");  
-    expect(periodAtUtc(utc(2026, 4, 30)).endMs).toBe(utc(2026, 5, 1));  
-    expect(periodAtUtc(utc(2026, 7, 31)).endMs).toBe(utc(2026, 8, 1));  
+    expect(periodAtUtc(utc(2026, 2, 15)).endMs).toBe(utc(2026, 3, 1));
+    expect(periodAtUtc(utc(2028, 2, 15)).endMs).toBe(utc(2028, 3, 1));
+    expect(periodAtUtc(utc(2028, 2, 29, 23, 59, 59, 999)).key).toBe("2028-02");
+    expect(periodAtUtc(utc(2026, 4, 30)).endMs).toBe(utc(2026, 5, 1));
+    expect(periodAtUtc(utc(2026, 7, 31)).endMs).toBe(utc(2026, 8, 1));
   });
 
   it("December→January crosses the year boundary by calendar arithmetic", () => {

@@ -4,7 +4,6 @@ import { type Message, msg, translate, uiLang } from "./i18n";
 import { store } from "./store";
 import { getSyncStatus, type SyncStatus, subscribeSyncStatus } from "./sync";
 
- 
 export type { AccountView, EnvelopeView, StateResponse } from "@enveo/shared";
 
 import {
@@ -43,15 +42,12 @@ export interface ImportItem {
   categoryId?: string | null;
   categoryName?: string | null;
   placeName?: string | null;
-  
 
   currency?: string;
   /** Original foreign amount + code (e.g. "5.00 USD") when this row is a converted/settled
    *  charge — shown as a muted caption; "" or absent otherwise. */
   fxOriginal?: string;
 }
-
-
 
 export interface EditedImportItem {
   type: "expense" | "income" | "transfer";
@@ -67,14 +63,13 @@ export interface EditedImportItem {
   note: string;
 }
 
-
 export type ImportApplyItem = Omit<ImportItem, "type"> &
   Partial<EditedImportItem> & {
     type: "expense" | "income" | "transfer";
-     
+
     importRowId?: string;
     force?: boolean;
-     
+
     automaticEnvelopeDefault?: boolean;
   };
 export interface ImportApplyResponse {
@@ -98,24 +93,24 @@ export interface E2eeCredentialResponse {
  * through to the raw text, so the user always sees something rather than an empty error.
  */
 const ERROR_KEYS: Record<string, Message> = {
-  ai_unavailable: msg("The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules."),  
-  ai_upstream_error: msg("OpenAI rejected the request — check the key and the model, then try again."),  
-  upstream: msg("OpenAI rejected the request — check the key and the model, then try again."),  
+  ai_unavailable: msg("The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules."),
+  ai_upstream_error: msg("OpenAI rejected the request — check the key and the model, then try again."),
+  upstream: msg("OpenAI rejected the request — check the key and the model, then try again."),
   /* Transport failures get their OWN honest wording (since the AI-transport package): a timeout
      or an unreachable service is NOT a key/model problem — the same two codes come from the
      server routes (openaiHttp.ts classification) and from our own transport (openai.ts, http()). */
-  ai_timeout: msg("The AI service took too long to answer — nothing was changed. Try again in a moment."),  
-  ai_unreachable: msg("Could not reach the AI service — check the network connection and try again."),  
+  ai_timeout: msg("The AI service took too long to answer — nothing was changed. Try again in a moment."),
+  ai_unreachable: msg("Could not reach the AI service — check the network connection and try again."),
   /* Cloud per-user spend budget (429 from every operator-key AI route): the server sends only
      the machine code + retryAfterSeconds — never the recorded spend. One whole phrase. */
   ai_budget_exhausted: msg(
     "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). An existing own key can still be selected in Settings → Artificial intelligence.",
   ),
   backup_invalid: msg("This is not a valid backup file — nothing was loaded."), // /sync/replace — the payload is not a ledger
-  foreign_ref: msg("The data references records that do not exist here (a corrupted or foreign file). Nothing was changed."),  
-  budget_mismatch: msg("The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again."),  
-  budget_not_empty: msg("The budget is not empty — demo data can only be loaded into an empty budget."),  
-  too_large: msg("The upload is too large — try fewer (or smaller) screenshots."),  
+  foreign_ref: msg("The data references records that do not exist here (a corrupted or foreign file). Nothing was changed."),
+  budget_mismatch: msg("The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again."),
+  budget_not_empty: msg("The budget is not empty — demo data can only be loaded into an empty budget."),
+  too_large: msg("The upload is too large — try fewer (or smaller) screenshots."),
   internal: msg("The server hit an unexpected error. Nothing was changed — try again."),
   invalid_import_job_state: msg("This import expired. Start a new import from the screenshots."),
 
@@ -124,9 +119,9 @@ const ERROR_KEYS: Record<string, Message> = {
   foreign_replica: msg(
     "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.",
   ), // assertOwnReplica — the replica is not the session's
-  no_local_replica: msg("The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again."),  
-  no_encryption_key: msg("This device has no encryption key — unlock the budget with your password (or a pairing code) and try again."),  
-  empty_unbound_replica: msg("There is no data on this device to send — nothing was sent to the server. Reload the app to fetch your budget first."),  
+  no_local_replica: msg("The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again."),
+  no_encryption_key: msg("This device has no encryption key — unlock the budget with your password (or a pairing code) and try again."),
+  empty_unbound_replica: msg("There is no data on this device to send — nothing was sent to the server. Reload the app to fetch your budget first."),
   bad_ciphertext: msg("The encrypted data could not be read on this device — nothing was changed. Make sure the app is up to date, or restore from a backup."), // crypto.ts — envelope this build cannot read (corrupt/foreign)
   legacy_ciphertext: msg(
     "This data uses an older encryption format that this version no longer reads — run the encryption upgrade in Settings → Privacy on the device that holds the budget.",
@@ -135,12 +130,10 @@ const ERROR_KEYS: Record<string, Message> = {
     "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.",
   ), // sync2 routes — the server refuses every normal channel of a legacy-format budget
   bad_pairing_code: msg("This is not a valid pairing code — copy it again from the device where the budget is already unlocked."), // crypto.ts — decodePairing on a code that is not ours
-  ai_consent_required: msg("AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence."),  
-  
-
+  ai_consent_required: msg("AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence."),
 
   ai_offline: msg("You are offline — screenshot import needs a connection. Manual entry works without one."), // fetch never left the device — the normal state of an offline PWA
-  ai_key_invalid: msg("OpenAI rejected your key — check it in Settings → Artificial intelligence."),  
+  ai_key_invalid: msg("OpenAI rejected your key — check it in Settings → Artificial intelligence."),
   ai_model_unavailable: msg("This OpenAI key cannot use the selected model. Choose another model and try again."),
   credential_not_configured: msg("No OpenAI key is configured for this budget."),
   credential_move_required: msg("Re-enter your OpenAI API key so it can move into the encrypted budget."),
@@ -148,30 +141,26 @@ const ERROR_KEYS: Record<string, Message> = {
   vault_unavailable: msg("The server credential vault is not configured. Ask the server operator to enable it."),
   ai_capability_unsupported: msg("The selected AI provider does not support this feature."),
 
-  
-
   invalid_email_or_password: msg("Wrong email or password."),
   invalid_email: msg("That does not look like a valid email address."),
   user_already_exists: msg("An account with this email already exists — sign in instead."),
   password_too_short: msg("The password must be at least 8 characters."),
   password_too_long: msg("That password is too long."),
-  signups_closed: msg("Registration is closed on this server."),  
-  sign_in_failed: msg("Could not sign in — please try again."),  
+  signups_closed: msg("Registration is closed on this server."),
+  sign_in_failed: msg("Could not sign in — please try again."),
   sign_up_failed: msg("Could not create the account — please try again."),
-  auth_meta_failed: msg("Could not sign in — please try again."),  
+  auth_meta_failed: msg("Could not sign in — please try again."),
   device_storage_unavailable: msg("This browser blocked access to storage. Allow site storage before signing in."),
   local_sign_out_cleanup_failed: msg("Enveo could not remove the local copy. The server session has ended; retry the local cleanup before reloading the app."),
   server_sign_out_failed: msg("The server session could not be ended. You are still signed in — try again."),
   sign_out_in_progress: msg("Sign-out is already in progress."),
 };
 
- 
 function localizeError(code: string): string {
   const key = ERROR_KEYS[code];
   return key ? translate(uiLang(), key) : code;
 }
 
- 
 export function apiErrorMessage(e: unknown): string {
   const m = String((e as Error).message ?? e);
   const i = m.indexOf("{");
@@ -179,9 +168,7 @@ export function apiErrorMessage(e: unknown): string {
     try {
       const parsed = JSON.parse(m.slice(i)) as { error?: string };
       if (parsed.error) return localizeError(parsed.error);
-    } catch {
-       
-    }
+    } catch {}
   }
   return localizeError(m); // sentinels thrown client-side (foreign_replica); otherwise the raw text
 }
@@ -196,11 +183,6 @@ export function apiErrorBody(e: unknown): { error?: string; tier?: "plain" | "e2
     return null;
   }
 }
-
- 
-
-
-
 
 export function http<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
   const request = () => httpImpl<T>(method, path, body, timeoutMs);
@@ -232,16 +214,10 @@ async function httpImpl<T>(method: string, path: string, body?: unknown, timeout
   return (await res.json()) as T;
 }
 
-
-
-
-
-
 export const api = {
   accountPreferencesGet: getAccountPreferencesRemote,
   accountPreferencesPatch: patchAccountPreferencesRemote,
 
-   
   aiInfo: () => http<{ serverAi: boolean }>("GET", "/ai/info"),
 
   byokCredentialStatus: (budgetId: string) =>
@@ -295,8 +271,6 @@ export const api = {
   budgetSuggest: (b: { month: string; profile: BudgetSuggestProfile; customPrompt?: string; ledger?: ClientLedger; locale: AiLocale; useAi?: boolean }) =>
     http<BudgetSuggestResponse>("POST", "/budget/suggest", b),
 
-  
-
   demoSeed: (locale: "pl" | "en", userId: string) => http<{ seeded: boolean }>("POST", "/demo/seed", { locale, userId }),
   budgetReset: (userId: string) => http<{ reset: boolean }>("POST", "/budget/reset", { confirm: "RESET", userId }),
 
@@ -331,7 +305,7 @@ export const api = {
      different epoch), so the server refuses a stale expectation before writing. */
   e2eeRekey: (b: { wrappedDek: string; kdfParams: string; userId: string; expectedEpoch: number }) =>
     runServerWriteOperation("e2ee-rekey", () => http<{ epoch: number }>("POST", "/sync2/rekey", b)),
-   
+
   e2eeSnapshot: () =>
     http<{
       budgetId: string;
@@ -344,28 +318,13 @@ export const api = {
     }>("GET", "/sync2/snapshot"),
 };
 
- 
-
- 
 export function useLedgerVersion(): number {
   return useSyncExternalStore(store.subscribe, store.getVersion);
 }
 
-
-
-
-
-
 export function useSyncStatus(): SyncStatus {
   return useSyncExternalStore(subscribeSyncStatus, getSyncStatus);
 }
-
-
-
-
-
-
-
 
 export function useStateQuery(month: string): {
   data: StateResponse | undefined;

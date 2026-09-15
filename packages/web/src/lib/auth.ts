@@ -1,8 +1,3 @@
-
-
-
-
-
 import { createAuthClient } from "better-auth/client";
 import { runServerWriteOperation } from "./serverWriteOperations";
 import { type CoordinatedSignOutLease, runCoordinatedSessionEnd } from "./sync/multitab";
@@ -14,7 +9,7 @@ export type AuthMeta = {
   signupsOpen: boolean;
   firstRun: boolean;
   providers: { google: boolean };
-   
+
   deployment?: "selfhost" | "cloud";
 };
 
@@ -36,17 +31,8 @@ function authErrorCode(error: { code?: string; message?: string } | null | undef
   return code && AUTH_CODES.has(code) ? code : fallback;
 }
 
- 
-const AUTH_CODES = new Set([
-  "invalid_email_or_password",
-  "user_already_exists",
-  "password_too_short",
-  "password_too_long",
-  "invalid_email",
-  "signups_closed",  
-]);
+const AUTH_CODES = new Set(["invalid_email_or_password", "user_already_exists", "password_too_short", "password_too_long", "invalid_email", "signups_closed"]);
 
- 
 export async function signInEmail(email: string, password: string, persistent: boolean): Promise<void> {
   return runServerWriteOperation("auth-session", async () => {
     const { error } = await authClient.signIn.email({ email, password, rememberMe: persistent });
@@ -54,7 +40,6 @@ export async function signInEmail(email: string, password: string, persistent: b
   });
 }
 
- 
 export async function signUpEmail(email: string, password: string, persistent: boolean): Promise<void> {
   // better-auth's client TYPE for this one route (InferSignUpEmailCtx) hand-overrides the
   // otherwise-generic inference and forgets rememberMe, even though the server route schema
@@ -68,7 +53,6 @@ export async function signUpEmail(email: string, password: string, persistent: b
   });
 }
 
- 
 export const signInGoogle = () => runServerWriteOperation("auth-session", () => authClient.signIn.social({ provider: "google" }));
 
 /**
@@ -87,7 +71,7 @@ export async function fetchSessionUserId(): Promise<string | null> {
   if (r.status === 401) return null;
   if (!r.ok) throw new Error(`get-session: ${r.status}`); // 5xx/network → retry, NOT "signed out"
   const body = (await r.json().catch(() => null)) as { user?: { id?: string } } | null;
-  return body?.user?.id ?? null;  
+  return body?.user?.id ?? null;
 }
 
 export function serverSignOutOptions(): { fetchOptions: { headers: undefined } } {
@@ -102,7 +86,6 @@ export function normalizeServerSignOutFailure(_error: unknown): never {
   throw new Error("server_sign_out_failed");
 }
 
- 
 export async function endSession(): Promise<void> {
   return runServerWriteOperation("auth-session", async () => {
     try {
@@ -114,7 +97,6 @@ export async function endSession(): Promise<void> {
   });
 }
 
- 
 export function endSessionForSignOut(lease: CoordinatedSignOutLease): Promise<void> {
   return runCoordinatedSessionEnd(lease, async () => {
     try {
@@ -126,7 +108,6 @@ export function endSessionForSignOut(lease: CoordinatedSignOutLease): Promise<vo
   });
 }
 
- 
 export async function hasSession(): Promise<boolean> {
   try {
     const s = await authClient.getSession();

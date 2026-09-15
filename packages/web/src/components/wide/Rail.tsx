@@ -25,23 +25,8 @@ import { checkForUpdate, useAppUpdate } from "../UpdatePrompt";
 
 type WideMode = Exclude<ViewMode, "phone">;
 
-
-
-
 type NavScreen = "start" | "budget" | "transactions" | "reports" | "accounts" | "activity";
 
-/**
- * The signed-in user's name + email — read once from `lib/auth.ts`, the ONE session source of
- * truth, rather than threading it down from App (nothing else in the wide chunk needs a session
- * subscription yet). Both `null` while unresolved or genuinely absent; a mount that unmounts
- * before the fetch settles is guarded by `alive` the same way `hasSession()` guards its own read.
- * `name` defaults to the email's local part at sign-up (`lib/auth.ts` `signUpEmail`), so it is
- * never empty for an account created after that default landed — still guarded here in case an
- * older/imported account row has a blank one.
- *
- * Exported (design parity wave E task 3): `WideSettings`'s Account section reads the SAME
- * identity — one session subscription for both the rail's user block and Settings, not two.
- */
 export function useSessionUser(): { name: string | null; email: string | null } {
   const [user, setUser] = useState<{ name: string | null; email: string | null }>({ name: null, email: null });
   useEffect(() => {
@@ -114,19 +99,6 @@ function RailButton({ active, d, label, badge, onClick }: { active: boolean; d: 
   );
 }
 
-/**
- * Desktop: label-ONLY, full-width row. Owner ruling (owner-requirements.md, parity owner round 1
- * item 3): no icons in the left menu — the design's own nav row (demo 94) is a bare label, and the
- * empty icon gutter goes with it, so the label sits at the design's exact 11px inset. Typography
- * and box match demo 94 + the desktop `L` tokens (2413-2415): padding 9px 11px, 13.5px, radius 11,
- * weight 650 active / 400 inactive (demo 2441). `NAV_ICONS` stays in use — fold's `RailButton`
- * above is icon-only and keeps the shared icon language with the phone's `BottomNav`.
- *
- * Design parity wave A, task A2 (demo 94, 2439-2440): the selected row is `railActive`
- * (accent@18%) with INK text (`headerInk` — equals `C.text` on every Cisza theme, but the
- * only token that also reads correctly on Duet's navy rail) — NOT an accent-tinted background
- * with accent-colored text.
- */
 function NavRow({ active, label, badge, onClick }: { active: boolean; label: string; badge?: number; onClick: () => void }) {
   const C = useTheme();
   // demo 2439-2440: `fg: active ? T.railTitle : T.railOn`. `headerInk` equals `C.text` on every
@@ -142,7 +114,7 @@ function NavRow({ active, label, badge, onClick }: { active: boolean; label: str
         display: "flex",
         alignItems: "center",
         width: "100%",
-         
+
         minHeight: 30,
         padding: "9px 11px",
         borderRadius: 11,
@@ -211,10 +183,7 @@ function TbbCard({
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
   onFillGoals: () => void;
   onNav: (s: ScreenId) => void;
-  /** Owner round 3 item 20: each row SELECTS + opens the account panel on the right, staying on
-   *  whatever screen the rail lives on — it never navigates (App.tsx's `selectRailAccount`). The
-   *  summary row and the collapsed-section header below keep `onNav("accounts")`, unchanged: THAT
-   *  is still the one path to the Accounts screen itself. */
+
   onSelectAccount: (id: string) => void;
   /** The account the panel is CURRENTLY showing (WideShell's resolved `view`, not raw `acctView` —
    *  see that prop's own call-site comment) — drives the row's `railActive` highlight, the same
@@ -241,29 +210,13 @@ function TbbCard({
       .sort((a, b) => a.sort - b.sort);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
-  
 
   const showAccounts = screen !== "accounts";
 
-  // Design parity wave A, task A2 (demo 110-111): Suggest is a FILLED ink pill (background =
-  // `headerInk`, text = the rail's OWN background, so it inverts correctly on Duet's navy rail);
-  // Fill-by-goals stays the plain outline it already was — its border is `railRuler` (design's
-  // `T.railRuler`, demo 111), not the content-surface `line` (fix-review: `line`'s opaque Duet
-  // cream rendered a visible tan outline on the near-navy rail card).
-  // Owner round 8b item B: "Fill by goals" is DISABLED, not hidden, when there is nothing to fill
-  // — the shared `canFillGoals` (lib/goals.ts), the same gate the Budget screen's own entry has
-  // always had and this pill never did, so from here it could open a sheet whose only button is
-  // dead. Disabled rather than hidden because these two pills are `flex: 1` siblings: hiding one
-  // would let "✨ Suggest" jump to full width whenever `readyToAssign` crosses zero or the last
-  // goal gets funded. Greying is also the honest answer to "why did nothing happen" — the
-  // affordance stays where the user learned it, and says it cannot act right now. Styling is this
-  // file's OWN disabled idiom (`MenuRow` below): the `disabled` attribute, `cursor: default`,
-  // `opacity: 0.6`.
   const fillPossible = canFillGoals(state);
   const pill = (primary: boolean, disabled = false): React.CSSProperties => ({
     flex: 1,
     minHeight: 30,
-    
 
     display: "flex",
     alignItems: "center",
@@ -281,14 +234,6 @@ function TbbCard({
   });
 
   return (
-    
-
-
-
-
-
-
-
     <div
       style={{
         display: "flex",
@@ -313,9 +258,7 @@ function TbbCard({
         <span>↑ {M(state.monthIncome)}</span>
         <span>↓ {M(state.monthExpense)}</span>
       </span>
-      {
-
-}
+      {}
       <span style={{ height: 3, borderRadius: 2, background: C.railRuler, position: "relative", display: "block", marginTop: 7 }}>
         <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${ruler.pct}%`, borderRadius: 2, background: C.railMute, display: "block" }} />
       </span>
@@ -358,14 +301,8 @@ function TbbCard({
             </span>
           </button>
           {acctsOpen && accountsGlobal.length > 0 && (
-            
-
-
-
             <div className="gsh" style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 5, flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
               {accountsGlobal.map((a) => {
-                // Owner round 3 item 20: SELECT + open the account panel, staying on this screen —
-                // see `onSelectAccount`'s own prop comment for why this is no longer `onOpenAccount`.
                 const active = selectedAccountId === a.id;
                 return (
                   <button
@@ -380,7 +317,7 @@ function TbbCard({
                       padding: "5px 6px",
                       borderRadius: 8,
                       border: "none",
-                       
+
                       background: active ? C.railActive : "none",
                       cursor: "pointer",
                       fontFamily: font,
@@ -433,8 +370,8 @@ function TbbCard({
               fontFamily: font,
             }}
           >
-            { }
-            { }
+            {}
+            {}
             <span
               style={{
                 fontSize: 11.5,
@@ -630,8 +567,6 @@ function SyncCard({ onNav, onClose }: { onNav: (s: ScreenId) => void; onClose: (
   let action: "sync" | "review" = "sync";
 
   if (deadLetters > 0) {
-    
-
     detail = tp("The server rejected {n} change — tap to open settings | The server rejected {n} changes — tap to open settings", deadLetters);
     action = "review";
   } else if (state === "unauthed") {
@@ -731,7 +666,6 @@ function LogoutMenuRow({ onNav, onClose }: { onNav: (s: ScreenId) => void; onClo
         setError(apiErrorMessage(e));
         setBusy(false);
       });
-     
   };
 
   return (
@@ -783,17 +717,7 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
   const initial = (displayName.trim()[0] ?? "?").toUpperCase();
   const closeMenu = () => setMenuOpen(false);
   const { dot: syncDot, label: syncLabel } = syncBrief(syncStatus, C, t);
-  // Owner round 3 item 13: the persistent "Synced vX · build …" line's own hover tooltip — a
-  // SECOND `useAppUpdate()` mount, harmless per that hook's own doc comment (one shared flag, any
-  // number of consumers; `Rail`'s top-level `needRefresh`/`incomingVersion` read is for the
-  // DIFFERENT rail update card, not this row). While an update is waiting, the tooltip names the
-  // INCOMING version when the wave-A channel has resolved it yet (`/version.json`, `incomingVersion`
-  // — null until fetched, or if it raced a stale proxy); otherwise it falls back to the versionless
-  // phrasing, the same two-branch idiom `RailUpdateCard`'s own sub-line already uses. With no
-  // update waiting, the tooltip repeats the row's own text (version + full build stamp) under an
-  // "Enveo v…" lead-in — the SAME bare, untranslated brand+version idiom the user-menu footer
-  // already uses (`Enveo v${APP_VERSION}` above, no `t()`: a proper noun + a version number is not
-  // a sentence to translate, and `buildLabel()`'s own "build …"/sha text is technical, not prose).
+
   const { needRefresh: buildUpdateWaiting, incomingVersion: buildIncomingVersion } = useAppUpdate();
   const buildLineTitle = buildUpdateWaiting
     ? buildIncomingVersion !== null
@@ -811,7 +735,6 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
       active: settings.discreet,
       label: t("discreet"),
       d: D_EYE,
-      
 
       onClick: () => {
         setMenuOpen(false);
@@ -823,7 +746,7 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
       active: darkOn,
       label: t("dark"),
       d: D_MOON,
-       
+
       onClick: () => {
         setMenuOpen(false);
         setSettings({ ...settings, themeMode: darkOn ? "light" : "dark" });
@@ -848,7 +771,6 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
         flexShrink: 0,
         marginTop: 10,
         paddingTop: 10,
-        
 
         borderTop: `1px solid ${C.railBorder}`,
         position: "relative",
@@ -856,8 +778,7 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
     >
       {menuOpen && (
         <>
-          {
-}
+          {}
           <div onClick={closeMenu} style={{ position: "fixed", inset: 0, zIndex: 15 }} />
           <div
             role="menu"
@@ -1006,14 +927,7 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
               </span>
               {email && <span style={{ fontSize: 10.5, color: C.railMute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email}</span>}
             </span>
-            {/* Owner round 8 item 31: the SAME gear the popover's own "settings" tile draws
-                (`D_GEAR` through `Ico`, in the `quicks` row above), not a second rendering of it.
-                This slot used to hold a bare "⚙" text glyph — the design's own markup for it
-                (v3:175), but the app resolves every drawer/menu glyph to a 1.7-stroke path
-                instead (chrome.tsx: "zero emoji"), so the two gears the user sees one click apart
-                were a font-rendered character and a stroked icon. One source now; only the size
-                differs (13 here against the tile's 15, matching the 12px text slot it replaced).
-                The wrapper keeps `aria-hidden` + `flexShrink` off the shared icon component. */}
+            {}
             <span aria-hidden style={{ display: "flex", flexShrink: 0 }}>
               <Ico d={D_GEAR} size={13} color={C.railMute} sw={1.7} />
             </span>
@@ -1061,12 +975,6 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
             {syncLabel}
           </span>
           <span
-            
-
-
-
-
-
             title={buildLineTitle}
             style={{
               flex: 1,
@@ -1091,19 +999,6 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
   );
 }
 
-/**
- * The wide shell's navigation rail (spec §5-§10, demo lines 88-186): logo, five screen buttons,
- * a desktop-only "to be budgeted" card, and the user block/menu. Extends the task-4 skeleton
- * (`RailButton`, the plain icon-only rail) rather than replacing it — fold stays exactly what
- * task 4 shipped, desktop gains labels + the card. Entirely inside the lazy wide chunk.
- *
- * Divergence from task 4: the standalone bottom "Settings" gear button is REMOVED here. Task 4's
- * comment called it a placeholder ("a settings gear at the bottom") pending the user menu this
- * task adds; the demo's own `navItems` never included Settings as a sixth rail button (only the
- * five screens), and the user menu's "settings" quick tile (mirroring Drawer's phone pattern,
- * where Settings is likewise reachable ONLY through the Drawer's quick tile, never a BottomNav
- * tab) now covers that access without a redundant second affordance.
- */
 export function Rail({
   mode,
   screen,
@@ -1122,10 +1017,9 @@ export function Rail({
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
   onFillGoals: () => void;
   onInstall: () => void;
-  
 
   onSelectAccount: (id: string) => void;
-   
+
   selectedAccountId: string | null;
 }) {
   const C = useTheme();
@@ -1146,41 +1040,25 @@ export function Rail({
     { id: "activity", label: t("Imports") },
   ];
   return (
-    
-
-
     <div
       data-wide-rail
       style={{
         width: RAIL_W[mode],
-        
-
-
 
         boxSizing: "border-box",
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
         alignItems: mode === "desktop" ? "stretch" : "center",
-        
-
 
         gap: mode === "desktop" ? 10 : 6,
         padding: mode === "desktop" ? "16px 12px" : "16px 0",
-        // Desktop only: fold's icon-only rail (`RailButton`) still colors its active/inactive
-        // icons off `TEAL`/`C.soft` (task 4's original skeleton, unchanged here — fold's own
-        // layout gate is a later, separate audit pass), which read correctly against the
-        // existing `C.surface`. Painting `C.railBg` there too would go navy under Duet while
-        // those icon colors stay Cisza-calibrated — invisible-icon regression, not a fold gap.
+
         background: mode === "desktop" ? C.railBg : C.surface,
         // `railBorder` (design's `T.railBorder`, demo 87 — the rail's OWN outer separator, not
         // the content surface's `line`) — design parity wave A close, item 1.
         borderRight: `1px solid ${C.railBorder}`,
-        // NOT overflow:hidden — see the UserBlock comment above: an overflow-clipping ancestor
-        // cuts an absolutely-positioned descendant exactly like a transform-created containing
-        // block would, and this root is one (the 236px menu vs. a 68px fold rail). Task 4's
-        // original icon-only skeleton carried this style with nothing that needed clipping;
-        // task 5 built the real menu on top of it unchanged, which is what clipped it.
+
         overflow: "visible",
       }}
     >
@@ -1199,8 +1077,7 @@ export function Rail({
             rail (design parity wave A close, item 3; same reasoning as `NavRow`'s `fg` above). */}
         {mode === "desktop" && <span style={{ fontSize: 15, fontWeight: 700, color: C.headerInk }}>Enveo</span>}
       </div>
-      {
-}
+      {}
       <div
         style={{
           display: "flex",

@@ -9,16 +9,14 @@ import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const SRC = new URL("..", import.meta.url).pathname;  
-
-
+const SRC = new URL("..", import.meta.url).pathname;
 
 const ALLOWED = new Set([
-  "openaiHttp.ts",  
-  "openaiHttp.test.ts",  
-  "aiSpend/transport.ts",  
+  "openaiHttp.ts",
+  "openaiHttp.test.ts",
+  "aiSpend/transport.ts",
   "aiSpend/transport.test.ts",
-  "aiSpend/transport.noUnmeteredPath.test.ts",  
+  "aiSpend/transport.noUnmeteredPath.test.ts",
   "aiCredentials/transport.ts", // BYOK: request-scoped user credential, deliberately not operator-metered
   "aiCredentials/transport.test.ts",
 ]);

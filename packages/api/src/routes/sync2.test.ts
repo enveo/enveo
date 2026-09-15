@@ -74,8 +74,6 @@ describe("sync2 — input validation (format v2)", () => {
     expect(sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: -1, blob: "v2.zzzzzzzz", userId: "user-A" }).success).toBe(false);
     expect(sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 0, blob: "", userId: "user-A" }).success).toBe(false);
     expect(sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 10, blob: "v1.zzzzzzzz", userId: "user-A" }).success).toBe(false);
-    
-
 
     expect(sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 10, blob: "v2.zzzzzzzz" }).success).toBe(false);
     expect(sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 10, blob: "v2.zzzzzzzz", userId: "" }).success).toBe(false);
@@ -92,13 +90,13 @@ describe("sync2 — input validation (format v2)", () => {
       credentialAction: { kind: "none" },
     };
     expect(e2eeEnableInput.safeParse(ok).success).toBe(true);
-    expect(e2eeEnableInput.safeParse({ ...ok, wrappedDek: "v1.aaaaaaaa" }).success).toBe(false);  
+    expect(e2eeEnableInput.safeParse({ ...ok, wrappedDek: "v1.aaaaaaaa" }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ ...ok, snapshotBlob: "v1.bbbbbbbb" }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ ...ok, wrappedDek: "" }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ ...ok, userId: undefined }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ ...ok, budgetId: undefined }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ ...ok, nextEpoch: undefined }).success).toBe(false);
-    expect(e2eeEnableInput.safeParse({ ...ok, nextEpoch: 0 }).success).toBe(false);  
+    expect(e2eeEnableInput.safeParse({ ...ok, nextEpoch: 0 }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ ...ok, credentialAction: undefined }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ ...ok, credentialAction: { kind: "server-vault-to-e2ee", ciphertext: "v2.credentialAAAA" } }).success).toBe(true);
     expect(e2eeEnableInput.safeParse({ ...ok, credentialAction: { kind: "server-vault-to-e2ee", ciphertext: "v1.credentialAAAA" } }).success).toBe(false);
@@ -127,7 +125,7 @@ describe("sync2 — input validation (format v2)", () => {
     expect(e2eeDisableInput.safeParse({ ...ok, confirm: "WYŁĄCZ-E2EE" }).success).toBe(false);
     expect(e2eeDisableInput.safeParse({ ...ok, confirm: "YES" }).success).toBe(false);
     expect(e2eeDisableInput.safeParse({ ...ok, confirm: undefined }).success).toBe(false);
-    expect(e2eeDisableInput.safeParse({ ...ok, userId: undefined }).success).toBe(false);  
+    expect(e2eeDisableInput.safeParse({ ...ok, userId: undefined }).success).toBe(false);
     expect(e2eeDisableInput.safeParse({ ...ok, budgetId: undefined }).success).toBe(false);
     expect(e2eeDisableInput.safeParse({ ...ok, expectedEpoch: undefined }).success).toBe(false);
     expect(e2eeDisableInput.safeParse({ ...ok, credentialAction: undefined }).success).toBe(false);
@@ -146,7 +144,6 @@ describe("sync2 — input validation (format v2)", () => {
     expect(sync2RekeyInput.safeParse({ ...ok, expectedEpoch: undefined }).success).toBe(false);
     expect(sync2RekeyInput.safeParse({ ...ok, expectedEpoch: -1 }).success).toBe(false);
     expect(sync2RekeyInput.safeParse({ ...ok, expectedEpoch: 1.5 }).success).toBe(false);
-    
 
     expect(sync2RekeyInput.safeParse({ ...ok, userId: undefined }).success).toBe(false);
   });
@@ -177,11 +174,11 @@ describe("sync2 — input validation (format v2)", () => {
     };
     expect(e2eeUpgradeV2Input.safeParse(ok).success).toBe(true);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, budgetId: undefined }).success).toBe(false); // tenant assertion
-    expect(e2eeUpgradeV2Input.safeParse({ ...ok, userId: undefined }).success).toBe(false);  
+    expect(e2eeUpgradeV2Input.safeParse({ ...ok, userId: undefined }).success).toBe(false);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, userId: "" }).success).toBe(false);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, expectedEpoch: undefined }).success).toBe(false);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, expectedEpoch: -1 }).success).toBe(false);
-    expect(e2eeUpgradeV2Input.safeParse({ ...ok, cipherVersion: 1 }).success).toBe(false);  
+    expect(e2eeUpgradeV2Input.safeParse({ ...ok, cipherVersion: 1 }).success).toBe(false);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, wrappedDek: "v1.aaaaaaaa" }).success).toBe(false); // the old envelope is never reused
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, snapshotBlob: "v1.bbbbbbbb" }).success).toBe(false);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, snapshotBlob: "" }).success).toBe(false);

@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import * as outbox from "../outbox";
 import type { SyncState, SyncStatus } from "./contracts";
 
@@ -48,21 +42,19 @@ export function bumpStatus(): void {
 
 export function setState(s: SyncState): void {
   if (syncState === s) {
-    bumpStatus();  
+    bumpStatus();
     return;
   }
   syncState = s;
   bumpStatus();
 }
 
- 
 export function setOwnerUnproven(v: boolean): void {
   if (ownerUnproven === v) return;
   ownerUnproven = v;
   bumpStatus();
 }
 
- 
 export function setLastSyncAt(v: string | null): void {
   lastSyncAt = v;
 }
@@ -71,7 +63,6 @@ export function getLastSyncAt(): string | null {
   return lastSyncAt;
 }
 
- 
 export function getSyncStatus(): SyncStatus {
   return statusSnapshot;
 }

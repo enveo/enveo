@@ -1,9 +1,3 @@
-/**
- * Panel-width clamp (geometry.ts). The exact table from pr4-context.md §0b item 9 and
- * pr4-task-4-brief.md §4b, plus the two invariants that table is meant to hold everywhere:
- * the panel never drops below 320px, and the primary column never drops below `PRIMARY_MIN`
- * (390px) at any width ≥900 (the narrowest wide layout, `FOLD_MIN`).
- */
 import { describe, expect, test } from "bun:test";
 import { RAIL_W } from "../../lib/viewMode";
 import { PRIMARY_MIN, paneWidthFor } from "./geometry";

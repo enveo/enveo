@@ -1,13 +1,3 @@
-
-
-
-
-
-
-
-
-
-
 import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -78,7 +68,6 @@ describe("selectBiomePaths (pure)", () => {
   });
 
   test("the final NUL terminator does not produce a phantom empty path", () => {
-     
     expect(selectBiomePaths(nul("a.ts", "b.ts"), always)).toEqual(["./a.ts", "./b.ts"]);
   });
 
@@ -93,10 +82,6 @@ describe("selectBiomePaths (pure)", () => {
   });
 });
 
-
-
-
-
 const tempRoots: string[] = [];
 afterAll(() => {
   for (const dir of tempRoots) rmSync(dir, { recursive: true, force: true });
@@ -108,7 +93,6 @@ function tempDir(prefix: string): string {
   return dir;
 }
 
- 
 function writeStubBiome(dir: string, exitCode: number): { bin: string; argvFile: string } {
   const argvFile = join(dir, "stub-argv.json");
   const bin = join(dir, "stub-biome.ts");

@@ -9,17 +9,6 @@ import { discardPendingE2eeUpgrade, hasPendingE2eeUpgrade, TierMismatchError, up
 import { CORAL, font } from "../../lib/theme";
 import { ActionGroup, ActionIcon, ActionRow } from "./ui";
 
-
-
-
-
-
-
-
-
-
-
-
 export function E2eeUpgradePanel({ onDone, onServerNowV2 }: { onDone: () => void; onServerNowV2?: () => void }) {
   const { t } = useT();
   const theme = useTheme();
@@ -50,9 +39,6 @@ export function E2eeUpgradePanel({ onDone, onServerNowV2 }: { onDone: () => void
     } catch (e) {
       setPending(await hasPendingE2eeUpgrade()); // a stale-epoch refusal drops the record
       if (e instanceof TierMismatchError) {
-        
-
-
         if (e2ee.getCipherVersion() === 2 && onServerNowV2) {
           onServerNowV2();
           return;
@@ -61,8 +47,6 @@ export function E2eeUpgradePanel({ onDone, onServerNowV2 }: { onDone: () => void
         // (throwIfTierMismatch), so a retry recomputes the contexts from the new state.
         setError(t("The budget changed on the server in the meantime — nothing was written. Try again."));
       } else {
-        
-
         setError(`${t("The upgrade failed — nothing was changed on the server.")} ${apiErrorMessage(e)}`);
       }
     } finally {

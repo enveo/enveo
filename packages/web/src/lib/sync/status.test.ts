@@ -1,14 +1,8 @@
-
-
-
-
-
 import { afterEach, describe, expect, it } from "bun:test";
 import * as outbox from "../outbox";
 import { getLastSyncAt, getSyncStatus, installOutboxStatusListener, setLastSyncAt, setOwnerUnproven, setState, subscribeSyncStatus } from "./status";
 
 afterEach(() => {
-   
   setOwnerUnproven(false);
   setLastSyncAt(null);
   setState("synced");
@@ -19,7 +13,7 @@ describe("sync/status: snapshot stability and notifications", () => {
     setState("synced");
     const a = getSyncStatus();
     const b = getSyncStatus();
-    expect(b).toBe(a);  
+    expect(b).toBe(a);
 
     setState("syncing");
     const c = getSyncStatus();
@@ -33,7 +27,7 @@ describe("sync/status: snapshot stability and notifications", () => {
     const stop = subscribeSyncStatus(() => {
       notified++;
     });
-    setState("synced");  
+    setState("synced");
     stop();
     expect(notified).toBe(1);
     expect(getSyncStatus().state).toBe("synced");
@@ -45,7 +39,7 @@ describe("sync/status: snapshot stability and notifications", () => {
     const stop = subscribeSyncStatus(() => {
       notified++;
     });
-    setOwnerUnproven(false);  
+    setOwnerUnproven(false);
     expect(notified).toBe(0);
     setOwnerUnproven(true);
     expect(notified).toBe(1);
@@ -59,7 +53,7 @@ describe("sync/status: snapshot stability and notifications", () => {
     setLastSyncAt("2026-08-13T00:00:00.000Z");
     expect(getLastSyncAt()).toBe("2026-08-13T00:00:00.000Z");
     // setLastSyncAt alone does not rebuild the snapshot (loadSyncMeta relies on that)…
-    setState("syncing");  
+    setState("syncing");
     expect(getSyncStatus().lastSyncAt).toBe("2026-08-13T00:00:00.000Z");
   });
 

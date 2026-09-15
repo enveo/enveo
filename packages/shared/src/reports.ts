@@ -1,7 +1,3 @@
-
-
-
-
 import { computeBudgetState, monthOf, prevMonth } from "./budget";
 import { goalProgress } from "./goals";
 import type { ClientLedger, Money, Transaction } from "./types";
@@ -11,7 +7,6 @@ export interface NetWorthPoint {
   total: Money;
 }
 
- 
 export function computeNetWorthSeries(ledger: ClientLedger, month: string, months = 12): NetWorthPoint[] {
   const window: string[] = [month];
   for (let i = 0; i < months - 1; i++) window.unshift(prevMonth(window[0]!));
@@ -28,11 +23,6 @@ export interface CashflowPoint {
   net: Money;
 }
 
-
-
-
-
-
 export function computeCashflowSeries(ledger: ClientLedger, month: string, months = 12): CashflowPoint[] {
   const window: string[] = [month];
   for (let i = 0; i < months - 1; i++) window.unshift(prevMonth(window[0]!));
@@ -47,7 +37,7 @@ export function computeCashflowSeries(ledger: ClientLedger, month: string, month
       b.income += t.amount;
       continue;
     }
-     
+
     const sign = t.isRefund ? -1 : 1;
     if (t.items.length > 0) {
       b.expense += sign * t.items.filter((i) => !savings.has(i.envelopeId)).reduce((s, i) => s + i.amount, 0);
@@ -85,7 +75,6 @@ export const NULL_LABEL: Record<SpendingDimension, string> = {
   place: "__no_place__",
 };
 
- 
 function expenseByDimension(t: Transaction, dim: SpendingDimension, envGroup: Map<string, string>, savings: Set<string>): Array<[string | null, Money]> {
   if (t.type !== "expense") return [];
   const sign = t.isRefund ? -1 : 1;
@@ -114,15 +103,10 @@ function expenseByDimension(t: Transaction, dim: SpendingDimension, envGroup: Ma
   return [[key, sign * t.amount]];
 }
 
- 
 export function computeSpendingByDimension(ledger: ClientLedger, fromMonth: string, toMonth: string, dim: SpendingDimension): SpendingRow[] {
   const envGroup = new Map(ledger.envelopes.map((e) => [e.id, e.groupId]));
   const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
   const nameOf = (key: string | null): string => {
-    
-
-
-
     if (key === null) return NULL_LABEL[dim];
     if (dim === "category") return ledger.categories.find((c) => c.id === key)?.name ?? NULL_LABEL.category;
     if (dim === "place") return ledger.places.find((p) => p.id === key)?.name ?? NULL_LABEL.place;
@@ -144,14 +128,6 @@ export function computeSpendingByDimension(ledger: ClientLedger, fromMonth: stri
     .sort((a, b) => b.amount - a.amount);
 }
 
-
-
-
-
-
-
-
-
 export function median(xs: number[]): number {
   if (xs.length === 0) return 0;
   const sorted = [...xs].sort((a, b) => a - b);
@@ -159,19 +135,9 @@ export function median(xs: number[]): number {
 }
 
 export interface DailySpendingPoint {
-  date: string;  
+  date: string;
   total: Money;
 }
-
-
-
-
-
-
-
-
-
-
 
 export function computeDailySpending(ledger: ClientLedger, month: string): DailySpendingPoint[] {
   const envGroup = new Map(ledger.envelopes.map((e) => [e.id, e.groupId]));
@@ -180,7 +146,7 @@ export function computeDailySpending(ledger: ClientLedger, month: string): Daily
   const byDate = new Map<string, Money>();
   for (let d = 1; d <= daysInMonth; d++) byDate.set(`${month}-${String(d).padStart(2, "0")}`, 0);
   for (const t of ledger.transactions) {
-    if (!byDate.has(t.date)) continue;  
+    if (!byDate.has(t.date)) continue;
     const amt = expenseByDimension(t, "category", envGroup, savings).reduce((s, [, a]) => s + a, 0);
     if (amt !== 0) byDate.set(t.date, byDate.get(t.date)! + amt);
   }
@@ -194,11 +160,11 @@ export interface DaySpendingEnvelope {
 }
 
 export interface DaySpending {
-  date: string;  
+  date: string;
   total: Money;
-  count: number;  
-  txns: Transaction[];  
-  byEnvelope: DaySpendingEnvelope[];  
+  count: number;
+  txns: Transaction[];
+  byEnvelope: DaySpendingEnvelope[];
 }
 
 /**
@@ -304,7 +270,7 @@ export function topPlaces(ledger: ClientLedger, fromMonth: string, toMonth: stri
   return [...byPlace.entries()]
     .map(([key, b]) => ({
       key,
-      name: ledger.places.find((p) => p.id === key)?.name ?? NULL_LABEL.place,  
+      name: ledger.places.find((p) => p.id === key)?.name ?? NULL_LABEL.place,
       count: b.count,
       total: b.total,
     }))
@@ -325,13 +291,6 @@ export interface LargestExpense {
   amount: Money;
 }
 
-
-
-
-
-
-
-
 function labelFor(t: Transaction, ledger: ClientLedger): string {
   if (t.placeId) {
     const place = ledger.places.find((p) => p.id === t.placeId);
@@ -350,21 +309,6 @@ function labelFor(t: Transaction, ledger: ClientLedger): string {
   return "—";
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 function contextFor(t: Transaction, ledger: ClientLedger, label: string, savings: Set<string>): string | null {
   let context: string | null;
   if (t.items.length > 0) {
@@ -378,17 +322,6 @@ function contextFor(t: Transaction, ledger: ClientLedger, label: string, savings
   }
   return context !== null && context !== label ? context : null;
 }
-
-
-
-
-
-
-
-
-
-
-
 
 export function largestExpenses(ledger: ClientLedger, month: string, limit = 5): LargestExpense[] {
   const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
@@ -437,19 +370,13 @@ export interface SpendingDetailRow {
 }
 
 export interface SpendingDetail {
-   
   subDim: SpendingDimension;
-  
-
-
 
   amount: Money;
-   
+
   rows: SpendingDetailRow[];
   /** Matching transactions (refund or not — the same set `amount` nets). */
   txnCount: number;
-  
-
 
   avgAmount: Money;
   /** Largest single NON-REFUND contribution magnitude (mirrors `largestExpenses`'s own refund
@@ -611,10 +538,10 @@ export function savingsRate(points: CashflowPoint[]): { current: number | null; 
 }
 
 export interface GoalHistoryPoint {
-  month: string;  
-  allocated: Money;  
-  pct: number;  
-  met: boolean;  
+  month: string;
+  allocated: Money;
+  pct: number;
+  met: boolean;
 }
 
 export interface GoalHistory {
@@ -623,7 +550,7 @@ export interface GoalHistory {
    *  the UI text cannot drift from the arithmetic. Changing a goal rewrites its history. */
   basis: "current-target";
   target: Money;
-  points: GoalHistoryPoint[];  
+  points: GoalHistoryPoint[];
 }
 
 /**

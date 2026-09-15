@@ -1,41 +1,9 @@
-/**
- * Which of the Budget screen's two allocation sheets is open — ONE App-owned value, not two
- * one-shot flags (owner round 8 item 32).
- *
- * Both sheets write real allocations ("Suggest a distribution" applies a whole distribution,
- * "Fill by goals" assigns the goal shortfalls), so "which one is open" is a single choice, never
- * an independent boolean per sheet: the union below makes "both open at once" — and with it the
- * double-write hazard of two live Assign buttons over the same `readyToAssign` — unrepresentable.
- *
- * WHY THIS IS NOT THE `addPreset` DEEP-LINK-FLAG IDIOM. The consumption-cleared flag pattern
- * (`addPreset`, and what these two sheets used before this module) delivers an intent to a screen
- * that is about to MOUNT: App sets the flag, the screen reads it as its initial state on mount and
- * acks the consumption, and the flag is one-shot precisely because a remount must not replay it.
- * That fits a preset for a FRESH Add. It does not fit these two, because their entry points live
- * OUTSIDE the Budget screen and stay clickable while the Budget screen is already mounted: the
- * wide rail's "✨ Suggest" / "Fill by goals" pills, the fold TBB strip's copies of them, the Start
- * board's quick actions and the Goals report's "Fill ›". Raising an intent from any of those while
- * Budget was already on screen changed the prop but not the mounted component — the sheet simply
- * never opened (the owner's "sometimes they do nothing, especially one after the other"), and the
- * unconsumed flag then stayed armed until the NEXT real mount, which opened a sheet nobody asked
- * for and, with the other flag also armed, both at once. Measured live before this fix: the rail
- * pills are hit-testable even while a sheet is open, so the intent can be raised at any moment.
- *
- * The fix is the one App already applies to every other sheet the wide chrome has to drive from
- * outside its screen (`editWidgetsOpen`, `manageOpen`, `wideBoardEdit` — "same sheets, same
- * buttons, only the state's home moves"): lift the state. With the open sheet held in App there is
- * no delivery step left to miss and no flag left to go stale — the state IS the answer, so every
- * entry point works from any screen, in any order, any number of times.
- */
-
 // The lazy-chunk latch every deliberate-tap sheet in the app already uses — imported rather than
 // re-implemented so there is exactly ONE "has this ever been open" rule (see `useBudgetSheets`).
 import { useOpenedOnce } from "../components/lazy";
 
- 
 export type BudgetSheet = "suggest" | "fillGoals";
 
- 
 export type BudgetSheetState = BudgetSheet | null;
 
 /**
@@ -71,15 +39,13 @@ export function budgetSheetAfter(_prev: BudgetSheetState, event: BudgetSheetEven
   }
 }
 
- 
 export type BudgetSheetView = {
-   
   suggest: boolean;
-   
+
   fillGoals: boolean;
-   
+
   suggestOpened: boolean;
-   
+
   fillGoalsOpened: boolean;
 };
 /**

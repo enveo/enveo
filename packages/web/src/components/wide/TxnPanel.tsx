@@ -8,19 +8,6 @@ import { local } from "../../lib/mutate";
 import { store } from "../../lib/store";
 import { font, TRANSFER, tint } from "../../lib/theme";
 
-/**
- * Design parity wave C task 3 — the transaction detail pane body (v3's `txn` pane, `txnDetail`
- * v3:2846-2876, markup v3:1316-1364): a read-only card, exactly like `AccountPanel`/`EnvelopePanel`
- * before it — hosted exclusively by `PanelHost`'s `txn` kind, which only ever renders on wide.
- * Owner rule 2 is the whole point of this file: a row click must land HERE, never on the phone's
- * numpad editor (`AddScreen`) — that only opens after an explicit Edit tap.
- *
- * `state.transactions`/`state.envelopes` are the VIEWED-month replica `PanelHost` already threads
- * everywhere else — correct for a transaction (transactions and envelope `available`/`spent` are
- * both month-scoped by construction) but wrong for a GLOBAL account balance, so the no-envelope
- * stat row recomputes accounts at `currentMonth()` off the live ledger — the exact `AccountPanel`
- * rule (Rail.tsx `TbbCard`, the 3.6.2 incident) applied here too.
- */
 export function TxnPanel({
   txnId,
   state,
@@ -47,22 +34,12 @@ export function TxnPanel({
 
   const tx = state.transactions.find((x) => x.id === txnId) ?? null;
 
-  
-
-
   const accountsNow = useMemo(() => {
     const l = store.getLedger();
     return l ? computeStateResponse(l, currentMonth()).accounts : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
 
-  // Vanished transaction (deleted elsewhere between panel-open and this render — a delete from
-  // another device, a sync pull): render the hint body, never crash — the `AccountPanel`/
-  // `EnvelopeScreen` no-data rule, verbatim. `WideShell`'s own vanish effect (design parity wave C
-  // task 3) is the NORMAL path back to a real fallback; this is the defensive backstop for the one
-  // frame in between, reusing the panel's own generic "nothing open" copy (`HINT_COPY.generic`,
-  // PanelHost.tsx) rather than inventing a transaction-specific string for a case that should be
-  // instantly superseded.
   if (!tx) {
     return (
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" }}>
@@ -128,7 +105,7 @@ export function TxnPanel({
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 13 }}>
-      { }
+      {}
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         <span style={{ fontSize: 10, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: C.mute }}>{kindLabel}</span>
         <span style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.025em", color: amount.color, fontVariantNumeric: "tabular-nums" }}>{amount.text}</span>
@@ -136,7 +113,7 @@ export function TxnPanel({
         {dateCat && <span style={{ fontSize: 12.5, color: C.soft }}>{dateCat}</span>}
       </div>
 
-      { }
+      {}
       <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden" }}>
         <div
           role={env ? "button" : undefined}
@@ -170,7 +147,7 @@ export function TxnPanel({
         </div>
       </div>
 
-      { }
+      {}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {rows.map((r) => (
           <div key={r.label} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", fontSize: 12.5, color: C.soft }}>

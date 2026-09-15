@@ -21,10 +21,10 @@ describe("balance match options", () => {
 
 describe("finding a selection that matches the bank balance", () => {
   const pool = [
-    candidate("pending-lunch", -1847, true),  
-    candidate("refund", 5273, false),  
-    candidate("topup", 84216, false, true),  
-    candidate("dup", -27641, true),  
+    candidate("pending-lunch", -1847, true),
+    candidate("refund", 5273, false),
+    candidate("topup", 84216, false, true),
+    candidate("dup", -27641, true),
   ];
 
   it("returns nothing when the balance already matches", () => {
@@ -32,13 +32,10 @@ describe("finding a selection that matches the bank balance", () => {
   });
 
   it("prefers the smallest number of changes and lists every minimal solution", () => {
-    
-
     expect(findBalanceMatches(pool, 27641)).toEqual([[{ id: "dup", action: "exclude", delta: 27641 }]]);
   });
 
   it("combines changes when no single row explains the difference", () => {
-     
     expect(findBalanceMatches(pool, 32914)).toEqual([
       [
         { id: "refund", action: "include", delta: 5273 },
@@ -65,7 +62,6 @@ describe("the closest fit when nothing is exact", () => {
   const candidate = (id: string, effect: number, included = true, flippable = false): BalanceMatchCandidate => ({ id, effect, included, flippable });
 
   it("returns the change set with the smallest residual, then the fewest changes", () => {
-     
     const nearest = findNearestBalanceMatch([candidate("dup-credit", 74218), candidate("cancelled", 91863), candidate("pending", -36529, false)], -166822);
 
     expect(nearest).toEqual({
@@ -78,8 +74,6 @@ describe("the closest fit when nothing is exact", () => {
   });
 
   it("prefers one large plausible change over several small ones that fit a few cents better", () => {
-    
-
     const nearest = findNearestBalanceMatch(
       [
         candidate("cancelled", 91863),
@@ -99,7 +93,7 @@ describe("the closest fit when nothing is exact", () => {
   });
 
   it("offers nothing when no change brings the difference closer, or when it is already zero", () => {
-    expect(findNearestBalanceMatch([candidate("a", -500)], -700)).toBeNull();  
+    expect(findNearestBalanceMatch([candidate("a", -500)], -700)).toBeNull();
     expect(findNearestBalanceMatch([candidate("a", -500)], 0)).toBeNull();
     expect(findNearestBalanceMatch([], -700)).toBeNull();
   });

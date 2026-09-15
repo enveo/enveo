@@ -52,7 +52,6 @@ class BadKeyError extends Error {}
  *  distinguishable from a malformed code, so the user hears the truth, not "invalid code". */
 class StaleKeyError extends BadKeyError {}
 
- 
 class UpgradeRequiredSignal extends Error {}
 
 /**
@@ -103,14 +102,13 @@ async function acceptDek(dek: Uint8Array, snap: Snap2, expectedBudgetId: string,
   e2ee.setTierMeta({ tier: "e2ee", epoch: snap.epoch });
   e2ee.setCipherVersion(2);
   e2ee.setDek(dek, validated ? snap.epoch : null);
-  void broadcastKeysChanged();  
+  void broadcastKeysChanged();
   await retryBoot();
 }
 
 export function UnlockScreen() {
   const C = useTheme();
   const { t } = useT();
-  
 
   const wide = useViewMode() !== "phone";
   // The sync engine records the server's format BEFORE routing here (cipherVersion meta is
@@ -126,7 +124,7 @@ export function UnlockScreen() {
     setError(null);
     try {
       const snap = await fetchSnap2();
-      if (!snap) return;  
+      if (!snap) return;
       if (!snap.wrappedDek || !snap.kdfParams || !snap.budgetId) throw new BadKeyError("missing key envelope");
       let dek: Uint8Array;
       try {
@@ -171,12 +169,11 @@ export function UnlockScreen() {
         return;
       }
       const snap = await fetchSnap2();
-      if (!snap) return;  
+      if (!snap) return;
       if (snap.budgetId && snap.budgetId !== codeBudgetId) {
         setError(t("This pairing code belongs to a different budget."));
         return;
       }
-      
 
       await acceptDek(dek, snap, codeBudgetId, false);
     } catch (e) {
@@ -284,9 +281,7 @@ export function UnlockScreen() {
               </div>
             );
           })()}
-          {
-
-}
+          {}
           <button
             type="button"
             onClick={() => {

@@ -105,8 +105,6 @@ describe("AI provider implementations", () => {
   });
 
   it("puts the Enveo-to-rules downgrade inside the snapshot used by E2EE enable", () => {
-    
-
     const preferences = { ...createDefaultBudgetPreferences(), aiProvider: "enveo" as const };
     const ledger: ClientLedger = {
       budgets: [{ id: "budget-a", name: "Budget", currency: "EUR", preferences }],
