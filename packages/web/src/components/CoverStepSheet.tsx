@@ -243,7 +243,7 @@ export function CoverStepSheet({
 
   return (
     <>
-      <Surface show onClose={close} tall={donors.length > 5}>
+      <Surface show onClose={close}>
         {(C) => (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{title}</div>
