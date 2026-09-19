@@ -84,6 +84,104 @@ afterEach(() => {
 });
 
 describe("plain durable import adapter", () => {
+  it.each(["ready", "completed"] as const)("continues refreshing when a listed %s import disappears before its detail arrives", async (status) => {
+    // given: a listed import is deleted or expires while its details are being loaded
+    const missing = detail({ status, phase: status });
+    const remaining = detail({ id: "remaining-job", status: "completed", phase: "completed", appliedCount: 3 });
+    const activity = createImportActivityStore();
+    activity.upsert(importActivityFromServer(missing));
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity,
+      remote: remote({
+        list: async () => [missing, remaining],
+        get: async (id) => {
+          if (id === ID) throw new Error('404 {"error":"not_found"}');
+          return remaining;
+        },
+      }),
+    });
+
+    // when: the list refresh reaches the missing import
+    await adapter.refresh();
+
+    // then: the missing import is gone and the remaining history is refreshed
+    expect(activity.get(ID)).toBeUndefined();
+    expect(activity.get("remaining-job")).toMatchObject({ status: "completed", appliedCount: 3 });
+  });
+
+  it("does not restore a deleted import from a detail response already in flight", async () => {
+    const completed = detail({ status: "completed", phase: "completed" });
+    const requested = deferred<void>();
+    const deleted = deferred<void>();
+    const response = deferred<ImportJobDetail>();
+    const activity = createImportActivityStore();
+    activity.upsert(importActivityFromServer(completed));
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity,
+      remote: remote({
+        list: async () => [completed],
+        removeMany: async () => {
+          deleted.resolve();
+          return { deleted: 1 };
+        },
+        get: () => {
+          requested.resolve();
+          return response.promise;
+        },
+      }),
+    });
+
+    // when: deletion finishes before an older detail response
+    const refresh = adapter.refresh();
+    await requested.promise;
+    const removal = adapter.removeMany([ID]);
+    await deleted.promise;
+    response.resolve(completed);
+    await Promise.all([refresh, removal]);
+
+    // then: the deleted import stays absent
+    expect(activity.list()).toEqual([]);
+  });
+
+  it("restores an import the server kept because processing resumed before deletion", async () => {
+    const activity = createImportActivityStore();
+    activity.upsert(importActivityFromServer(detail({ status: "failed", phase: "retry_scheduled" })));
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity,
+      remote: remote({
+        removeMany: async () => ({ deleted: 0 }),
+        list: async () => [detail({ status: "running", phase: "extracting" })],
+      }),
+    });
+
+    await adapter.removeMany([ID]);
+    await adapter.refresh();
+
+    expect(activity.get(ID)?.status).toBe("running");
+  });
+
+  it.each(["500 server_error", "401 unauthorized", "ai_unreachable"])("keeps history and reports a detail failure: %s", async (message) => {
+    const completed = detail({ status: "completed", phase: "completed" });
+    const activity = createImportActivityStore();
+    activity.upsert(importActivityFromServer(completed));
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity,
+      remote: remote({
+        list: async () => [completed],
+        get: async () => {
+          throw new Error(message);
+        },
+      }),
+    });
+
+    await expect(adapter.refresh()).rejects.toThrow(message);
+    expect(activity.get(ID)?.status).toBe("completed");
+  });
+
   it("hydrates completed counters from detail without changing the list wire contract", async () => {
     const completed = detail({ status: "completed", phase: "completed", proposalCount: 9, appliedCount: 7, skippedCount: 2 });
     const { locale: _locale, epoch: _epoch, result: _result, appliedCount: _appliedCount, skippedCount: _skippedCount, ...summary } = completed;
