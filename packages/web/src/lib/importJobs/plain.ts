@@ -91,6 +91,8 @@ export class PlainImportJobAdapter {
     for (let offset = 0; offset < ids.length; offset += 100) {
       const batch = ids.slice(offset, offset + 100);
       await this.remote.removeMany(batch, this.options.scope.budgetId);
+      // Drain older reads before removing items so their responses cannot restore them.
+      await this.refreshPromise?.catch(() => {});
       if (!this.isCurrent()) return;
       for (const id of batch) {
         this.dismissed.delete(id);
@@ -239,9 +241,16 @@ export class PlainImportJobAdapter {
         if (!this.isCurrent()) return;
         if (this.dismissed.has(summary.id)) continue;
         if (summary.status === "ready" || summary.status === "completed") {
-          const detail = await this.remote.get(summary.id);
-          if (!this.isCurrent()) return;
-          this.publish(importActivityFromServer(detail));
+          try {
+            const detail = await this.remote.get(summary.id);
+            if (!this.isCurrent()) return;
+            this.publish(importActivityFromServer(detail));
+          } catch (error) {
+            if (!this.isCurrent()) return;
+            if (!isDefinitiveNotFound(error)) throw error;
+            // A listed job can be deleted or expire before its detail is read.
+            this.options.activity.remove(summary.id);
+          }
         } else {
           this.publish(importActivityFromServer(summary));
         }
