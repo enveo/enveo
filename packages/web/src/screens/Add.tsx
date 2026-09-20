@@ -425,6 +425,16 @@ export function AddScreen({
   function submit() {
     if (!canSubmit) return;
     if (!draft) setLastAccountId(accountId);
+    // Text left in an open picker is the value the human meant: saving without tapping
+    // "+ Add" must not silently drop it (createCategory/createPlace reuse an existing name).
+    const typedCategory = tab === "expense" && !splitUi && catOpen ? catInput.trim() : "";
+    const typedCategoryRow = typedCategory ? local.createCategory(typedCategory) : null;
+    if (typedCategoryRow?.archived) local.setCategoryArchived(typedCategoryRow.id, false);
+    const finalCategoryId = typedCategoryRow?.id ?? categoryId;
+    const typedPlace = tab === "expense" && !draft && placeOpen ? placeInput.trim() : "";
+    const typedPlaceRow = typedPlace ? local.createPlace(typedPlace) : null;
+    if (typedPlaceRow?.archived) local.setPlaceArchived(typedPlaceRow.id, false);
+    const finalPlaceId = typedPlaceRow?.id ?? placeId;
 
     if (draft) {
       if (tab === "transfer" && (!toAccountId || toAccountId === accountId)) return;
@@ -441,7 +451,7 @@ export function AddScreen({
           // Place/category are expense-only — switching tab after picking either on an expense must
           // not silently attach them to an income/transfer.
           envelopeId: tab === "expense" ? envelopeId : null,
-          categoryId: tab === "expense" ? categoryId : null,
+          categoryId: tab === "expense" ? finalCategoryId : null,
           placeName: tab === "expense" ? (placeId ? (state.places.find((p) => p.id === placeId)?.name ?? null) : placeInput.trim() || null) : null,
           note,
         },
@@ -462,8 +472,8 @@ export function AddScreen({
       // Place/category are expense-only — gated the same way, so switching tab after picking
       // either on an expense never silently attaches them to an income/transfer.
       envelopeId: tab !== "expense" ? null : usingSplit ? null : envelopeId,
-      placeId: tab === "expense" ? placeId : null,
-      categoryId: usingSplit ? null : tab === "expense" ? categoryId : null,
+      placeId: tab === "expense" ? finalPlaceId : null,
+      categoryId: usingSplit ? null : tab === "expense" ? finalCategoryId : null,
       name: name.trim() || null,
       note: note || null,
       items: usingSplit ? items.map((i) => ({ envelopeId: i.envelopeId, amount: i.amount })) : undefined,
