@@ -791,7 +791,7 @@ export function AddScreen({
                 query={catInput}
                 searchPlaceholder={t("Type or pick a category...")}
                 createLabel={
-                  !draft && catInput.trim() && !state.categories.some((c) => c.name.toLowerCase() === catInput.trim().toLowerCase())
+                  catInput.trim() && !state.categories.some((c) => c.name.toLowerCase() === catInput.trim().toLowerCase())
                     ? t("+ Add “{name}”", { name: catInput.trim() })
                     : null
                 }
@@ -829,7 +829,7 @@ export function AddScreen({
               query={placeInput}
               searchPlaceholder={t("Type or pick a place...")}
               createLabel={
-                !draft && placeInput.trim() && !state.places.some((p) => p.name.toLowerCase() === placeInput.trim().toLowerCase())
+                placeInput.trim() && !state.places.some((p) => p.name.toLowerCase() === placeInput.trim().toLowerCase())
                   ? t("+ Add “{name}”", { name: placeInput.trim() })
                   : null
               }
