@@ -53,7 +53,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-enveo}:${POSTGRES_PASSWORD:-enveo}@db:5432/${POSTGRES_DB:-enveo}
       PORT: 8080
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-luna}
       # optional, DEDICATED secret (never BETTER_AUTH_SECRET): enables the privacy-preserving
       # safety_identifier on operator OpenAI calls (aiSpend/safetyIdentifier.ts)
       AI_SAFETY_IDENTIFIER_SECRET: ${AI_SAFETY_IDENTIFIER_SECRET:-}

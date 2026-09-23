@@ -77,22 +77,22 @@ describe("resolveDatabaseUrl", () => {
   });
 });
 
-describe("operator model default — every server/default surface names gpt-5.6-luna (backlog §1)", () => {
+describe("operator model default — every server/default surface names gpt-6-luna (backlog §1)", () => {
   const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 
-  it("env.ts falls back to gpt-5.6-luna", () => {
-    expect(read("packages/api/src/env.ts")).toContain('process.env.OPENAI_MODEL ?? "gpt-5.6-luna"');
+  it("env.ts falls back to gpt-6-luna", () => {
+    expect(read("packages/api/src/env.ts")).toContain('process.env.OPENAI_MODEL ?? "gpt-6-luna"');
   });
 
-  it("both compose files default OPENAI_MODEL to gpt-5.6-luna", () => {
-    const composeDefault = "$" + "{OPENAI_MODEL:-gpt-5.6-luna}"; // split so Biome does not read it as a template placeholder
+  it("both compose files default OPENAI_MODEL to gpt-6-luna", () => {
+    const composeDefault = "$" + "{OPENAI_MODEL:-gpt-6-luna}"; // split so Biome does not read it as a template placeholder
     expect(read("docker-compose.yml")).toContain(composeDefault);
     expect(read("compose.selfhost.yml")).toContain(composeDefault);
   });
 
-  it("both .env examples name gpt-5.6-luna and no surface still defaults to gpt-5.5", () => {
-    expect(read(".env.example")).toContain("OPENAI_MODEL=gpt-5.6-luna");
-    expect(read(".env.selfhost.example")).toContain("#OPENAI_MODEL=gpt-5.6-luna");
+  it("both .env examples name gpt-6-luna and no surface still defaults to gpt-5.5", () => {
+    expect(read(".env.example")).toContain("OPENAI_MODEL=gpt-6-luna");
+    expect(read(".env.selfhost.example")).toContain("#OPENAI_MODEL=gpt-6-luna");
     for (const rel of ["packages/api/src/env.ts", "docker-compose.yml", "compose.selfhost.yml", ".env.example", ".env.selfhost.example"]) {
       expect(read(rel)).not.toMatch(/OPENAI_MODEL[=:][^\n]*gpt-5\.5/);
     }
@@ -100,7 +100,7 @@ describe("operator model default — every server/default surface names gpt-5.6-
 
   it("the default model has a registered price entry (the cloud boot guard's happy path)", async () => {
     const { assertOperatorModelPriced } = await import("./aiSpend/pricing");
-    expect(() => assertOperatorModelPriced("gpt-5.6-luna")).not.toThrow();
+    expect(() => assertOperatorModelPriced("gpt-6-luna")).not.toThrow();
   });
 
   it("both compose files FORWARD AI_SAFETY_IDENTIFIER_SECRET (they enumerate env explicitly — an advertised var that is not listed never reaches the container)", () => {

@@ -43,7 +43,7 @@ describe("budget entity", () => {
     const afterWidgets = applyOp(base(), widgetOp);
     const afterModel = applyOp(afterWidgets, modelOp);
 
-    expect(afterWidgets.budgets[0]!.preferences.openaiModel).toBe("gpt-5.6-luna");
+    expect(afterWidgets.budgets[0]!.preferences.openaiModel).toBe("gpt-6-luna");
     expect(afterModel.budgets[0]!.preferences.openaiModel).toBe("gpt-5.6-sol");
     expect(afterModel.budgets[0]!.preferences.startWidgets).toEqual(widgets);
   });

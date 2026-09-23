@@ -1767,10 +1767,11 @@ describe("reasoningEffort — fast responses for suggest", () => {
     const impReq = buildImportExtractPrompt([], { envelopes: [], categories: [] }, "2026-07-11", "pl", "USD");
     expect(impReq.reasoningEffort).toBeUndefined();
   });
-  it("supportsReasoningEffort: gpt-5*/o* yes, others no", () => {
+  it("supportsReasoningEffort: GPT-5, GPT-6 and o-series accept reasoning effort", () => {
     expect(supportsReasoningEffort("gpt-5.5")).toBe(true);
     expect(supportsReasoningEffort("gpt-5.5-mini")).toBe(true);
     expect(supportsReasoningEffort("gpt-5.6-luna")).toBe(true);
+    expect(supportsReasoningEffort("gpt-6-luna")).toBe(true);
 
     expect(supportsReasoningEffort("gpt-5.6-terra")).toBe(true);
     expect(supportsReasoningEffort("gpt-5.6-sol")).toBe(true);

@@ -1,5 +1,5 @@
 /**
- * BYOK model registry (backlog §1, Luna migration): fresh settings default to gpt-5.6-luna,
+ * BYOK model registry (backlog §1, Luna migration): fresh settings default to gpt-6-luna,
  * while a legacy persisted choice must stay in the union — loadSettings merges the persisted
  * object OVER the defaults, so preserving the old ids in `OpenAiModel` is what keeps an
  * existing user's explicit selection alive (a removed id would silently retype their device).
@@ -113,9 +113,9 @@ describe("effective theme resolution (override ?? account)", () => {
 });
 
 describe("BYOK model registry", () => {
-  it("fresh settings default to gpt-5.6-luna", () => {
-    expect(DEFAULT_OPENAI_MODEL).toBe("gpt-5.6-luna");
-    expect(OPENAI_MODELS[0]).toBe("gpt-5.6-luna");
+  it("fresh settings default to gpt-6-luna", () => {
+    expect(DEFAULT_OPENAI_MODEL).toBe("gpt-6-luna");
+    expect(OPENAI_MODELS[0]).toBe("gpt-6-luna");
   });
 
   it("the §1b tier models are registered persistable choices", () => {

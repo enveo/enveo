@@ -183,3 +183,19 @@ describe("chatCostNanoUsd — arithmetic properties (seeded randomized boundary 
     expect(above).toEqual({ ok: false, reason: "cost_out_of_range" });
   });
 });
+
+describe("GPT-6 Luna accounting", () => {
+  it.each([
+    [1000, 600, 100, 100, 98_500n],
+    [272_000, 200_000, 20_000, 100, 9_750_000n],
+    [272_001, 200_000, 20_000, 100, 19_475_200n],
+  ])("prices %i input tokens including cached reads and writes", (prompt, cached, written, output, expected) => {
+    const entry = priceEntryFor("gpt-6-luna");
+    expect(entry).not.toBeNull();
+    expect(chatCostNanoUsd(entry!, "gpt-6-luna", usage(prompt, output, { cached_tokens: cached, cache_write_tokens: written }))).toMatchObject({
+      ok: true,
+      nanoUsd: expected,
+      priceVersion: "gpt-6-luna/2026-09-23",
+    });
+  });
+});
