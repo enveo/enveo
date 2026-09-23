@@ -234,18 +234,13 @@ describe("durable import foreground and Activity view models", () => {
     expect(source).toContain('gridTemplateColumns: wideHost ? "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" : "1fr"');
   });
 
-  it("opens screenshot review as a wide dialog and expands its editor outside phone mode", () => {
+  it("opens screenshot review and its editor in the side panel outside phone mode", () => {
     const source = readFileSync(join(import.meta.dir, "..", "components", "ImportSheet.tsx"), "utf8");
-    const chrome = readFileSync(join(import.meta.dir, "..", "components", "chrome.tsx"), "utf8");
 
-    expect(source).toContain("const wideHost = useWideHost()");
-    expect(source).toContain("<Sheet show={show} onClose={close} wideDialog>");
-    expect(source).toContain("maxWidth: wideHost ? 720 : PHONE_COL");
+    expect(source).toContain("<Surface show={show} onClose={close}>");
+    expect(source).toContain("const editorPanel = wideHost?.surfaces?.node ?? null");
+    expect(source).toContain("editorPanel ?? document.body");
     expect(source).toContain('data-import-editor-mode={wideHost?.mode ?? "phone"}');
     expect(source).toContain("importJobManager.list().catch");
-    expect(chrome).toContain("wideDialog?: boolean");
-    expect(chrome).toContain("const dialog = wideDialog && wideHost !== null");
-    expect(chrome).toContain('data-sheet-layout={dialog ? "dialog" : "bottom"}');
-    expect(chrome).toContain('boxSizing: "border-box"');
   });
 });

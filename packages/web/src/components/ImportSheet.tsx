@@ -58,7 +58,7 @@ import {
   reconcileImportJobResult,
 } from "../lib/localImport";
 import * as outbox from "../lib/outbox";
-import { useWideHost } from "../lib/shellContext";
+import { InWideShell, useWideHost } from "../lib/shellContext";
 import { store } from "../lib/store";
 import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -67,7 +67,7 @@ import { AddScreen } from "../screens/Add";
 import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
 import { AiConsentSheet } from "./AiConsentSheet";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
-import { Sheet } from "./chrome";
+import { Surface } from "./chrome";
 import { type ImportBalanceMatchState, ImportBalanceReceipt } from "./ImportBalanceReceipt";
 import { ImportCompletionDetails } from "./ImportCompletionDetails";
 import { LazyChunk, useOpenedOnce } from "./lazy";
@@ -107,6 +107,7 @@ export function ImportSheet({
   const C = useTheme();
   const { t, tp, lang } = useT();
   const wideHost = useWideHost();
+  const editorPanel = wideHost?.surfaces?.node ?? null;
   const currency = useCurrency();
   const provider = useAiProvider();
   const { data: providerStatus } = useQuery({
@@ -222,6 +223,11 @@ export function ImportSheet({
     setDoneReceipt(job.result?.receipt ?? null);
     setPhase("done");
   }, [job, show]);
+
+  // In the side panel the editor is its own surface, so Escape and the panel toggle close it before the import.
+  const editorOpen = show && editorIdx !== null && editorPanel !== null;
+  const surfaces = wideHost?.surfaces;
+  useEffect(() => (editorOpen && surfaces ? surfaces.register({ close: () => setEditorIdx(null) }) : undefined), [editorOpen, surfaces]);
 
   // iOS/WebKit: the full-screen item editor is a position:fixed portal on <body>
   // (sibling of #root). After it UNMOUNTS, the review panel — itself position:fixed
@@ -672,7 +678,7 @@ export function ImportSheet({
 
   return (
     <>
-      <Sheet show={show} onClose={close} wideDialog>
+      <Surface show={show} onClose={close}>
         {phase === "pick" && (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Import from a file")}</div>
@@ -1278,7 +1284,7 @@ export function ImportSheet({
             </button>
           </div>
         )}
-      </Sheet>
+      </Surface>
       {/* Sibling of the Sheet (not a child): the Sheet's transform would break the pad's position:fixed. */}
       <AmountPadHost target={pad} onClose={() => setPad(null)} />
       {show && reconcileMounted && (
@@ -1297,46 +1303,47 @@ export function ImportSheet({
         editorIdx !== null &&
         items[editorIdx]?.editable &&
         createPortal(
+          // Wide layouts have no popups: the editor covers the import in the side panel instead.
           <div
             data-import-editor-mode={wideHost?.mode ?? "phone"}
             style={{
-              position: "fixed",
-              inset: wideHost ? 24 : 0,
+              position: editorPanel ? "absolute" : "fixed",
+              inset: 0,
               zIndex: 200,
               background: C.bg,
-              maxWidth: wideHost ? 720 : PHONE_COL,
+              maxWidth: editorPanel ? undefined : PHONE_COL,
               margin: "0 auto",
-              borderRadius: wideHost ? 22 : 0,
-              boxShadow: wideHost ? "0 18px 60px rgba(0,0,0,0.35)" : undefined,
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              paddingTop: wideHost ? 0 : "env(safe-area-inset-top)",
+              paddingTop: editorPanel ? 0 : "env(safe-area-inset-top)",
               fontFamily: font,
             }}
           >
-            <AddScreen
-              state={state}
-              editTxn={null}
-              onDone={() => setEditorIdx(null)}
-              draft={{
-                item: items[editorIdx].item ?? items[editorIdx].draftItem!,
-                accountId,
-                initial: edited[editorIdx],
-                automaticEnvelopeDefault: edited[editorIdx]
-                  ? (editedAutomaticDefaults[editorIdx] ?? false)
-                  : (items[editorIdx].item?.automaticEnvelopeDefault ?? false),
-                onSave: (e, meta) => {
-                  setEdited((prev) => ({ ...prev, [editorIdx]: e }));
-                  setItems((prev) => prev.map((row, index) => (index === editorIdx ? { ...row, include: true } : row)));
-                  setEditedAutomaticDefaults((prev) => ({ ...prev, [editorIdx]: meta.automaticEnvelopeDefault }));
-                  setEditorIdx(null);
-                },
-                onCancel: () => setEditorIdx(null),
-              }}
-            />
+            <InWideShell.Provider value={wideHost && { ...wideHost, host: "panel" }}>
+              <AddScreen
+                state={state}
+                editTxn={null}
+                onDone={() => setEditorIdx(null)}
+                draft={{
+                  item: items[editorIdx].item ?? items[editorIdx].draftItem!,
+                  accountId,
+                  initial: edited[editorIdx],
+                  automaticEnvelopeDefault: edited[editorIdx]
+                    ? (editedAutomaticDefaults[editorIdx] ?? false)
+                    : (items[editorIdx].item?.automaticEnvelopeDefault ?? false),
+                  onSave: (e, meta) => {
+                    setEdited((prev) => ({ ...prev, [editorIdx]: e }));
+                    setItems((prev) => prev.map((row, index) => (index === editorIdx ? { ...row, include: true } : row)));
+                    setEditedAutomaticDefaults((prev) => ({ ...prev, [editorIdx]: meta.automaticEnvelopeDefault }));
+                    setEditorIdx(null);
+                  },
+                  onCancel: () => setEditorIdx(null),
+                }}
+              />
+            </InWideShell.Provider>
           </div>,
-          document.body,
+          editorPanel ?? document.body,
         )}
       {/* Sibling of the Sheet (not a child) — the panel's transform would break position:fixed. */}
       <AiConsentSheet

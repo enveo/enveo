@@ -144,12 +144,10 @@ export type SheetProps = {
   onClose: () => void;
   lockSwipe?: boolean;
   tall?: boolean;
-
-  wideDialog?: boolean;
   children: ReactNode | ((C: Theme) => ReactNode);
 };
 
-export function Sheet({ show, onClose, lockSwipe = false, tall = false, wideDialog = false, children }: SheetProps) {
+export function Sheet({ show, onClose, lockSwipe = false, tall = false, children }: SheetProps) {
   const C = useTheme();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ y0: number; scroll0: number; dy: number; active: boolean } | null>(null);
@@ -158,7 +156,6 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, wideDial
 
   const wideHost = useWideHost();
   const hostedInPanel = wideHost?.host === "panel";
-  const dialog = wideDialog && wideHost !== null;
 
   useEffect(() => {
     if (show) {
@@ -199,7 +196,7 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, wideDial
   // lockSwipe: sheets whose body owns vertical drag (ScrollPicker wheels in DateSheet) opt out of
   // swipe-to-dismiss, otherwise spinning a wheel closes the sheet. They still close via backdrop/buttons.
   const onTouchStart = (e: React.TouchEvent) => {
-    if (dialog || lockSwipe) return;
+    if (lockSwipe) return;
     drag.current = { y0: e.touches[0]!.clientY, scroll0: currentScrollTop(), dy: 0, active: false };
   };
   const onTouchMove = (e: React.TouchEvent) => {
@@ -240,7 +237,6 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, wideDial
         }}
       />
       <div
-        data-sheet-layout={dialog ? "dialog" : "bottom"}
         ref={scrollRef}
         className="gs"
         onTouchStart={onTouchStart}
@@ -258,29 +254,16 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, wideDial
           padding: "18px 20px calc(28px + env(safe-area-inset-bottom))",
           boxShadow: "0 -8px 30px rgba(0,0,0,0.35)",
           overscrollBehavior: "contain",
-          ...(dialog
-            ? {
-                top: "max(24px, env(safe-area-inset-top))",
-                bottom: "max(24px, env(safe-area-inset-bottom))",
-                width: "calc(100% - 48px)",
-                maxWidth: 760,
-                borderRadius: 22,
-                overflowY: "auto" as const,
-                animation: "fi .2s ease-out",
-                touchAction: "auto",
-              }
-            : {
-                bottom: 0,
-                maxWidth: PHONE_COL,
-                borderRadius: "22px 22px 0 0",
-                animation: "su .3s cubic-bezier(.4,0,.2,1)",
-                ...(tall
-                  ? { height: "82vh", display: "flex", flexDirection: "column" as const, overflowY: "hidden" as const }
-                  : { maxHeight: "82vh", overflowY: "auto" as const }),
-                touchAction: "pan-y",
-                transform: `translateY(${dragY}px)`,
-                transition: dragging ? "none" : "transform .25s cubic-bezier(.4,0,.2,1)",
-              }),
+          bottom: 0,
+          maxWidth: PHONE_COL,
+          borderRadius: "22px 22px 0 0",
+          animation: "su .3s cubic-bezier(.4,0,.2,1)",
+          ...(tall
+            ? { height: "82vh", display: "flex", flexDirection: "column" as const, overflowY: "hidden" as const }
+            : { maxHeight: "82vh", overflowY: "auto" as const }),
+          touchAction: "pan-y",
+          transform: `translateY(${dragY}px)`,
+          transition: dragging ? "none" : "transform .25s cubic-bezier(.4,0,.2,1)",
         }}
       >
         <div style={{ width: 40, height: 5, borderRadius: 3, background: C.line, margin: "0 auto 14px", cursor: "grab" }} />
