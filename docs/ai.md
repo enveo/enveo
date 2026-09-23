@@ -34,7 +34,7 @@ are in [install.md](install.md#own-openai-credential-vault-optional).
 ## Enveo AI setup
 
 Set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) in `.env` — the operator
-key stays on your server. The default model is `gpt-5.6-luna`.
+key stays on your server. The default model is `gpt-6-luna`.
 
 > **Cost warning (selfhost).** On a selfhost deployment, Enveo AI calls
 > are **not limited by Enveo**: every signed-in account spends the operator's

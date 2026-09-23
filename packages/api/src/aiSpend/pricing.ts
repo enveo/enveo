@@ -5,13 +5,13 @@
  * floating-point dollars. At current Luna prices one token is an exact integer number of
  * nano-USD, so there is no rounding drift anywhere in the pipeline.
  *
- * Prices revalidated against the LIVE official pages on 2026-08-12
+ * Historical GPT-5.6 Luna prices revalidated on 2026-08-12
  * (https://developers.openai.com/api/docs/models/gpt-5.6-luna):
  *   input $0.20/1M = 200 nanoUsd/token; cached input $0.02/1M = 20; output $1.20/1M = 1_200;
  *   cache write = 1.25x uncached input = 250; "Prompts with >272K input tokens are priced at
  *   2x input and 1.5x output for the full request".
  *
- * The long-context rule's interaction with cached/cache-write rates is NOT specified by the
+ * For that historical snapshot, the long-context rule's interaction with cached/cache-write rates is NOT specified by the
  * official docs (verified 2026-08-12), so the multiplier is applied only to a fully uncached
  * request; a long-context request that carries cached or cache-write tokens is deliberately
  * `unpriced_long_context` — the caller returns the answer, skips the charge and warns (the
@@ -28,7 +28,8 @@ export interface LongContextRule {
   thresholdPromptTokens: number;
 
   inputNanoUsdPerToken: bigint;
-
+  cachedInputNanoUsdPerToken?: bigint;
+  cacheWriteNanoUsdPerToken?: bigint;
   outputNanoUsdPerToken: bigint;
 }
 
@@ -48,6 +49,24 @@ export interface ModelPriceEntry {
 }
 
 export const AI_PRICE_REGISTRY: readonly ModelPriceEntry[] = [
+  // https://developers.openai.com/api/docs/models/gpt-6-luna (verified 2026-09-23).
+  // Above 272K input tokens, both input/cache rates double and output costs 1.5x.
+  {
+    requestModel: "gpt-6-luna",
+    responseModelAliases: ["gpt-6-luna"],
+    priceVersion: "gpt-6-luna/2026-09-23",
+    inputNanoUsdPerToken: 100n,
+    cachedInputNanoUsdPerToken: 10n,
+    cacheWriteNanoUsdPerToken: 125n,
+    outputNanoUsdPerToken: 500n,
+    longContext: {
+      thresholdPromptTokens: 272_000,
+      inputNanoUsdPerToken: 200n,
+      cachedInputNanoUsdPerToken: 20n,
+      cacheWriteNanoUsdPerToken: 250n,
+      outputNanoUsdPerToken: 750n,
+    },
+  },
   {
     requestModel: "gpt-5.6-luna",
     responseModelAliases: ["gpt-5.6-luna"],
@@ -129,10 +148,16 @@ export function chatCostNanoUsd(entry: ModelPriceEntry, responseModel: string, u
   const uncached = prompt - cached - cacheWrite;
 
   if (entry.longContext && prompt > entry.longContext.thresholdPromptTokens) {
-    // The official interaction of the 2x/1.5x rule with cached/cache-write rates is unverified —
-    // price only the fully uncached case; otherwise skip the charge (see module comment).
-    if (cached > 0 || cacheWrite > 0) return { ok: false, reason: "unpriced_long_context" };
-    const nanoUsd = BigInt(prompt) * entry.longContext.inputNanoUsdPerToken + BigInt(completion) * entry.longContext.outputNanoUsdPerToken;
+    const rates = entry.longContext;
+    // Older price snapshots lack verified long-context cache rates; keep their fail-open result.
+    if ((cached > 0 && rates.cachedInputNanoUsdPerToken === undefined) || (cacheWrite > 0 && rates.cacheWriteNanoUsdPerToken === undefined)) {
+      return { ok: false, reason: "unpriced_long_context" };
+    }
+    const nanoUsd =
+      BigInt(uncached) * rates.inputNanoUsdPerToken +
+      BigInt(cached) * (rates.cachedInputNanoUsdPerToken ?? 0n) +
+      BigInt(cacheWrite) * (rates.cacheWriteNanoUsdPerToken ?? 0n) +
+      BigInt(completion) * rates.outputNanoUsdPerToken;
     return boundedCost(nanoUsd, entry, responseModel);
   }
 

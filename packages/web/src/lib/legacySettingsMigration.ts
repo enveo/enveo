@@ -174,7 +174,7 @@ export async function runLegacySettingsMigration(deps: LegacySettingsMigrationDe
   } else if (!ack.credential) {
     const status = await deps.credentialStatus(context.budgetId);
     if (!status.available) throw new Error("vault_unavailable");
-    if (!status.configured) await deps.saveCredential(context.budgetId, legacy.openaiModel ?? "gpt-5.6-luna", rawKey);
+    if (!status.configured) await deps.saveCredential(context.budgetId, legacy.openaiModel ?? "gpt-6-luna", rawKey);
     const confirmed = await deps.credentialStatus(context.budgetId);
     if (!confirmed.available) throw new Error("vault_unavailable");
     if (!confirmed.configured) throw new Error("credential_not_configured");

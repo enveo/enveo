@@ -50,7 +50,7 @@ export interface ChatRequest {
   reasoningEffort?: "low" | "medium" | "high";
 }
 
-export const supportsReasoningEffort = (model: string): boolean => /^(gpt-5|o\d)/.test(model);
+export const supportsReasoningEffort = (model: string): boolean => /^(gpt-[56]|o\d)/.test(model);
 
 /**
  * BCP-47 tag of the UI language ("en", "pl", "pt-BR", …). ANY tag is allowed since 2.2.0: the

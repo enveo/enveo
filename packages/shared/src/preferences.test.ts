@@ -38,7 +38,7 @@ describe("reconcileBudgetPreferences", () => {
     const preferences = reconcileBudgetPreferences({ aiProvider: "other", openaiModel: 42 });
 
     expect(preferences.aiProvider).toBe("rules");
-    expect(preferences.openaiModel).toBe("gpt-5.6-luna");
+    expect(preferences.openaiModel).toBe("gpt-6-luna");
   });
 
   test("drops unknown and duplicate widgets, preserves valid order, and appends missing defaults", () => {

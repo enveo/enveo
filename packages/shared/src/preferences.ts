@@ -16,7 +16,7 @@ export function resolveAccentTheme(account: AccountAccentTheme, phone: boolean):
   return account === "auto" ? (phone ? "duet" : "teal") : account;
 }
 
-export const OPENAI_MODELS = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.5", "gpt-5.5-mini"] as const;
+export const OPENAI_MODELS = ["gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.5", "gpt-5.5-mini"] as const;
 export type OpenAiModel = (typeof OPENAI_MODELS)[number];
 
 export const WIDGET_IDS = [
@@ -293,7 +293,7 @@ export function createDefaultBudgetPreferences(): BudgetPreferences {
   return {
     schemaVersion: 2,
     aiProvider: "rules",
-    openaiModel: "gpt-5.6-luna",
+    openaiModel: "gpt-6-luna",
     customProfiles: [],
     startWidgets: createDefaultStartWidgets(),
     wideWidgets: createDefaultWideWidgets(),

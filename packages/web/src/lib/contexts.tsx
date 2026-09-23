@@ -26,11 +26,8 @@ import { light, type Theme, themeTokens } from "./theme";
 import { useViewMode } from "./viewMode";
 
 export type AiMode = "off" | "server" | "byok";
-/** BYOK model registry. `gpt-5.6-luna` is the default for FRESH settings only — a persisted
- *  legacy choice (`gpt-5.5`/`gpt-5.5-mini`) survives loadSettings' merge and stays selectable.
- *  Since §1b the pickers render quality/cost TIERS (lib/aiModelTiers.ts) over the GPT-5.6
- *  family; this union stays the authority on what may be PERSISTED in settings. */
-export const DEFAULT_OPENAI_MODEL: OpenAiModel = "gpt-5.6-luna";
+/** Fresh settings use the economical model; persisted choices remain selectable. */
+export const DEFAULT_OPENAI_MODEL: OpenAiModel = "gpt-6-luna";
 export type { OpenAiModel, ThemeMode, WidgetConfig, WidgetId, WidgetOpts };
 export { OPENAI_MODELS };
 
