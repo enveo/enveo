@@ -3,10 +3,18 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { ImportProposal } from "@enveo/shared";
 import { importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "../components/ImportProgress";
 import type { ImportActivityItem } from "../lib/importJobs/store";
 import * as activityModule from "./Activity";
-import { activityAttentionCount, activityDismissMessage, activitySections, canRetryActivityImport, retryActivityImport } from "./Activity";
+import {
+  activityAttentionCount,
+  activityDismissMessage,
+  activitySections,
+  canRetryActivityImport,
+  importActivityFigures,
+  retryActivityImport,
+} from "./Activity";
 
 const item = (status: ImportActivityItem["status"], overrides: Partial<ImportActivityItem> = {}): ImportActivityItem => ({
   id: `job-${status}`,
@@ -78,7 +86,7 @@ describe("durable import foreground and Activity view models", () => {
     expect(events).toEqual(["cancelled:job-running", "closed"]);
   });
 
-  it("deduplicates the merged activity list and groups attention and recent completion truthfully", () => {
+  it("deduplicates the merged activity list into current imports and recent completions", () => {
     const duplicateDraft = item("queued", { id: "same", source: "plain-draft", updatedAt: "2026-08-24T10:00:00.000Z" });
     const accepted = item("running", { id: "same", source: "plain", updatedAt: "2026-08-24T10:02:00.000Z" });
     const ready = item("ready", { id: "ready" });
@@ -89,11 +97,12 @@ describe("durable import foreground and Activity view models", () => {
 
     const sections = activitySections([duplicateDraft, accepted, ready, failed, completed, cancelled, expired], new Date("2026-08-24T12:00:00.000Z"));
 
-    expect(sections.active.map(({ id, source }) => ({ id, source }))).toEqual([{ id: "same", source: "plain" }]);
-    expect(sections.ready.map((job) => job.id)).toEqual(["ready"]);
-    expect(sections.failed.map((job) => job.id)).toEqual(["failed"]);
+    expect(sections.current.map(({ id, source }) => ({ id, source }))).toEqual([
+      { id: "same", source: "plain" },
+      { id: "ready", source: "plain" },
+      { id: "failed", source: "plain" },
+    ]);
     expect(sections.completed.map((job) => job.id)).toEqual(["completed"]);
-    expect(sections.cancelled.map((job) => job.id)).toEqual(["cancelled"]);
     expect(activityAttentionCount(sections)).toBe(2);
   });
 
@@ -107,10 +116,73 @@ describe("durable import foreground and Activity view models", () => {
 
     const sections = activitySections([retrying]);
 
-    expect(sections.active.map((job) => job.id)).toEqual(["retrying"]);
-    expect(sections.failed).toEqual([]);
+    expect(sections.current.map((job) => job.id)).toEqual(["retrying"]);
     expect(activityAttentionCount(sections)).toBe(0);
     expect(importProgressPresentation(retrying)).toMatchObject({ kind: "progress", message: "A retry is scheduled…", canCancel: true });
+  });
+
+  it("counts a ready import's candidates and the balance change of the preselected ones", () => {
+    const proposal = (overrides: Partial<ImportProposal>): ImportProposal => ({
+      rowId: "r",
+      sourceRows: ["r"],
+      disposition: "candidate",
+      date: "2026-08-20",
+      amount: 1000,
+      currency: "USD",
+      type: "expense",
+      isRefund: false,
+      toAccountId: null,
+      semanticKind: "card_purchase",
+      relation: null,
+      name: "Example Market",
+      tag: "",
+      rawPlace: "",
+      envelopeId: null,
+      categoryId: null,
+      placeName: null,
+      reviewReasons: [],
+      selected: true,
+      ...overrides,
+    });
+    const ready = item("ready", {
+      result: {
+        rows: [],
+        proposals: [
+          proposal({ amount: 4250 }),
+          proposal({ amount: 185000, type: "income" }),
+          proposal({ amount: 675, isRefund: true }),
+          proposal({ amount: 2000, type: "transfer", toAccountId: "account-1" }),
+          proposal({ amount: 900, selected: false }),
+          proposal({ amount: 300, disposition: "supporting" }),
+        ],
+      },
+    });
+
+    expect(importActivityFigures(ready)).toEqual({ kind: "review", toReview: 5, delta: -4250 + 185000 + 675 + 2000 });
+  });
+
+  it("reports what a completed import added and how it moved the source account", () => {
+    const completed = item("completed", {
+      appliedCount: 18,
+      skippedCount: 2,
+      result: {
+        rows: [],
+        proposals: [],
+        receipt: {
+          completedAt: "2026-08-24T10:01:00.000Z",
+          currency: "USD",
+          balances: [
+            { accountId: "account-2", name: "Prairie Savings", before: 0, after: 500 },
+            { accountId: "account-1", name: "Maple Harbor Checking", before: 436495, after: 395265 },
+          ],
+          rows: [],
+        },
+      },
+    });
+
+    expect(importActivityFigures(completed)).toEqual({ kind: "completed", added: 18, skipped: 2, delta: -41230 });
+    expect(importActivityFigures(item("completed"))).toEqual({ kind: "completed", added: 1, skipped: 1, delta: null });
+    expect(importActivityFigures(item("running"))).toBeNull();
   });
 
   it("offers manual retry only while the failed import still has retained input", () => {
@@ -196,26 +268,23 @@ describe("durable import foreground and Activity view models", () => {
     expect((source.match(/color: C\.soft/g) ?? []).length).toBeGreaterThanOrEqual(5);
     expect(source).not.toContain("color: TEAL");
     expect(source).not.toContain("background: TEAL");
-    expect(source).toContain("background: C.text, color: C.card");
   });
 
-  it("keeps card selection available without a layout-shifting selection mode", () => {
+  it("hides row checkboxes behind an explicit Select mode with bulk actions", () => {
     const source = readFileSync(join(import.meta.dir, "Activity.tsx"), "utf8");
 
-    expect(source).not.toContain("const [selecting");
-    expect(source).not.toContain('\n                    {t("Select import")}');
-    expect(source).not.toContain('{t("Cancel selection")}');
+    expect(source).toContain("const [selecting, setSelecting] = useState(false)");
+    expect(source).toContain("data-import-select-mode");
+    expect(source).toContain('{selecting ? t("Done") : t("Select")}');
+    expect(source).toContain("const checkable = selecting && canRemoveActivityImport(job)");
     expect(source).toContain("data-import-select");
     expect(source).toContain("data-section-heading-actions");
     expect(source).toContain('{t(allSelected ? msg("Deselect all") : msg("Select all"))}');
     expect(source).toContain('aria-label={t("Delete selected ({count})", { count: selected.size })}');
-    expect(source).toContain("const selectionAnchorId = selected.values().next().value");
-    expect(source).toContain("new Set([...selected, ...removable.map((job) => job.id)])");
     expect(source).toContain('aria-label={t("Select import from {date}", { date: date(job.updatedAt) })}');
-    expect(source).toContain("marginRight: canRemoveActivityImport(job) ? 34 : 0");
   });
 
-  it("uses the Duet band header on phones and a responsive import grid on fold and desktop", () => {
+  it("uses the Duet band header on phones and grouped import rows on every layout", () => {
     const source = readFileSync(join(import.meta.dir, "Activity.tsx"), "utf8");
 
     expect(source).toContain('import { useWideHost } from "../lib/shellContext"');
@@ -231,7 +300,10 @@ describe("durable import foreground and Activity view models", () => {
     expect(source).toContain('{t("Add screenshots or a PDF statement with the + button.")}');
     expect(source).toContain("data-activity-content");
     expect(source).toContain('boxSizing: "border-box"');
-    expect(source).toContain('gridTemplateColumns: wideHost ? "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" : "1fr"');
+    expect(source).toContain('{list(msg("To review"), sections.current');
+    expect(source).toContain('{list(msg("Completed"), visibleCompleted');
+    expect(source).toContain("<CardBox");
+    expect(source).toContain("sections.completed.slice(0, PHONE_COMPLETED_LIMIT)");
   });
 
   it("opens screenshot review and its editor in the side panel outside phone mode", () => {
