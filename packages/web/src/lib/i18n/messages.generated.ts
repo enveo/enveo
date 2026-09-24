@@ -92,6 +92,7 @@ export const MESSAGES = [
   "Allocated",
   "Allocated {allocated} · Spent {spent}",
   "Allocated: {name}",
+  "Already added",
   "Already added by this import",
   "Already exists",
   "Already have an account? Sign in",

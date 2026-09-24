@@ -186,6 +186,7 @@ export const pl: Dict = {
   "Select all": "Zaznacz wszystkie",
   Select: "Zaznacz",
   "To review": "Do sprawdzenia",
+  "Already added": "Już dodane",
   Completed: "Zakończone",
   "{n} to review | {n} to review": { one: "{n} do sprawdzenia", few: "{n} do sprawdzenia", many: "{n} do sprawdzenia", other: "{n} do sprawdzenia" },
   "{n} duplicate skipped | {n} duplicates skipped": {

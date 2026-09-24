@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ImportProposal } from "@enveo/shared";
+import type { ImportProposal, ReconciledImportProposal } from "@enveo/shared";
 import { importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "../components/ImportProgress";
 import type { ImportActivityItem } from "../lib/importJobs/store";
 import * as activityModule from "./Activity";
@@ -159,6 +159,41 @@ describe("durable import foreground and Activity view models", () => {
     });
 
     expect(importActivityFigures(ready)).toEqual({ kind: "review", toReview: 5, delta: -4250 + 185000 + 675 + 2000 });
+  });
+
+  it("does not count rows the ledger already holds when a ready import is checked against it", () => {
+    const proposal = (overrides: Partial<ReconciledImportProposal>): ReconciledImportProposal => ({
+      rowId: "r",
+      sourceRows: ["r"],
+      disposition: "candidate",
+      date: "2026-08-20",
+      amount: 4250,
+      currency: "USD",
+      type: "expense",
+      isRefund: false,
+      toAccountId: null,
+      semanticKind: "card_purchase",
+      relation: null,
+      name: "Example Market",
+      tag: "",
+      rawPlace: "",
+      envelopeId: null,
+      categoryId: null,
+      placeName: null,
+      reviewReasons: [],
+      selected: true,
+      duplicateStatus: "new",
+      sourceAccountInvalid: false,
+      ...overrides,
+    });
+    const ready = item("ready");
+
+    expect(importActivityFigures(ready, [proposal({ duplicateStatus: "exists", disposition: "declined", selected: false })])).toEqual({
+      kind: "review",
+      toReview: 0,
+      delta: 0,
+    });
+    expect(importActivityFigures(ready, [proposal({}), proposal({ duplicateStatus: "exists" })])).toEqual({ kind: "review", toReview: 1, delta: -4250 });
   });
 
   it("reports what a completed import added and how it moved the source account", () => {

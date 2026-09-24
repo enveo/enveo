@@ -1,16 +1,18 @@
-import type { StateResponse } from "@enveo/shared";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import type { ReconciledImportProposal, StateResponse } from "@enveo/shared";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { HeaderImportBadge } from "../components/HeaderImportBadge";
 import { importProgressPresentation } from "../components/ImportProgress";
 import { ImportSheet } from "../components/ImportSheet";
 import { CardBox, SectionEyebrow, useBand } from "../components/kit";
-import { apiErrorMessage } from "../lib/api";
+import { apiErrorMessage, useLedgerVersion } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
 import { type Message, msg, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { importJobManager } from "../lib/importJobs/manager";
 import { canRemoveImportActivity, type ImportActivityItem, importActivityAttention, importScreenshotProgress } from "../lib/importJobs/store";
+import { reconcileImportJobResult } from "../lib/localImport";
 import { useWideHost } from "../lib/shellContext";
+import { store } from "../lib/store";
 import { CORAL, P, tint } from "../lib/theme";
 
 export interface ImportActivitySections {
@@ -44,17 +46,21 @@ export function activityAttentionCount(sections: ImportActivitySections): number
 
 /** What a list row says about its import's money: rows waiting for review and the balance change
  *  of the rows the review preselects, or what a completed import added and how it moved the
- *  account at the moment it was applied. */
+ *  account at the moment it was applied. `reconciled` are the ready job's proposals checked
+ *  against the local ledger, the same duplicate check the review runs: a repeated import of
+ *  already added rows must not claim new transactions. */
 export type ImportActivityFigures =
   | { kind: "review"; toReview: number; delta: number | null }
   | { kind: "completed"; added: number; skipped: number; delta: number | null }
   | null;
 
-export function importActivityFigures(item: ImportActivityItem): ImportActivityFigures {
+export function importActivityFigures(item: ImportActivityItem, reconciled?: readonly ReconciledImportProposal[]): ImportActivityFigures {
   if (item.status === "ready") {
-    const proposals = item.result?.proposals;
+    const proposals = reconciled ?? item.result?.proposals;
     if (!proposals) return { kind: "review", toReview: item.proposalCount, delta: null };
-    const candidates = proposals.filter((proposal) => proposal.disposition === "candidate");
+    const candidates = proposals.filter(
+      (proposal) => proposal.disposition === "candidate" && (!("duplicateStatus" in proposal) || proposal.duplicateStatus !== "exists"),
+    );
     let delta = 0;
     for (const proposal of candidates) {
       if (!proposal.selected || proposal.amount === null || proposal.type === null) continue;
@@ -107,6 +113,9 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
   const [selectedState, setSelected] = useState<Set<string>>(() => new Set());
   const [selecting, setSelecting] = useState(false);
   const [showOlder, setShowOlder] = useState(false);
+  const ledgerVersion = useLedgerVersion();
+  // The replica is a mutable store; its version is the change signal.
+  const ledger = useMemo(() => store.getLedger(), [ledgerVersion]);
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
@@ -147,6 +156,10 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
 
   const allSelected = removable.length > 0 && selected.size === removable.length;
   const accountById = new Map(state.accounts.map((account) => [account.id, account]));
+  const reconciled = (job: ImportActivityItem) =>
+    ledger && job.status === "ready" && job.result && job.accountId
+      ? reconcileImportJobResult({ result: job.result, ledger, accountId: job.accountId }).proposals
+      : undefined;
   const money = (minor: number) => (minor < 0 ? `-${M(-minor)}` : `+${M(minor)}`);
   const visibleCompleted = wideHost || showOlder ? sections.completed : sections.completed.slice(0, PHONE_COMPLETED_LIMIT);
   const hiddenCompleted = sections.completed.length - visibleCompleted.length;
@@ -159,7 +172,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
         setSelecting(!selecting);
         setSelected(new Set());
       }}
-      style={{ ...textButton, color: wideHost ? C.soft : hc(C.headerMute, C.soft) }}
+      style={{ ...textButton, fontSize: wideHost ? 12 : 14, fontWeight: 700, color: wideHost ? C.soft : hc(C.headerInk, C.text) }}
     >
       {selecting ? t("Done") : t("Select")}
     </button>
@@ -167,7 +180,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
 
   const row = (job: ImportActivityItem, index: number) => {
     const account = job.accountId ? accountById.get(job.accountId) : undefined;
-    const figures = importActivityFigures(job);
+    const figures = importActivityFigures(job, reconciled(job));
     const presentation = importProgressPresentation(job);
     const failed = importActivityAttention(job) === "failed";
     const progressing = presentation.kind === "progress";
@@ -281,7 +294,11 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
           {figures?.kind === "review" && (
             <>
-              <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.25, color: C.pos }}>{tp("{n} to review | {n} to review", figures.toReview)}</span>
+              {figures.toReview > 0 ? (
+                <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.25, color: C.pos }}>{tp("{n} to review | {n} to review", figures.toReview)}</span>
+              ) : (
+                <span style={{ fontSize: 12.5, fontWeight: 650, lineHeight: 1.25, color: C.soft }}>{t("Already added")}</span>
+              )}
               {figures.delta !== null && figures.delta !== 0 && (
                 <span style={{ fontSize: 10.5, fontWeight: 650, marginTop: 1, fontVariantNumeric: "tabular-nums", color: figures.delta > 0 ? C.pos : C.text }}>
                   {money(figures.delta)}
