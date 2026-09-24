@@ -70,6 +70,7 @@ import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Surface } from "./chrome";
 import { type ImportBalanceMatchState, ImportBalanceReceipt } from "./ImportBalanceReceipt";
 import { ImportCompletionDetails } from "./ImportCompletionDetails";
+import { ImportDeleteConfirm, importPill } from "./ImportDelete";
 import { LazyChunk, useOpenedOnce } from "./lazy";
 
 const ReconcileSheet = lazy(() => import("./ReconcileSheet").then((m) => ({ default: m.ReconcileSheet })));
@@ -256,6 +257,7 @@ export function ImportSheet({
     setImages([]);
     setPhase("pick");
     setJobId(null);
+    setDeleting(null);
     setJob(undefined);
     setItems([]);
     setError(null);
@@ -282,6 +284,49 @@ export function ImportSheet({
     onClose();
     if (applied) onApplied?.();
   };
+
+  const [deleting, setDeleting] = useState<"confirm" | "busy" | null>(null);
+  const deleteImport = async () => {
+    if (!jobId) return;
+    setDeleting("busy");
+    try {
+      await importJobManager.removeMany([jobId]);
+      setDeleting(null);
+      close();
+    } catch (cause) {
+      setError(apiErrorMessage(cause));
+      setDeleting(null);
+    }
+  };
+  const deleteConfirm = (
+    <ImportDeleteConfirm
+      title={t("Delete this import?")}
+      body={phase === "done" ? t("The transactions it added stay in your budget.") : t("Nothing from this import is added to your budget.")}
+      busy={deleting === "busy"}
+      onCancel={() => setDeleting(null)}
+      onConfirm={() => void deleteImport()}
+    />
+  );
+  const deleteLink = jobId && (
+    <button
+      type="button"
+      data-import-delete
+      onClick={() => setDeleting("confirm")}
+      style={{
+        display: "block",
+        margin: "10px auto 0",
+        padding: 8,
+        border: "none",
+        background: "none",
+        color: C.neg,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+      }}
+    >
+      {t("Delete import")}
+    </button>
+  );
 
   const addFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -868,6 +913,7 @@ export function ImportSheet({
                 <button type="button" onClick={close} style={{ width: "100%", marginTop: 8, padding: 8, border: "none", background: "none", color: C.mute }}>
                   {t("Continue in Imports")}
                 </button>
+                {deleting ? <div style={{ marginTop: 10 }}>{deleteConfirm}</div> : deleteLink}
               </div>
             ) : (
               <ImportProgress
@@ -1220,6 +1266,7 @@ export function ImportSheet({
                 {busy ? t("Adding…") : selectedCount === 0 ? t("Complete without adding") : tp("Add {n} transaction | Add {n} transactions", selectedCount)}
               </button>
             </div>
+            {deleting ? <div style={{ marginTop: 12 }}>{deleteConfirm}</div> : deleteLink}
           </>
         )}
 
@@ -1265,23 +1312,25 @@ export function ImportSheet({
                 {t("Reconcile the account to {amount} now", { amount: formatMoney(reconcileFigure!, currency, lang) })}
               </button>
             )}
-            <button
-              onClick={close}
-              style={{
-                marginTop: 14,
-                width: "100%",
-                padding: "13px 0",
-                borderRadius: 12,
-                border: "none",
-                background: TEAL,
-                color: "#fff",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {t("Close")}
-            </button>
+            {deleting ? (
+              <div style={{ marginTop: 14 }}>{deleteConfirm}</div>
+            ) : (
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button type="button" onClick={close} style={importPill(C.line, C.soft)}>
+                  {t("Close")}
+                </button>
+                {jobId && (
+                  <button
+                    type="button"
+                    data-import-delete
+                    onClick={() => setDeleting("confirm")}
+                    style={{ ...importPill(C.neg, C.neg), flex: "none", padding: "10px 16px", fontWeight: 600 }}
+                  >
+                    {t("Delete import")}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </Surface>

@@ -305,18 +305,18 @@ describe("durable import foreground and Activity view models", () => {
     expect(source).not.toContain("background: TEAL");
   });
 
-  it("hides row checkboxes behind an explicit Select mode with bulk actions", () => {
-    const source = readFileSync(join(import.meta.dir, "Activity.tsx"), "utf8");
+  it("deletes imports in place from their sheet and clears completed ones from the list, without browser dialogs", () => {
+    const activity = readFileSync(join(import.meta.dir, "Activity.tsx"), "utf8");
+    const sheet = readFileSync(join(import.meta.dir, "..", "components", "ImportSheet.tsx"), "utf8");
 
-    expect(source).toContain("const [selecting, setSelecting] = useState(false)");
-    expect(source).toContain("data-import-select-mode");
-    expect(source).toContain('{selecting ? t("Done") : t("Select")}');
-    expect(source).toContain("const checkable = selecting && canRemoveActivityImport(job)");
-    expect(source).toContain("data-import-select");
-    expect(source).toContain("data-section-heading-actions");
-    expect(source).toContain('{t(allSelected ? msg("Deselect all") : msg("Select all"))}');
-    expect(source).toContain('aria-label={t("Delete selected ({count})", { count: selected.size })}');
-    expect(source).toContain('aria-label={t("Select import from {date}", { date: date(job.updatedAt) })}');
+    expect(activity).not.toContain("window.confirm");
+    expect(activity).not.toContain("const [selecting");
+    expect(activity).toContain("data-import-clear-completed");
+    expect(activity).toContain("importJobManager.removeMany(sections.completed.map((job) => job.id))");
+    expect(activity).toContain('const opens = job.status === "ready" || job.status === "completed" || failed');
+    expect(sheet).toContain("data-import-delete");
+    expect(sheet).toContain("await importJobManager.removeMany([jobId])");
+    expect(sheet).toContain("<ImportDeleteConfirm");
   });
 
   it("uses the Duet band header on phones and grouped import rows on every layout", () => {
@@ -336,7 +336,7 @@ describe("durable import foreground and Activity view models", () => {
     expect(source).toContain("data-activity-content");
     expect(source).toContain('boxSizing: "border-box"');
     expect(source).toContain('{list(msg("To review"), sections.current');
-    expect(source).toContain('{list(msg("Completed"), visibleCompleted');
+    expect(source).toMatch(/list\(\s*msg\("Completed"\),\s*visibleCompleted/);
     expect(source).toContain("<CardBox");
     expect(source).toContain("sections.completed.slice(0, PHONE_COMPLETED_LIMIT)");
   });
