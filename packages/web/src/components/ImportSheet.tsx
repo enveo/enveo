@@ -278,8 +278,10 @@ export function ImportSheet({
     reviewE2eeEpoch.current = null;
     openedReadyRevision.current = null;
   };
-  const close = () => {
-    const applied = phase === "done" && doneStats.added > 0;
+  // A replaced panel must not run onApplied: it closes the Add form through history.back(), which
+  // would land after + Add re-opened that form and close it again.
+  const close = (reason?: "replaced") => {
+    const applied = phase === "done" && doneStats.added > 0 && reason !== "replaced";
     reset();
     onClose();
     if (applied) onApplied?.();
@@ -910,7 +912,11 @@ export function ImportSheet({
                     {t("Retry import")}
                   </button>
                 )}
-                <button type="button" onClick={close} style={{ width: "100%", marginTop: 8, padding: 8, border: "none", background: "none", color: C.mute }}>
+                <button
+                  type="button"
+                  onClick={() => close()}
+                  style={{ width: "100%", marginTop: 8, padding: 8, border: "none", background: "none", color: C.mute }}
+                >
                   {t("Continue in Imports")}
                 </button>
                 {deleting ? <div style={{ marginTop: 10 }}>{deleteConfirm}</div> : deleteLink}
@@ -1232,7 +1238,7 @@ export function ImportSheet({
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button
-                onClick={close}
+                onClick={() => close()}
                 style={{
                   flex: 1,
                   padding: "12px 0",
@@ -1316,7 +1322,7 @@ export function ImportSheet({
               <div style={{ marginTop: 14 }}>{deleteConfirm}</div>
             ) : (
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-                <button type="button" onClick={close} style={importPill(C.line, C.soft)}>
+                <button type="button" onClick={() => close()} style={importPill(C.line, C.soft)}>
                   {t("Close")}
                 </button>
                 {jobId && (
