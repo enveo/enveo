@@ -406,7 +406,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   }, [panelClosed]);
 
   const [surfaceNode, setSurfaceNode] = useState<HTMLElement | null>(null);
-  const [surfaceStack, setSurfaceStack] = useState<ReadonlyArray<{ close: () => void }>>([]);
+  const [surfaceStack, setSurfaceStack] = useState<ReadonlyArray<{ close: (reason?: "replaced") => void }>>([]);
   const surfaceHost = useMemo<PaneSurfaceHost>(
     () => ({
       node: surfaceNode,
@@ -535,7 +535,11 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           month={month}
           onPrev={prev}
           onNext={next}
-          onAdd={onAddWide}
+          onAdd={() => {
+            // Panel sheets cover the panel's own view: without closing them, Add would open unseen underneath.
+            for (const surface of surfaceStack) surface.close("replaced");
+            onAddWide();
+          }}
           onOpenSync={() => nav("settings")}
           rightSlot={rightSlot}
           panelClosed={panelClosed}

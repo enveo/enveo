@@ -58,7 +58,7 @@ import {
   reconcileImportJobResult,
 } from "../lib/localImport";
 import * as outbox from "../lib/outbox";
-import { useWideHost } from "../lib/shellContext";
+import { InWideShell, useWideHost } from "../lib/shellContext";
 import { store } from "../lib/store";
 import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -67,9 +67,10 @@ import { AddScreen } from "../screens/Add";
 import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
 import { AiConsentSheet } from "./AiConsentSheet";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
-import { Sheet } from "./chrome";
+import { Surface } from "./chrome";
 import { type ImportBalanceMatchState, ImportBalanceReceipt } from "./ImportBalanceReceipt";
 import { ImportCompletionDetails } from "./ImportCompletionDetails";
+import { ImportDeleteConfirm, importPill } from "./ImportDelete";
 import { LazyChunk, useOpenedOnce } from "./lazy";
 
 const ReconcileSheet = lazy(() => import("./ReconcileSheet").then((m) => ({ default: m.ReconcileSheet })));
@@ -107,6 +108,7 @@ export function ImportSheet({
   const C = useTheme();
   const { t, tp, lang } = useT();
   const wideHost = useWideHost();
+  const editorPanel = wideHost?.surfaces?.node ?? null;
   const currency = useCurrency();
   const provider = useAiProvider();
   const { data: providerStatus } = useQuery({
@@ -223,6 +225,11 @@ export function ImportSheet({
     setPhase("done");
   }, [job, show]);
 
+  // In the side panel the editor is its own surface, so Escape and the panel toggle close it before the import.
+  const editorOpen = show && editorIdx !== null && editorPanel !== null;
+  const surfaces = wideHost?.surfaces;
+  useEffect(() => (editorOpen && surfaces ? surfaces.register({ close: () => setEditorIdx(null) }) : undefined), [editorOpen, surfaces]);
+
   // iOS/WebKit: the full-screen item editor is a position:fixed portal on <body>
   // (sibling of #root). After it UNMOUNTS, the review panel — itself position:fixed
   // and promoted to its own layer by the Sheet's transform (chrome.tsx) — keeps
@@ -250,6 +257,7 @@ export function ImportSheet({
     setImages([]);
     setPhase("pick");
     setJobId(null);
+    setDeleting(null);
     setJob(undefined);
     setItems([]);
     setError(null);
@@ -270,12 +278,57 @@ export function ImportSheet({
     reviewE2eeEpoch.current = null;
     openedReadyRevision.current = null;
   };
-  const close = () => {
-    const applied = phase === "done" && doneStats.added > 0;
+  // A replaced panel must not run onApplied: it closes the Add form through history.back(), which
+  // would land after + Add re-opened that form and close it again.
+  const close = (reason?: "replaced") => {
+    const applied = phase === "done" && doneStats.added > 0 && reason !== "replaced";
     reset();
     onClose();
     if (applied) onApplied?.();
   };
+
+  const [deleting, setDeleting] = useState<"confirm" | "busy" | null>(null);
+  const deleteImport = async () => {
+    if (!jobId) return;
+    setDeleting("busy");
+    try {
+      await importJobManager.removeMany([jobId]);
+      setDeleting(null);
+      close();
+    } catch (cause) {
+      setError(apiErrorMessage(cause));
+      setDeleting(null);
+    }
+  };
+  const deleteConfirm = (
+    <ImportDeleteConfirm
+      title={t("Delete this import?")}
+      body={phase === "done" ? t("The transactions it added stay in your budget.") : t("Nothing from this import is added to your budget.")}
+      busy={deleting === "busy"}
+      onCancel={() => setDeleting(null)}
+      onConfirm={() => void deleteImport()}
+    />
+  );
+  const deleteLink = jobId && (
+    <button
+      type="button"
+      data-import-delete
+      onClick={() => setDeleting("confirm")}
+      style={{
+        display: "block",
+        margin: "10px auto 0",
+        padding: 8,
+        border: "none",
+        background: "none",
+        color: C.neg,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+      }}
+    >
+      {t("Delete import")}
+    </button>
+  );
 
   const addFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -672,7 +725,7 @@ export function ImportSheet({
 
   return (
     <>
-      <Sheet show={show} onClose={close} wideDialog>
+      <Surface show={show} onClose={close}>
         {phase === "pick" && (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Import from a file")}</div>
@@ -859,9 +912,14 @@ export function ImportSheet({
                     {t("Retry import")}
                   </button>
                 )}
-                <button type="button" onClick={close} style={{ width: "100%", marginTop: 8, padding: 8, border: "none", background: "none", color: C.mute }}>
+                <button
+                  type="button"
+                  onClick={() => close()}
+                  style={{ width: "100%", marginTop: 8, padding: 8, border: "none", background: "none", color: C.mute }}
+                >
                   {t("Continue in Imports")}
                 </button>
+                {deleting ? <div style={{ marginTop: 10 }}>{deleteConfirm}</div> : deleteLink}
               </div>
             ) : (
               <ImportProgress
@@ -1180,7 +1238,7 @@ export function ImportSheet({
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button
-                onClick={close}
+                onClick={() => close()}
                 style={{
                   flex: 1,
                   padding: "12px 0",
@@ -1214,6 +1272,7 @@ export function ImportSheet({
                 {busy ? t("Adding…") : selectedCount === 0 ? t("Complete without adding") : tp("Add {n} transaction | Add {n} transactions", selectedCount)}
               </button>
             </div>
+            {deleting ? <div style={{ marginTop: 12 }}>{deleteConfirm}</div> : deleteLink}
           </>
         )}
 
@@ -1259,26 +1318,29 @@ export function ImportSheet({
                 {t("Reconcile the account to {amount} now", { amount: formatMoney(reconcileFigure!, currency, lang) })}
               </button>
             )}
-            <button
-              onClick={close}
-              style={{
-                marginTop: 14,
-                width: "100%",
-                padding: "13px 0",
-                borderRadius: 12,
-                border: "none",
-                background: TEAL,
-                color: "#fff",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {t("Close")}
-            </button>
+            {error && <div style={{ fontSize: 12.5, color: CORAL, marginTop: 10 }}>{error}</div>}
+            {deleting ? (
+              <div style={{ marginTop: 14 }}>{deleteConfirm}</div>
+            ) : (
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button type="button" onClick={() => close()} style={importPill(C.line, C.soft)}>
+                  {t("Close")}
+                </button>
+                {jobId && (
+                  <button
+                    type="button"
+                    data-import-delete
+                    onClick={() => setDeleting("confirm")}
+                    style={{ ...importPill(C.neg, C.neg), flex: "none", padding: "10px 16px", fontWeight: 600 }}
+                  >
+                    {t("Delete import")}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
-      </Sheet>
+      </Surface>
       {/* Sibling of the Sheet (not a child): the Sheet's transform would break the pad's position:fixed. */}
       <AmountPadHost target={pad} onClose={() => setPad(null)} />
       {show && reconcileMounted && (
@@ -1297,46 +1359,47 @@ export function ImportSheet({
         editorIdx !== null &&
         items[editorIdx]?.editable &&
         createPortal(
+          // Wide layouts have no popups: the editor covers the import in the side panel instead.
           <div
             data-import-editor-mode={wideHost?.mode ?? "phone"}
             style={{
-              position: "fixed",
-              inset: wideHost ? 24 : 0,
+              position: editorPanel ? "absolute" : "fixed",
+              inset: 0,
               zIndex: 200,
               background: C.bg,
-              maxWidth: wideHost ? 720 : PHONE_COL,
+              maxWidth: editorPanel ? undefined : PHONE_COL,
               margin: "0 auto",
-              borderRadius: wideHost ? 22 : 0,
-              boxShadow: wideHost ? "0 18px 60px rgba(0,0,0,0.35)" : undefined,
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              paddingTop: wideHost ? 0 : "env(safe-area-inset-top)",
+              paddingTop: editorPanel ? 0 : "env(safe-area-inset-top)",
               fontFamily: font,
             }}
           >
-            <AddScreen
-              state={state}
-              editTxn={null}
-              onDone={() => setEditorIdx(null)}
-              draft={{
-                item: items[editorIdx].item ?? items[editorIdx].draftItem!,
-                accountId,
-                initial: edited[editorIdx],
-                automaticEnvelopeDefault: edited[editorIdx]
-                  ? (editedAutomaticDefaults[editorIdx] ?? false)
-                  : (items[editorIdx].item?.automaticEnvelopeDefault ?? false),
-                onSave: (e, meta) => {
-                  setEdited((prev) => ({ ...prev, [editorIdx]: e }));
-                  setItems((prev) => prev.map((row, index) => (index === editorIdx ? { ...row, include: true } : row)));
-                  setEditedAutomaticDefaults((prev) => ({ ...prev, [editorIdx]: meta.automaticEnvelopeDefault }));
-                  setEditorIdx(null);
-                },
-                onCancel: () => setEditorIdx(null),
-              }}
-            />
+            <InWideShell.Provider value={wideHost && { ...wideHost, host: "panel" }}>
+              <AddScreen
+                state={state}
+                editTxn={null}
+                onDone={() => setEditorIdx(null)}
+                draft={{
+                  item: items[editorIdx].item ?? items[editorIdx].draftItem!,
+                  accountId,
+                  initial: edited[editorIdx],
+                  automaticEnvelopeDefault: edited[editorIdx]
+                    ? (editedAutomaticDefaults[editorIdx] ?? false)
+                    : (items[editorIdx].item?.automaticEnvelopeDefault ?? false),
+                  onSave: (e, meta) => {
+                    setEdited((prev) => ({ ...prev, [editorIdx]: e }));
+                    setItems((prev) => prev.map((row, index) => (index === editorIdx ? { ...row, include: true } : row)));
+                    setEditedAutomaticDefaults((prev) => ({ ...prev, [editorIdx]: meta.automaticEnvelopeDefault }));
+                    setEditorIdx(null);
+                  },
+                  onCancel: () => setEditorIdx(null),
+                }}
+              />
+            </InWideShell.Provider>
           </div>,
-          document.body,
+          editorPanel ?? document.body,
         )}
       {/* Sibling of the Sheet (not a child) — the panel's transform would break position:fixed. */}
       <AiConsentSheet

@@ -8,7 +8,7 @@ import * as e2ee from "../lib/e2ee";
 import { type Message, msg, useT } from "../lib/i18n";
 import { store } from "../lib/store";
 import { TEAL } from "../lib/theme";
-import { Sheet } from "./chrome";
+import { Surface } from "./chrome";
 
 export type AiFeature = "suggest" | "import";
 
@@ -60,7 +60,7 @@ export function AiConsentSheet({
   };
 
   return (
-    <Sheet show={show} onClose={close}>
+    <Surface show={show} onClose={close}>
       {(C) => {
         const secondary = {
           width: "100%",
@@ -117,6 +117,6 @@ export function AiConsentSheet({
           </>
         );
       }}
-    </Sheet>
+    </Surface>
   );
 }

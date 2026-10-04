@@ -5,14 +5,22 @@ import { useT } from "../../lib/i18n";
 import { InWideShell, type PaneSurfaceHost, useWideHost } from "../../lib/shellContext";
 import type { Theme } from "../../lib/theme";
 
-export function PaneSurface({ host, onClose, children }: { host: PaneSurfaceHost; onClose: () => void; children: ReactNode | ((C: Theme) => ReactNode) }) {
+export function PaneSurface({
+  host,
+  onClose,
+  children,
+}: {
+  host: PaneSurfaceHost;
+  onClose: (reason?: "replaced") => void;
+  children: ReactNode | ((C: Theme) => ReactNode);
+}) {
   const C = useTheme();
   const { t } = useT();
   const ctx = useWideHost();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
-  useEffect(() => host.register({ close: () => closeRef.current() }), [host]);
+  useEffect(() => host.register({ close: (reason) => closeRef.current(reason) }), [host]);
 
   // Focus hygiene on unmount: a Cancel/Save button inside the surface unmounts under the focused
   // element and would otherwise strand focus on `<body>` — hand it to the panel toggle, the same
@@ -33,7 +41,7 @@ export function PaneSurface({ host, onClose, children }: { host: PaneSurfaceHost
     <div data-wide-pane-surface style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: C.surface }}>
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 14px", borderBottom: `1px solid ${C.line}`, flexShrink: 0 }}>
         <button
-          onClick={onClose}
+          onClick={() => onClose()}
           aria-label={t("Close")}
           style={{
             width: 30,

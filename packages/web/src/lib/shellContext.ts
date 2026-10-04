@@ -6,7 +6,8 @@ export type PaneRect = { left: number; width: number };
 export type PaneSurfaceHost = {
   node: HTMLElement | null;
 
-  register: (s: { close: () => void }) => () => void;
+  /** "replaced": the panel is switching to other content (+ Add), not the human dismissing this surface. */
+  register: (s: { close: (reason?: "replaced") => void }) => () => void;
 };
 
 export type WideHostInfo = {
