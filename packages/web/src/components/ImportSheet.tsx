@@ -1318,6 +1318,7 @@ export function ImportSheet({
                 {t("Reconcile the account to {amount} now", { amount: formatMoney(reconcileFigure!, currency, lang) })}
               </button>
             )}
+            {error && <div style={{ fontSize: 12.5, color: CORAL, marginTop: 10 }}>{error}</div>}
             {deleting ? (
               <div style={{ marginTop: 14 }}>{deleteConfirm}</div>
             ) : (
