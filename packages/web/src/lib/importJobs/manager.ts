@@ -3,7 +3,7 @@ import { type ImportReceipt, importReceiptSchema } from "@enveo/shared";
 import { decryptPayload, encryptPayload, importApplyRowToken, importJobAadContext, plainImportApplyRowToken } from "../crypto";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
-import { type ImportApplyProgress, type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
+import { type ImportApplyProgress, type ImportJobStorageScope, type ImportLocalDraft, importJobStorage } from "../importJobStorage";
 import { type BootStatus, store } from "../store";
 import { verifiedIdentityUserId } from "../sync/identity";
 import { type E2eeImportJobCreateInput, E2eeImportJobRunner } from "./e2eeRunner";
@@ -385,24 +385,38 @@ export class ImportJobManager {
   }
 
   async receiptDraft(id: string, value?: ImportReceipt): Promise<ImportReceipt | null> {
+    if (value) {
+      await this.localDraft(id, "receipt", JSON.stringify(importReceiptSchema.parse(value)));
+      return value;
+    }
+    const json = await this.localDraft(id, "receipt");
+    return json === null ? null : importReceiptSchema.parse(JSON.parse(json));
+  }
+
+  async clearLocalDraft(id: string, draft: ImportLocalDraft): Promise<void> {
+    const target = await this.mutationItem(id);
+    if (target) await importJobStorage.deleteLocalDraft(draft, target.scope, id);
+  }
+
+  /** Writes when given JSON, reads otherwise; E2EE drafts are sealed with the budget key. */
+  async localDraft(id: string, draft: ImportLocalDraft, json?: string): Promise<string | null> {
     const target = await this.mutationItem(id);
     if (!target) throw new Error("import_manager_not_ready");
     const { item, scope, generation } = target;
     const key = item.source === "e2ee" ? e2ee.requireValidatedDek(item.epoch) : null;
     try {
-      const aad = key ? importJobAadContext(item.budgetId, item.epoch, id, "receipt") : null;
-      if (value) {
-        const json = JSON.stringify(importReceiptSchema.parse(value));
+      const aad = key ? importJobAadContext(item.budgetId, item.epoch, id, draft) : null;
+      if (json !== undefined) {
         const payload = key && aad ? await encryptPayload(json, key, aad) : json;
         if (generation !== this.generation) throw new Error("stale_import_job_manager");
-        await importJobStorage.putReceiptDraft(scope, id, payload);
-        return value;
+        await importJobStorage.putLocalDraft(draft, scope, id, payload);
+        return json;
       }
-      const payload = await importJobStorage.getReceiptDraft(scope, id);
+      const payload = await importJobStorage.getLocalDraft(draft, scope, id);
       if (!payload) return null;
-      const json = key && aad ? await decryptPayload(payload, key, aad) : payload;
+      const opened = key && aad ? await decryptPayload(payload, key, aad) : payload;
       if (generation !== this.generation) throw new Error("stale_import_job_manager");
-      return importReceiptSchema.parse(JSON.parse(json));
+      return opened;
     } finally {
       key?.fill(0);
     }

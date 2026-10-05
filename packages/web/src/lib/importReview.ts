@@ -66,9 +66,201 @@ export interface ImportReviewRow {
   item: LocalImportReviewItem | null;
 }
 
-export function reviewSelectionAfterRefresh(row: ImportReviewRow, previous: ImportReviewRow | undefined): boolean {
+export function reviewSelectionAfterRefresh(row: ImportReviewRow, previous: Pick<ImportReviewRow, "include" | "duplicateStatus"> | undefined): boolean {
   if (row.duplicateStatus === "exists" || (row.duplicateStatus === "probable" && previous?.duplicateStatus !== "probable")) return false;
   return previous?.include ?? row.include;
+}
+
+/** What the person changed in a ready import's review, measured against its recognized state.
+ *  Only touched rows are kept, keyed by row id, so every other row follows the recognized state
+ *  as it is whenever the review is opened again. */
+export interface ImportReviewChanges {
+  rows: Record<string, ImportReviewRowChange>;
+  /** null keeps the bank balance recognized from the import. */
+  bankValue: string | null;
+  reconcileAfter: boolean;
+}
+
+export interface ImportReviewRowChange {
+  include: boolean;
+  duplicateStatus: ImportDupStatus;
+  edit?: EditedImportItem;
+  automaticEnvelopeDefault?: boolean;
+}
+
+/** Where review changes are kept. The review depends only on this, so the device-local store can
+ *  give way to one that follows the import to the person's other devices. */
+export interface ImportReviewChangesStore {
+  load(importId: string): Promise<ImportReviewChanges | null>;
+  save(importId: string, changes: ImportReviewChanges): Promise<void>;
+  clear(importId: string): Promise<void>;
+}
+
+/** null when the review shows exactly its recognized state. */
+export function importReviewChanges(args: {
+  recognized: readonly ImportReviewRow[];
+  rows: readonly ImportReviewRow[];
+  edited: Record<number, EditedImportItem>;
+  editedAutomaticDefaults: Record<number, boolean>;
+  bankValue: string;
+  recognizedBankValue: string;
+  reconcileAfter: boolean;
+}): ImportReviewChanges | null {
+  const recognized = new Map(args.recognized.map((row) => [row.rowId, row]));
+  const rows: ImportReviewChanges["rows"] = {};
+  args.rows.forEach((row, index) => {
+    const edit = args.edited[index];
+    if (!edit && row.include === recognized.get(row.rowId)?.include) return;
+    rows[row.rowId] = edit
+      ? { include: row.include, duplicateStatus: row.duplicateStatus, edit, automaticEnvelopeDefault: args.editedAutomaticDefaults[index] ?? false }
+      : { include: row.include, duplicateStatus: row.duplicateStatus };
+  });
+  const bankValue = args.bankValue === args.recognizedBankValue ? null : args.bankValue;
+  if (Object.keys(rows).length === 0 && bankValue === null && !args.reconcileAfter) return null;
+  return { rows, bankValue, reconcileAfter: args.reconcileAfter };
+}
+
+/** An edit chooses the row's assignment itself, so a saved assignment that is unavailable no
+ *  longer applies to it. */
+export function withEditedAssignment(row: ImportReviewRow): ImportReviewRow {
+  return row.blockingIssues.includes("assignment_unavailable")
+    ? { ...row, blockingIssues: row.blockingIssues.filter((issue) => issue !== "assignment_unavailable") }
+    : row;
+}
+
+/** Rows rebuilt during a review keep the person's selection and edits. */
+export function refreshedReviewRows(
+  rebuilt: readonly ImportReviewRow[],
+  previous: readonly ImportReviewRow[],
+  edited: Record<number, EditedImportItem>,
+): ImportReviewRow[] {
+  const previousById = new Map(previous.map((row) => [row.rowId, row]));
+  return rebuilt.map((row, index) => ({
+    ...(edited[index] ? withEditedAssignment(row) : row),
+    include: reviewSelectionAfterRefresh(row, previousById.get(row.rowId)),
+  }));
+}
+
+/** Saves each review's latest changes in order, skipping states superseded while a save was
+ *  running, so the store always ends at what the person last saw. */
+export function createImportReviewSaver(store: ImportReviewChangesStore, onSaved: (ok: boolean) => void) {
+  const queued = new Map<string, ImportReviewChanges | null>();
+  let running: Promise<void> | null = null;
+  const drain = async () => {
+    while (queued.size > 0) {
+      const [importId, changes] = queued.entries().next().value!;
+      queued.delete(importId);
+      try {
+        await (changes ? store.save(importId, changes) : store.clear(importId));
+        onSaved(true);
+      } catch {
+        onSaved(false);
+      }
+    }
+    running = null;
+  };
+  return {
+    save(importId: string, changes: ImportReviewChanges | null): void {
+      queued.delete(importId);
+      queued.set(importId, changes);
+      running ??= drain();
+    },
+    settled: (): Promise<void> => running ?? Promise.resolve(),
+  };
+}
+
+/** Restores the person's choices on top of the recognized state as it is now, with the
+ *  in-session refresh rule: rows already in the budget stay locked, and a row that has become a
+ *  probable duplicate since starts unchecked. */
+export function restoreImportReview(
+  recognized: readonly ImportReviewRow[],
+  changes: ImportReviewChanges,
+): { rows: ImportReviewRow[]; edited: Record<number, EditedImportItem>; editedAutomaticDefaults: Record<number, boolean> } {
+  const edited: Record<number, EditedImportItem> = {};
+  const editedAutomaticDefaults: Record<number, boolean> = {};
+  const rows = recognized.map((row, index) => {
+    const change = changes.rows[row.rowId];
+    if (!change) return row;
+    const include = reviewSelectionAfterRefresh(row, change);
+    if (!change.edit || row.duplicateStatus === "exists") return { ...row, include };
+    edited[index] = change.edit;
+    editedAutomaticDefaults[index] = change.automaticEnvelopeDefault ?? false;
+    return { ...withEditedAssignment(row), include };
+  });
+  return { rows, edited, editedAutomaticDefaults };
+}
+
+/** An edit can outlive what it points at, e.g. a category merged away while the review waited.
+ *  Only the vanished references are cleared, so the rest of the edit survives; the row is
+ *  unchecked and flagged until the person chooses again. */
+export function reconcileReviewEdits(args: {
+  rows: readonly ImportReviewRow[];
+  edited: Record<number, EditedImportItem>;
+  ledger: Pick<ClientLedger, "accounts" | "envelopes" | "categories">;
+  defaultAccountId: string;
+}): { rows: ImportReviewRow[]; edited: Record<number, EditedImportItem>; invalidated: boolean } {
+  const active = (entries: ReadonlyArray<{ id: string; archived: boolean }>) => new Set(entries.filter((entry) => !entry.archived).map((entry) => entry.id));
+  const accounts = active(args.ledger.accounts);
+  const envelopes = active(args.ledger.envelopes);
+  const categories = active(args.ledger.categories);
+  const rows = [...args.rows];
+  const edited = { ...args.edited };
+  let invalidated = false;
+  for (const [key, edit] of Object.entries(args.edited)) {
+    const index = Number(key);
+    const row = rows[index];
+    if (!row) continue;
+    const accountId = accounts.has(edit.accountId) ? edit.accountId : args.defaultAccountId;
+    const toAccountId = edit.toAccountId !== null && accounts.has(edit.toAccountId) && edit.toAccountId !== accountId ? edit.toAccountId : null;
+    const envelopeId = edit.envelopeId !== null && envelopes.has(edit.envelopeId) ? edit.envelopeId : null;
+    const categoryId = edit.categoryId !== null && categories.has(edit.categoryId) ? edit.categoryId : null;
+    if (accountId === edit.accountId && toAccountId === edit.toAccountId && envelopeId === edit.envelopeId && categoryId === edit.categoryId) continue;
+    invalidated = true;
+    edited[index] = { ...edit, accountId, toAccountId, envelopeId, categoryId };
+    rows[index] = { ...row, include: false, requiresReview: true, blockingIssues: [...new Set([...row.blockingIssues, "assignment_unavailable" as const])] };
+  }
+  return { rows, edited, invalidated };
+}
+
+const isNullableString = (value: unknown): boolean => value === null || typeof value === "string";
+
+function isEditedImportItem(value: unknown): value is EditedImportItem {
+  const edit = value as Record<string, unknown> | null;
+  return (
+    typeof edit === "object" &&
+    edit !== null &&
+    ["expense", "income", "transfer"].includes(edit.type as string) &&
+    typeof edit.accountId === "string" &&
+    isNullableString(edit.toAccountId) &&
+    typeof edit.isRefund === "boolean" &&
+    Number.isSafeInteger(edit.amount) &&
+    typeof edit.date === "string" &&
+    typeof edit.name === "string" &&
+    isNullableString(edit.envelopeId) &&
+    isNullableString(edit.categoryId) &&
+    isNullableString(edit.placeName) &&
+    typeof edit.note === "string"
+  );
+}
+
+/** Stored changes are read defensively: a row they cannot vouch for falls back to its recognized
+ *  state instead of reaching the apply path. */
+export function parseImportReviewChanges(json: string): ImportReviewChanges | null {
+  let value: Partial<ImportReviewChanges> | null;
+  try {
+    value = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value.rows !== "object" || !value.rows || !isNullableString(value.bankValue) || typeof value.reconcileAfter !== "boolean") return null;
+  const rows = Object.entries(value.rows).filter(
+    ([, row]) =>
+      typeof row?.include === "boolean" &&
+      ["new", "probable", "exists"].includes(row.duplicateStatus) &&
+      (row.edit === undefined || isEditedImportItem(row.edit)) &&
+      (row.automaticEnvelopeDefault === undefined || typeof row.automaticEnvelopeDefault === "boolean"),
+  );
+  return { rows: Object.fromEntries(rows), bankValue: value.bankValue ?? null, reconcileAfter: value.reconcileAfter };
 }
 
 export function visibleImportReviewRows<T extends Pick<ImportReviewRow, "disposition">>(rows: readonly T[]): { row: T; index: number; position: number }[] {
@@ -157,7 +349,7 @@ export function reviewBadges(row: ImportReviewRow, edit?: EditedImportItem): Imp
   if (row.alreadyApplied) badges.push({ label: msg("Already added by this import"), tone: "neutral" });
   else if (row.duplicateStatus === "exists") badges.push({ label: msg("Already exists"), tone: "neutral" });
   if (row.duplicateStatus === "probable") badges.push({ label: msg("Probable duplicate"), tone: "warning" });
-  if (!edit && row.blockingIssues.includes("assignment_unavailable")) badges.push({ label: msg("Saved assignment is unavailable"), tone: "warning" });
+  if (row.blockingIssues.includes("assignment_unavailable")) badges.push({ label: msg("Saved assignment is unavailable"), tone: "warning" });
   for (const reason of row.reviewReasons) {
     if (edit && ["missing_fact", "unknown_kind", "inconsistent_direction", "unknown_transfer_endpoint", "fact_correction"].includes(reason)) continue;
     const label = importReviewReasonMessage(reason);

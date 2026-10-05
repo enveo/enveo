@@ -5,8 +5,10 @@ import { generateDek } from "../crypto";
 import * as e2eeState from "../e2ee";
 import { __resetStorageForTests, idbGet, idbPut } from "../idb";
 import { type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
+import type { ImportReviewChanges } from "../importReview";
 import * as persist from "../persist";
 import { ImportJobManager, type ImportJobManagerE2eePort, type ImportJobManagerPlainPort, type ImportJobManagerState } from "./manager";
+import { deviceImportReviewStore } from "./reviewStore";
 import type { ImportActivityItem, ImportActivityStore, ImportJobScopeCapability } from "./store";
 
 const BUDGET = "22222222-2222-2222-2222-222222222222";
@@ -223,7 +225,7 @@ describe("import job manager", () => {
     expect(raw).not.toContain("row-three");
 
     await restarted.complete(ID, { appliedCount: 2, skippedCount: 1 });
-    expect(await importJobStorage.getReceiptDraft({ ownerId: "user-a", budgetId: BUDGET }, ID)).toBeUndefined();
+    expect(await importJobStorage.getLocalDraft("receipt", { ownerId: "user-a", budgetId: BUDGET }, ID)).toBeUndefined();
     expect(await restarted.appliedProgress(ID, ["row-one", "row-two", "row-three"])).toEqual({
       appliedRowIds: [],
       appliedCount: 0,
@@ -1064,7 +1066,7 @@ it("keeps an E2EE recovery receipt encrypted and refuses to read it after lockin
       rows: [],
     };
     await manager.receiptDraft(ID, receipt);
-    const raw = await importJobStorage.getReceiptDraft({ ownerId: "user-a", budgetId: BUDGET }, ID);
+    const raw = await importJobStorage.getLocalDraft("receipt", { ownerId: "user-a", budgetId: BUDGET }, ID);
     expect(raw).toStartWith("v2.");
     expect(raw).not.toContain("Private receipt account");
     expect(await manager.receiptDraft(ID)).toEqual(receipt);
@@ -1077,16 +1079,86 @@ it("keeps an E2EE recovery receipt encrypted and refuses to read it after lockin
   }
 });
 
-it("prunes terminal and vanished receipt drafts after restart, preserving active and foreign drafts", async () => {
+it("keeps E2EE review changes sealed on this device and forgets them with the import", async () => {
+  const state = new FakeState();
+  state.status = "ready";
+  const adapters = ports([]);
+  const manager = new ImportJobManager({
+    state,
+    ownerId: async () => "user-a",
+    tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+    createPlain: adapters.plain,
+    createE2ee: adapters.e2ee,
+    randomId: () => ID,
+    visible: () => true,
+  });
+  e2eeState.setTierMeta({ tier: "e2ee", epoch: 3 });
+  e2eeState.setDek(generateDek(), 3);
+  const scope = { ownerId: "user-a", budgetId: BUDGET };
+  const changes: ImportReviewChanges = {
+    rows: {
+      "row-one": {
+        include: true,
+        duplicateStatus: "new",
+        edit: {
+          type: "expense",
+          accountId: ACCOUNT,
+          toAccountId: null,
+          isRefund: false,
+          amount: 1_250,
+          date: "2031-08-02",
+          name: "Corner Bakery",
+          envelopeId: null,
+          categoryId: null,
+          placeName: "Corner Bakery",
+          note: "Birthday cake",
+        },
+      },
+    },
+    bankValue: "1,180.25",
+    reconcileAfter: true,
+  };
+  const reviews = deviceImportReviewStore(manager);
+  try {
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en", images: [IMAGE] });
+
+    // when: the review is saved, reset, saved again and the import completed
+    await reviews.save(ID, changes);
+    const raw = await importJobStorage.getLocalDraft("review", scope, ID);
+    expect(raw).toStartWith("v2.");
+    expect(raw).not.toContain("Corner Bakery");
+    expect(await reviews.load(ID)).toEqual(changes);
+
+    await reviews.clear(ID);
+    expect(await reviews.load(ID)).toBeNull();
+
+    await reviews.save(ID, changes);
+    await manager.complete(ID, { appliedCount: 1, skippedCount: 0 });
+
+    // then: nothing of the review outlives the import
+    expect(await importJobStorage.getLocalDraft("review", scope, ID)).toBeUndefined();
+  } finally {
+    manager.stop();
+    await persist.flushed();
+    e2eeState.__resetDekForTests();
+  }
+});
+
+it("prunes terminal and vanished receipt and review drafts after restart, preserving active and foreign drafts", async () => {
   const scope = { ownerId: "user-a", budgetId: BUDGET };
   const foreign = { ownerId: "user-b", budgetId: OTHER_BUDGET };
-  await importJobStorage.putReceiptDraft(scope, ID, "active");
-  await importJobStorage.putReceiptDraft(scope, OTHER_ID, "vanished");
-  await importJobStorage.putReceiptDraft(foreign, OTHER_ID, "foreign");
-  await importJobStorage.pruneReceiptDrafts(scope, new Set([ID]), () => true);
-  expect(await importJobStorage.getReceiptDraft(scope, ID)).toBe("active");
-  expect(await importJobStorage.getReceiptDraft(scope, OTHER_ID)).toBeUndefined();
-  expect(await importJobStorage.getReceiptDraft(foreign, OTHER_ID)).toBe("foreign");
-  await importJobStorage.pruneReceiptDrafts(scope, new Set(), () => false);
-  expect(await importJobStorage.getReceiptDraft(scope, ID)).toBe("active");
+  await importJobStorage.putLocalDraft("receipt", scope, ID, "active");
+  await importJobStorage.putLocalDraft("review", scope, ID, "active review");
+  await importJobStorage.putLocalDraft("receipt", scope, OTHER_ID, "vanished");
+  await importJobStorage.putLocalDraft("review", scope, "review-only-job", "vanished review");
+  await importJobStorage.putLocalDraft("receipt", foreign, OTHER_ID, "foreign");
+  await importJobStorage.pruneLocalDrafts(scope, new Set([ID]), () => true);
+  expect(await importJobStorage.getLocalDraft("receipt", scope, ID)).toBe("active");
+  expect(await importJobStorage.getLocalDraft("review", scope, ID)).toBe("active review");
+  expect(await importJobStorage.getLocalDraft("receipt", scope, OTHER_ID)).toBeUndefined();
+  expect(await importJobStorage.getLocalDraft("review", scope, "review-only-job")).toBeUndefined();
+  expect(await importJobStorage.getLocalDraft("receipt", foreign, OTHER_ID)).toBe("foreign");
+  await importJobStorage.pruneLocalDrafts(scope, new Set(), () => false);
+  expect(await importJobStorage.getLocalDraft("receipt", scope, ID)).toBe("active");
 });

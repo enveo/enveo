@@ -7,12 +7,14 @@ import { font, tint } from "../lib/theme";
 export function ImportDeleteConfirm({
   title,
   body,
+  confirmLabel,
   busy,
   onCancel,
   onConfirm,
 }: {
   title: string;
   body: string;
+  confirmLabel?: string;
   busy: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -47,7 +49,7 @@ export function ImportDeleteConfirm({
           disabled={busy}
           style={{ ...importPill("transparent", "#fff"), border: "none", background: C.neg, fontWeight: 650, opacity: busy ? 0.6 : 1 }}
         >
-          {t("Delete")}
+          {confirmLabel ?? t("Delete")}
         </button>
       </div>
     </div>
