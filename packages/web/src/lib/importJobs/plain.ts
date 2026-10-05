@@ -255,7 +255,7 @@ export class PlainImportJobAdapter {
           this.publish(importActivityFromServer(summary));
         }
       }
-      await importJobStorage.pruneReceiptDrafts(
+      await importJobStorage.pruneLocalDrafts(
         this.options.scope,
         new Set(jobs.filter((job) => (this.options.activity.get(job.id)?.status ?? job.status) === "ready").map((job) => job.id)),
         () => this.isCurrent(),

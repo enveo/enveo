@@ -30,24 +30,31 @@ import type { ImportApplyProgress } from "../lib/importJobStorage";
 import { importApplyErrorMessage } from "../lib/importJobs/applyError";
 import { importJobManager } from "../lib/importJobs/manager";
 import { finishImportReceipt, prepareImportReceipt } from "../lib/importJobs/receipt";
+import { importReviewStore } from "../lib/importJobs/reviewStore";
 import type { ImportActivityItem } from "../lib/importJobs/store";
 import {
   applyBalanceMatchToReview,
   balanceMatchCandidatesForReview,
   bankBalanceHint,
   buildImportReviewRows,
+  createImportReviewSaver,
   type ImportBalanceDiagnosis,
+  type ImportReviewChanges,
   type ImportReviewRow,
   importBalanceDiagnosis,
   importBalanceEffect,
   importMissingDetails,
   importPeriodStart,
+  importReviewChanges,
   isCompleteImportReviewItem,
+  reconcileReviewEdits,
+  refreshedReviewRows,
+  restoreImportReview,
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
-  reviewSelectionAfterRefresh,
   visibleImportReviewRows,
+  withEditedAssignment,
 } from "../lib/importReview";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
 import {
@@ -126,12 +133,14 @@ export function ImportSheet({
   const [jobId, setJobId] = useState<string | null>(initialJobId ?? null);
   const [job, setJob] = useState<ImportActivityItem | undefined>();
   const [items, setItems] = useState<ImportReviewRow[]>([]);
+  const [recognized, setRecognized] = useState<ImportReviewRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [partialRetryStarted, setPartialRetryStarted] = useState(false);
 
   const [bankValue, setBankValue] = useState("");
+  const [recognizedBankValue, setRecognizedBankValue] = useState("");
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
   const [match, setMatch] = useState<ImportBalanceMatchState>({ kind: "idle" });
   const [diagnosis, setDiagnosis] = useState<ImportBalanceDiagnosis | null>(null);
@@ -151,6 +160,11 @@ export function ImportSheet({
   const [edited, setEdited] = useState<Record<number, EditedImportItem>>({});
   const [editedAutomaticDefaults, setEditedAutomaticDefaults] = useState<Record<number, boolean>>({});
   const [editorIdx, setEditorIdx] = useState<number | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [reviewSaver] = useState(() => createImportReviewSaver(importReviewStore, (ok) => setSaveFailed(!ok)));
+  // What the store holds, so opening a review writes nothing and a failed read never wipes it.
+  const storedChanges = useRef<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const editorWasOpen = useRef(false);
   const reviewE2eeEpoch = useRef<number | null>(null);
@@ -169,51 +183,74 @@ export function ImportSheet({
     return importJobManager.observe(jobId, setJob);
   }, [jobId, show]);
 
+  // Opens the review at its recognized state as of now, with the saved review changes on top
+  // unless the person is resetting them.
+  const loadReview = async (ready: ImportActivityItem, restore: boolean) => {
+    const result = ready.result!;
+    const importAccountId = ready.accountId!;
+    const generation = viewGeneration.current;
+    const recoveredProgress = await importJobManager.appliedProgress(
+      ready.id,
+      result.proposals.map((proposal) => proposal.rowId),
+    );
+    let changes: ImportReviewChanges | null = null;
+    let readable = true;
+    if (restore) {
+      try {
+        await reviewSaver.settled();
+        changes = await importReviewStore.load(ready.id);
+      } catch {
+        readable = false;
+      }
+    }
+    if (generation !== viewGeneration.current) return;
+    const ledger = store.getLedger();
+    if (!ledger) {
+      setError(t("The local replica is not ready."));
+      return;
+    }
+    const recognition = reconcileImportJobResult({ result, ledger, accountId: importAccountId });
+    const sourceAccount = ledger.accounts.find((account) => account.id === importAccountId);
+    const accountInvalid = !sourceAccount || sourceAccount.archived;
+    const candidates = recognitionCandidatesForDryRun(recognition, ledger);
+    const dry = accountInvalid ? { results: [] } : planLocalImport({ ledger, globalAccountId: importAccountId, items: candidates, dryRun: true });
+    const rebuilt = buildImportReviewRows({
+      recognition,
+      ledger,
+      dryRunResults: dry.results,
+      automaticEnvelopeId: sourceAccount?.automaticEnvelopeId,
+      budgetCurrency: ledger.budgets[0]?.currency ?? currency,
+      appliedRowIds: recoveredProgress.appliedRowIds,
+      skippedRowIds: recoveredProgress.skippedRowIds,
+    });
+    const restored = changes ? restoreImportReview(rebuilt, changes) : { rows: rebuilt, edited: {}, editedAutomaticDefaults: {} };
+    const checked = reconcileReviewEdits({ rows: restored.rows, edited: restored.edited, ledger, defaultAccountId: importAccountId });
+    const hint = bankBalanceHint(result.rows);
+    const recognizedBank = hint === null ? "" : fmtSignedTrim(hint);
+    // A reset leaves the stored changes in place for the autosave to clear.
+    if (restore) storedChanges.current = readable ? changes && JSON.stringify(changes) : null;
+    setAccountId(importAccountId);
+    setRecognized(rebuilt);
+    setItems(checked.rows);
+    setEdited(checked.edited);
+    setEditedAutomaticDefaults(restored.editedAutomaticDefaults);
+    setMatch({ kind: "idle" });
+    setRecognizedBankValue(recognizedBank);
+    setBankValue(changes?.bankValue ?? recognizedBank);
+    setReconcileAfter(changes?.reconcileAfter ?? false);
+    setPartialStats(recoveredProgress.appliedCount > 0 || recoveredProgress.skippedCount > 0 ? recoveredProgress : null);
+    setSourceAccountUnavailable(accountInvalid);
+    reviewE2eeEpoch.current = ready.source === "e2ee" ? ready.epoch : null;
+    setPhase("review");
+  };
+
   useEffect(() => {
     if (!show || !job || job.status !== "ready" || !job.result || !job.accountId) return;
     const readyRevision = `${job.id}:${job.updatedAt}`;
     if (openedReadyRevision.current === readyRevision) return;
     openedReadyRevision.current = readyRevision;
     const generation = viewGeneration.current;
-    void (async () => {
-      const recoveredProgress = await importJobManager.appliedProgress(
-        job.id,
-        job.result!.proposals.map((proposal) => proposal.rowId),
-      );
-      if (generation !== viewGeneration.current) return;
-      const ledger = store.getLedger();
-      if (!ledger) {
-        setError(t("The local replica is not ready."));
-        return;
-      }
-      const recognition = reconcileImportJobResult({ result: job.result!, ledger, accountId: job.accountId! });
-      const sourceAccount = ledger.accounts.find((account) => account.id === job.accountId);
-      const accountInvalid = !sourceAccount || sourceAccount.archived;
-      const candidates = recognitionCandidatesForDryRun(recognition, ledger);
-      const dry = accountInvalid ? { results: [] } : planLocalImport({ ledger, globalAccountId: job.accountId!, items: candidates, dryRun: true });
-      const automaticEnvelopeId = ledger.accounts.find((account) => account.id === job.accountId)?.automaticEnvelopeId;
-      setAccountId(job.accountId!);
-      setItems(
-        buildImportReviewRows({
-          recognition,
-          ledger,
-          dryRunResults: dry.results,
-          automaticEnvelopeId,
-          budgetCurrency: ledger.budgets[0]?.currency ?? currency,
-          appliedRowIds: recoveredProgress.appliedRowIds,
-          skippedRowIds: recoveredProgress.skippedRowIds,
-        }),
-      );
-      setEdited({});
-      setEditedAutomaticDefaults({});
-      setMatch({ kind: "idle" });
-      const hint = bankBalanceHint(job.result!.rows);
-      setBankValue((current) => (current === "" && hint !== null ? fmtSignedTrim(hint) : current));
-      setPartialStats(recoveredProgress.appliedCount > 0 || recoveredProgress.skippedCount > 0 ? recoveredProgress : null);
-      setSourceAccountUnavailable(accountInvalid);
-      reviewE2eeEpoch.current = job.source === "e2ee" ? job.epoch : null;
-      setPhase("review");
-    })().catch(() => {
+    void loadReview(job, true).catch(() => {
       if (generation === viewGeneration.current) setError(t("The local replica is not ready."));
     });
   }, [currency, job, show, t]);
@@ -260,10 +297,15 @@ export function ImportSheet({
     setDeleting(null);
     setJob(undefined);
     setItems([]);
+    setRecognized([]);
     setError(null);
     setNotice(null);
     setPartialRetryStarted(false);
     setBankValue("");
+    setRecognizedBankValue("");
+    setResetting(false);
+    setSaveFailed(false);
+    storedChanges.current = null;
     setPad(null);
     setMatch({ kind: "idle" });
     setReconcileAfter(false);
@@ -431,49 +473,22 @@ export function ImportSheet({
         const accountInvalid = !sourceAccount || sourceAccount.archived;
         const candidates = recognitionCandidatesForDryRun(recognition, ledger);
         const dry = accountInvalid ? { results: [] } : planLocalImport({ ledger, globalAccountId: job.accountId, items: candidates, dryRun: true });
-        const automaticEnvelopeId = ledger.accounts.find((account) => account.id === job.accountId)?.automaticEnvelopeId;
-        const previousById = new Map(items.map((row) => [row.rowId, row]));
-        const currentRows = buildImportReviewRows({
+        const rebuilt = buildImportReviewRows({
           recognition,
           ledger,
           dryRunResults: dry.results,
-          automaticEnvelopeId,
+          automaticEnvelopeId: sourceAccount?.automaticEnvelopeId,
           budgetCurrency: ledger.budgets[0]?.currency ?? currency,
           appliedRowIds: previouslyApplied.appliedRowIds,
           skippedRowIds: previouslyApplied.skippedRowIds,
-        }).map((row) => ({ ...row, include: reviewSelectionAfterRefresh(row, previousById.get(row.rowId)) }));
-        const currentEdited = { ...edited };
-        let invalidatedEdit = false;
-        const activeAccountIds = new Set(ledger.accounts.filter((account) => !account.archived).map((account) => account.id));
-        const activeEnvelopeIds = new Set(ledger.envelopes.filter((envelope) => !envelope.archived).map((envelope) => envelope.id));
-        const activeCategoryIds = new Set(ledger.categories.filter((category) => !category.archived).map((category) => category.id));
-        currentRows.forEach((row, index) => {
-          const edit = currentEdited[index];
-          if (!edit) return;
-          const accountUnavailable = !activeAccountIds.has(edit.accountId);
-          const transferAccountUnavailable = edit.toAccountId !== null && !activeAccountIds.has(edit.toAccountId);
-          const envelopeUnavailable = edit.envelopeId !== null && !activeEnvelopeIds.has(edit.envelopeId);
-          const categoryUnavailable = edit.categoryId !== null && !activeCategoryIds.has(edit.categoryId);
-          if (accountUnavailable || transferAccountUnavailable || envelopeUnavailable || categoryUnavailable) {
-            delete currentEdited[index];
-            invalidatedEdit = true;
-            currentRows[index] = {
-              ...row,
-              include: false,
-              requiresReview: true,
-              blockingIssues: [...new Set([...row.blockingIssues, "assignment_unavailable" as const])],
-              item: row.item
-                ? {
-                    ...row.item,
-                    toAccountId: transferAccountUnavailable ? null : row.item.toAccountId,
-                    envelopeId: envelopeUnavailable ? null : row.item.envelopeId,
-                    categoryId: categoryUnavailable ? null : row.item.categoryId,
-                  }
-                : null,
-            };
-          }
         });
+        const {
+          rows: currentRows,
+          edited: currentEdited,
+          invalidated: invalidatedEdit,
+        } = reconcileReviewEdits({ rows: refreshedReviewRows(rebuilt, items, edited), edited, ledger, defaultAccountId: job.accountId });
         if (invalidatedEdit) setEdited(currentEdited);
+        setRecognized(rebuilt);
         setItems(currentRows);
         setSourceAccountUnavailable(accountInvalid);
         if (accountInvalid || invalidatedEdit) return;
@@ -568,19 +583,17 @@ export function ImportSheet({
                 items: recognitionCandidatesForDryRun(recognition, ledger),
                 dryRun: true,
               });
-          const automaticEnvelopeId = ledger.accounts.find((account) => account.id === job.accountId)?.automaticEnvelopeId;
-          const previousById = new Map(items.map((row) => [row.rowId, row]));
-          setItems(
-            buildImportReviewRows({
-              recognition,
-              ledger,
-              dryRunResults: dry.results,
-              automaticEnvelopeId,
-              budgetCurrency: ledger.budgets[0]?.currency ?? currency,
-              appliedRowIds: recoveredProgress.appliedRowIds,
-              skippedRowIds: recoveredProgress.skippedRowIds,
-            }).map((row) => ({ ...row, include: reviewSelectionAfterRefresh(row, previousById.get(row.rowId)) })),
-          );
+          const rebuilt = buildImportReviewRows({
+            recognition,
+            ledger,
+            dryRunResults: dry.results,
+            automaticEnvelopeId: sourceAccount?.automaticEnvelopeId,
+            budgetCurrency: ledger.budgets[0]?.currency ?? currency,
+            appliedRowIds: recoveredProgress.appliedRowIds,
+            skippedRowIds: recoveredProgress.skippedRowIds,
+          });
+          setRecognized(rebuilt);
+          setItems(refreshedReviewRows(rebuilt, items, edited));
           setSourceAccountUnavailable(accountInvalid);
         }
       }
@@ -601,6 +614,25 @@ export function ImportSheet({
   };
 
   const selectedCount = items.filter((row, i) => (row.item || edited[i]) && row.include && row.duplicateStatus !== "exists").length;
+  const reviewChanges =
+    phase === "review"
+      ? importReviewChanges({ recognized, rows: items, edited, editedAutomaticDefaults, bankValue, recognizedBankValue, reconcileAfter })
+      : null;
+  const reviewChangesJson = reviewChanges && JSON.stringify(reviewChanges);
+  // Every change is saved as it happens; an Add in progress rebuilds the rows itself.
+  useEffect(() => {
+    if (phase !== "review" || busy || !jobId || reviewChangesJson === storedChanges.current) return;
+    storedChanges.current = reviewChangesJson;
+    reviewSaver.save(jobId, reviewChanges);
+  }, [reviewChangesJson, phase, busy, jobId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const resetReview = () => {
+    setResetting(false);
+    if (job?.status !== "ready" || !job.result || !job.accountId) return;
+    const generation = viewGeneration.current;
+    void loadReview(job, false).catch(() => {
+      if (generation === viewGeneration.current) setError(t("The local replica is not ready."));
+    });
+  };
   const missingDetailRows = items.flatMap((row, index) => {
     const item = edited[index] ?? row.item;
     const onBudget = state.accounts.find((account) => account.id === (edited[index]?.accountId ?? accountId))?.onBudget ?? true;
@@ -1236,6 +1268,53 @@ export function ImportSheet({
                 {t("Some selected transactions have missing details. Tap a row to complete it, or confirm adding it anyway.")}
               </div>
             )}
+            {reviewChanges &&
+              (resetting ? (
+                <div style={{ marginTop: 14 }}>
+                  <ImportDeleteConfirm
+                    title={t("Reset changes in this review?")}
+                    body={t("Rows, checkmarks and the bank balance go back to what was recognized. Transactions already added stay in your budget.")}
+                    confirmLabel={t("Reset")}
+                    busy={busy}
+                    onCancel={() => setResetting(false)}
+                    onConfirm={resetReview}
+                  />
+                </div>
+              ) : (
+                <div
+                  data-import-review-saved
+                  style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: "4px 12px", marginTop: 14 }}
+                >
+                  <span role="status" style={{ fontSize: 12, color: saveFailed ? C.warn : C.mute }}>
+                    {saveFailed
+                      ? t("Could not save changes on this device")
+                      : storageMode() === "memory-session"
+                        ? t("Changes are kept until you close the app")
+                        : t("Changes saved on this device")}
+                  </span>
+                  <button
+                    type="button"
+                    data-import-review-reset
+                    disabled={busy}
+                    onClick={() => {
+                      setDeleting(null);
+                      setResetting(true);
+                    }}
+                    style={{
+                      marginLeft: "auto",
+                      padding: "4px 0",
+                      border: "none",
+                      background: "none",
+                      color: C.soft,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t("Reset changes")}
+                  </button>
+                </div>
+              ))}
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button
                 onClick={() => close()}
@@ -1272,7 +1351,7 @@ export function ImportSheet({
                 {busy ? t("Adding…") : selectedCount === 0 ? t("Complete without adding") : tp("Add {n} transaction | Add {n} transactions", selectedCount)}
               </button>
             </div>
-            {deleting ? <div style={{ marginTop: 12 }}>{deleteConfirm}</div> : deleteLink}
+            {deleting ? <div style={{ marginTop: 12 }}>{deleteConfirm}</div> : !resetting && deleteLink}
           </>
         )}
 
@@ -1390,7 +1469,7 @@ export function ImportSheet({
                     : (items[editorIdx].item?.automaticEnvelopeDefault ?? false),
                   onSave: (e, meta) => {
                     setEdited((prev) => ({ ...prev, [editorIdx]: e }));
-                    setItems((prev) => prev.map((row, index) => (index === editorIdx ? { ...row, include: true } : row)));
+                    setItems((prev) => prev.map((row, index) => (index === editorIdx ? { ...withEditedAssignment(row), include: true } : row)));
                     setEditedAutomaticDefaults((prev) => ({ ...prev, [editorIdx]: meta.automaticEnvelopeDefault }));
                     setEditorIdx(null);
                   },

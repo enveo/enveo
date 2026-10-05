@@ -109,8 +109,12 @@ function applyProgressKey(scope: ImportJobStorageScope, id: string): string {
   return JSON.stringify(["import-apply-progress", 3, scope.ownerId, scope.budgetId, id]);
 }
 
-function receiptKey(scope: ImportJobStorageScope, id: string): string {
-  return JSON.stringify(["import-receipt", 1, scope.ownerId, scope.budgetId, id]);
+/** Per-import data kept only on this device: the receipt of an Add in progress and the
+ *  review's changes. */
+export type ImportLocalDraft = "receipt" | "review";
+
+function draftKey(draft: ImportLocalDraft, scope: ImportJobStorageScope, id: string): string {
+  return JSON.stringify([`import-${draft}`, 1, scope.ownerId, scope.budgetId, id]);
 }
 
 function legacyApplyProgressKey(scope: ImportJobStorageScope, id: string): string {
@@ -299,21 +303,28 @@ function newestFirst<T extends { id: string; updatedAt: string }>(rows: T[]): T[
 }
 
 export const importJobStorage = {
-  async getReceiptDraft(scope: ImportJobStorageScope, id: string): Promise<string | undefined> {
+  async getLocalDraft(draft: ImportLocalDraft, scope: ImportJobStorageScope, id: string): Promise<string | undefined> {
     assertValidScope(scope);
-    return (await idbGet<{ payload: string }>("meta", receiptKey(scope, id)))?.payload;
+    return (await idbGet<{ payload: string }>("meta", draftKey(draft, scope, id)))?.payload;
   },
-  async putReceiptDraft(scope: ImportJobStorageScope, id: string, payload: string): Promise<void> {
+  async putLocalDraft(draft: ImportLocalDraft, scope: ImportJobStorageScope, id: string, payload: string): Promise<void> {
     assertValidScope(scope);
-    await idbPut("meta", { kind: "import-receipt", ...scope, id, payload }, receiptKey(scope, id));
+    await idbPut("meta", { kind: `import-${draft}`, ...scope, id, payload }, draftKey(draft, scope, id));
   },
-  async pruneReceiptDrafts(scope: ImportJobStorageScope, readyIds: ReadonlySet<string>, permitted: () => boolean): Promise<void> {
+  async deleteLocalDraft(draft: ImportLocalDraft, scope: ImportJobStorageScope, id: string): Promise<void> {
+    assertValidScope(scope);
+    await idbDelete("meta", draftKey(draft, scope, id));
+  },
+  /** Drafts live only while their import is ready to review. */
+  async pruneLocalDrafts(scope: ImportJobStorageScope, readyIds: ReadonlySet<string>, permitted: () => boolean): Promise<void> {
     assertValidScope(scope);
     for (const value of await idbGetAll<unknown>("meta")) {
       if (!permitted()) return;
       if (!value || typeof value !== "object") continue;
       const row = value as { kind?: string; ownerId: string; budgetId: string; id: string };
-      if (row.kind === "import-receipt" && inScope(row, scope) && !readyIds.has(row.id)) await this.deleteApplyProgress(scope, row.id);
+      if ((row.kind === "import-receipt" || row.kind === "import-review") && inScope(row, scope) && !readyIds.has(row.id)) {
+        await this.deleteApplyProgress(scope, row.id);
+      }
     }
   },
 
@@ -501,7 +512,8 @@ export const importJobStorage = {
 
   async deleteApplyProgress(scope: ImportJobStorageScope, id: string): Promise<void> {
     assertValidScope(scope);
-    await idbDelete("meta", receiptKey(scope, id));
+    await idbDelete("meta", draftKey("receipt", scope, id));
+    await idbDelete("meta", draftKey("review", scope, id));
     await idbDelete("meta", applyProgressKey(scope, id));
     await idbDelete("meta", legacyApplyProgressKey(scope, id));
     await idbDelete("meta", oldestApplyProgressKey(scope, id));
@@ -558,7 +570,13 @@ export const importJobStorage = {
     const deleted = await idbDeleteImportJobWithMetaIfScope(
       id,
       scope,
-      [receiptKey(scope, id), applyProgressKey(scope, id), legacyApplyProgressKey(scope, id), oldestApplyProgressKey(scope, id)],
+      [
+        draftKey("receipt", scope, id),
+        draftKey("review", scope, id),
+        applyProgressKey(scope, id),
+        legacyApplyProgressKey(scope, id),
+        oldestApplyProgressKey(scope, id),
+      ],
       permitted,
     );
     if (deleted) notify(scope);

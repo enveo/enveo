@@ -790,11 +790,11 @@ it("removes former plain receipt drafts when reconciling E2EE jobs", async () =>
   const { runner } = setup();
   await runner.create(createInput());
   await runner.resume();
-  await importJobStorage.putReceiptDraft(SCOPE, ID, "encrypted-ready-draft");
-  await importJobStorage.putReceiptDraft(SCOPE, "former-plain-job", "private-plain-receipt");
+  await importJobStorage.putLocalDraft("receipt", SCOPE, ID, "encrypted-ready-draft");
+  await importJobStorage.putLocalDraft("receipt", SCOPE, "former-plain-job", "private-plain-receipt");
   await runner.list();
-  expect(await importJobStorage.getReceiptDraft(SCOPE, "former-plain-job")).toBeUndefined();
-  expect(await importJobStorage.getReceiptDraft(SCOPE, ID)).toBe("encrypted-ready-draft");
+  expect(await importJobStorage.getLocalDraft("receipt", SCOPE, "former-plain-job")).toBeUndefined();
+  expect(await importJobStorage.getLocalDraft("receipt", SCOPE, ID)).toBe("encrypted-ready-draft");
 });
 
 it("rejects an invalid receipt before changing the ready job or encrypting completion", async () => {

@@ -1408,6 +1408,13 @@ export const pl: Dict = {
   "Remove from this device": "Usuń z tego urządzenia",
   "Retry import": "Ponów import",
   "Review later": "Sprawdź później",
+  "Changes saved on this device": "Zmiany zapisane na tym urządzeniu",
+  "Changes are kept until you close the app": "Zmiany zostają do zamknięcia aplikacji",
+  "Could not save changes on this device": "Nie udało się zapisać zmian na tym urządzeniu",
+  "Reset changes": "Resetuj zmiany",
+  "Reset changes in this review?": "Zresetować zmiany w tym przeglądzie?",
+  "Rows, checkmarks and the bank balance go back to what was recognized. Transactions already added stay in your budget.":
+    "Wiersze, zaznaczenia i saldo z banku wrócą do stanu rozpoznanego. Transakcje już dodane zostają w budżecie.",
   "Saved assignment is unavailable": "Zapisane przypisanie jest niedostępne",
   "Screenshot import": "Import ze zrzutów ekranu",
   "Some rows were already added before the interruption. They now appear as existing and will not be added twice.":

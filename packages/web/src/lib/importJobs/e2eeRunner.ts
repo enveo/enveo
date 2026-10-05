@@ -280,7 +280,7 @@ export class E2eeImportJobRunner {
     this.assertCurrent();
     const current = (await importJobStorage.listJobs(this.options.scope)).filter((job) => !this.expired(job));
     this.assertCurrent();
-    await importJobStorage.pruneReceiptDrafts(this.options.scope, new Set(current.filter((job) => job.status === "ready").map((job) => job.id)), () =>
+    await importJobStorage.pruneLocalDrafts(this.options.scope, new Set(current.filter((job) => job.status === "ready").map((job) => job.id)), () =>
       this.isCurrent(),
     );
     this.assertCurrent();

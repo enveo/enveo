@@ -16,18 +16,27 @@ import {
   balanceMatchCandidatesForReview,
   bankBalanceHint,
   buildImportReviewRows,
+  createImportReviewSaver,
+  type ImportReviewChanges,
+  type ImportReviewChangesStore,
   type ImportReviewRow,
   importBalanceDiagnosis,
   importBalanceEffect,
   importMissingDetails,
   importPeriodStart,
+  importReviewChanges,
   importReviewDoneStats,
   importReviewReasonMessage,
+  parseImportReviewChanges,
+  reconcileReviewEdits,
+  refreshedReviewRows,
+  restoreImportReview,
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
   reviewSelectionAfterRefresh,
   visibleImportReviewRows,
+  withEditedAssignment,
 } from "./importReview";
 import { type LocalImportReviewItem, recognitionCandidatesForDryRun } from "./localImport";
 
@@ -713,6 +722,247 @@ describe("screenshot import review view model", () => {
   it("has concise copy for every shared reason and a safe fallback for a newer reason", () => {
     expect(IMPORT_REVIEW_REASONS.map(importReviewReasonMessage).every((message) => message.length > 0)).toBe(true);
     expect(importReviewReasonMessage("future_reason")).toBe("Needs review");
+  });
+});
+
+describe("saved review changes", () => {
+  const ROWS = ["coffee", "groceries", "parking"];
+  const recognizedRows = (over: { probable?: string[]; applied?: string[] } = {}): ImportReviewRow[] =>
+    buildImportReviewRows({
+      recognition: recognition(
+        ROWS.map((rowId) => row(rowId)),
+        ROWS.map((rowId) => proposal(rowId)),
+      ),
+      ledger: ledger(),
+      dryRunResults: ROWS.map((rowId) => dryResult({ name: rowId, status: over.probable?.includes(rowId) ? "probable" : "added" })),
+      automaticEnvelopeId: null,
+      budgetCurrency: "USD",
+      appliedRowIds: over.applied,
+    });
+  const changesOf = (rows: ImportReviewRow[], over: Partial<Parameters<typeof importReviewChanges>[0]> = {}) =>
+    importReviewChanges({
+      recognized: recognizedRows(),
+      rows,
+      edited: {},
+      editedAutomaticDefaults: {},
+      bankValue: "1,200.00",
+      recognizedBankValue: "1,200.00",
+      reconcileAfter: false,
+      ...over,
+    });
+  const envelope = (id: string, archived = false) => ({
+    id,
+    groupId: U(20),
+    name: "Dining out",
+    color: "#fff",
+    icon: "tag",
+    note: null,
+    monthlyTarget: null,
+    isSavings: false,
+    sort: 0,
+    archived,
+  });
+  const unavailableBadge = (row: ImportReviewRow, edit?: EditedImportItem) =>
+    reviewBadges(row, edit).some((badge) => badge.label === "Saved assignment is unavailable");
+
+  it("keeps nothing while the review shows its recognized state", () => {
+    expect(changesOf(recognizedRows())).toBeNull();
+  });
+
+  it("keeps only what the person changed, keyed by row id", () => {
+    // given: coffee unchecked, groceries corrected and the bank's figure typed in
+    const rows = recognizedRows();
+    rows[0] = { ...rows[0]!, include: false };
+    const edit = editedItem({ name: "Corner Bakery", note: "Birthday cake" });
+
+    // when
+    const changes = changesOf(rows, { edited: { 1: edit }, editedAutomaticDefaults: { 1: true }, bankValue: "1,180.25", reconcileAfter: true });
+
+    // then: the untouched parking row is not part of them
+    expect(changes).toEqual({
+      rows: {
+        coffee: { include: false, duplicateStatus: "new" },
+        groceries: { include: true, duplicateStatus: "new", edit, automaticEnvelopeDefault: true },
+      },
+      bankValue: "1,180.25",
+      reconcileAfter: true,
+    });
+  });
+
+  it("restores the changes over the recognized state as it is now", () => {
+    // given: yesterday coffee was unchecked and groceries corrected
+    const yesterday = recognizedRows();
+    yesterday[0] = { ...yesterday[0]!, include: false };
+    const edit = editedItem({ name: "Corner Bakery" });
+    const changes = changesOf(yesterday, { edited: { 1: edit } })!;
+
+    // when: parking now matches a transaction entered by hand in the meantime
+    const restored = restoreImportReview(recognizedRows({ probable: ["parking"] }), changes);
+
+    // then: the person's choices return and the untouched row follows today's recognition
+    expect(restored.rows.map((row) => [row.rowId, row.include])).toEqual([
+      ["coffee", false],
+      ["groceries", true],
+      ["parking", false],
+    ]);
+    expect(restored.edited).toEqual({ 1: edit });
+  });
+
+  it("does not offer a restored row that became a duplicate since, but keeps a duplicate chosen knowingly", () => {
+    // given: coffee and groceries corrected while new, parking checked although it already was a probable duplicate
+    const before = recognizedRows({ probable: ["parking"] });
+    before[2] = { ...before[2]!, include: true };
+    const changes = importReviewChanges({
+      recognized: recognizedRows({ probable: ["parking"] }),
+      rows: before,
+      edited: { 0: editedItem({ name: "Coffee" }), 1: editedItem({ name: "Groceries" }) },
+      editedAutomaticDefaults: {},
+      bankValue: "",
+      recognizedBankValue: "",
+      reconcileAfter: false,
+    })!;
+
+    // when: coffee now matches a hand-entered transaction and an interrupted Add already added groceries
+    const restored = restoreImportReview(recognizedRows({ probable: ["coffee", "parking"], applied: ["groceries"] }), changes);
+
+    // then
+    expect(restored.rows.map((row) => [row.rowId, row.include])).toEqual([
+      ["coffee", false],
+      ["groceries", false],
+      ["parking", true],
+    ]);
+    expect(restored.edited).toEqual({ 0: editedItem({ name: "Coffee" }) });
+  });
+
+  it("keeps an edit whose envelope, category or account is gone, clearing only those", () => {
+    // given: a correction made before its envelope was archived, its category merged away and its card closed
+    const edit = editedItem({
+      accountId: U(30),
+      envelopeId: U(31),
+      categoryId: U(32),
+      name: "Corner Bakery",
+      placeName: "Corner Bakery",
+      note: "Birthday cake",
+    });
+    const budget = ledger();
+    budget.accounts.push({ ...budget.accounts[0]!, id: U(30), name: "Closed card", archived: true });
+    budget.envelopes.push(envelope(U(31), true));
+
+    // when
+    const result = reconcileReviewEdits({ rows: recognizedRows(), edited: { 0: edit }, ledger: budget, defaultAccountId: U(2) });
+
+    // then: the person's wording survives and the row waits for a new choice
+    expect(result.invalidated).toBe(true);
+    expect(result.edited).toEqual({ 0: { ...edit, accountId: U(2), envelopeId: null, categoryId: null } });
+    expect(result.rows[0]).toMatchObject({ include: false, requiresReview: true });
+    expect(unavailableBadge(result.rows[0]!, result.edited[0])).toBe(true);
+  });
+
+  it("leaves an edit alone while everything it points at still exists", () => {
+    const edit = editedItem({ envelopeId: U(31) });
+    const budget = ledger();
+    budget.envelopes.push(envelope(U(31)));
+
+    expect(reconcileReviewEdits({ rows: recognizedRows(), edited: { 0: edit }, ledger: budget, defaultAccountId: U(2) })).toEqual({
+      rows: recognizedRows(),
+      edited: { 0: edit },
+      invalidated: false,
+    });
+  });
+
+  it("lets an edit settle a remembered assignment that is no longer available", () => {
+    // given: transaction history suggested an envelope that has since been archived
+    const [flagged] = buildImportReviewRows({
+      recognition: recognition([row("coffee")], [Object.assign(proposal("coffee"), { assignmentUnavailable: true })]),
+      ledger: ledger(),
+      dryRunResults: [dryResult()],
+      automaticEnvelopeId: null,
+      budgetCurrency: "USD",
+    });
+    expect(unavailableBadge(flagged!)).toBe(true);
+    const edit = editedItem({ name: "Coffee" });
+
+    // then: an edit made now, restored later or kept while the rows are rebuilt settles it
+    expect(unavailableBadge(withEditedAssignment(flagged!), edit)).toBe(false);
+    const restored = restoreImportReview([flagged!], {
+      rows: { coffee: { include: true, duplicateStatus: "new", edit } },
+      bankValue: null,
+      reconcileAfter: false,
+    });
+    expect(unavailableBadge(restored.rows[0]!, restored.edited[0])).toBe(false);
+    expect(unavailableBadge(refreshedReviewRows([flagged!], [flagged!], { 0: edit })[0]!, edit)).toBe(false);
+  });
+
+  it("reads stored changes back and drops a row it cannot vouch for", () => {
+    const changes: ImportReviewChanges = {
+      rows: {
+        coffee: { include: false, duplicateStatus: "new" },
+        groceries: { include: true, duplicateStatus: "probable", edit: editedItem({ name: "Groceries" }), automaticEnvelopeDefault: false },
+      },
+      bankValue: null,
+      reconcileAfter: true,
+    };
+    const tampered = { ...changes, rows: { ...changes.rows, parking: { include: true, duplicateStatus: "new", edit: { ...editedItem(), amount: 12.5 } } } };
+
+    expect(parseImportReviewChanges(JSON.stringify(changes))).toEqual(changes);
+    expect(parseImportReviewChanges(JSON.stringify(tampered))).toEqual(changes);
+    expect(parseImportReviewChanges(JSON.stringify({ rows: {}, reconcileAfter: false }))).toBeNull();
+    expect(parseImportReviewChanges("{")).toBeNull();
+  });
+});
+
+describe("saving review changes", () => {
+  const typed = (bankValue: string): ImportReviewChanges => ({ rows: {}, bankValue, reconcileAfter: false });
+
+  it("ends at the latest changes of every import without writing the ones superseded meanwhile", async () => {
+    // given: a slow first save
+    const calls: string[] = [];
+    let release!: () => void;
+    const slow = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const store: ImportReviewChangesStore = {
+      load: async () => null,
+      save: async (id, changes) => {
+        calls.push(`save ${id} ${changes.bankValue}`);
+        if (calls.length === 1) await slow;
+      },
+      clear: async (id) => void calls.push(`clear ${id}`),
+    };
+    const results: boolean[] = [];
+    const saver = createImportReviewSaver(store, (ok) => results.push(ok));
+
+    // when: the person keeps typing while it runs, and another import's review is reset
+    saver.save("import-a", typed("1"));
+    saver.save("import-a", typed("12"));
+    saver.save("import-b", null);
+    saver.save("import-a", typed("123"));
+    release();
+    await saver.settled();
+
+    // then
+    expect(calls).toEqual(["save import-a 1", "clear import-b", "save import-a 123"]);
+    expect(results).toEqual([true, true, true]);
+  });
+
+  it("reports a failed save and still saves the next changes", async () => {
+    let failures = 1;
+    const store: ImportReviewChangesStore = {
+      load: async () => null,
+      save: async () => {
+        if (failures-- > 0) throw new Error("QuotaExceededError");
+      },
+      clear: async () => {},
+    };
+    const results: boolean[] = [];
+    const saver = createImportReviewSaver(store, (ok) => results.push(ok));
+
+    saver.save("import-a", typed("1"));
+    await saver.settled();
+    saver.save("import-a", typed("12"));
+    await saver.settled();
+
+    expect(results).toEqual([false, true]);
   });
 });
 
