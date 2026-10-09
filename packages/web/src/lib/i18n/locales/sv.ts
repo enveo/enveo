@@ -117,7 +117,6 @@ export const sv: Dict = {
   "Clear & reset": "Töm och nollställ",
   "Clear search": "Rensa sökningen",
   Close: "Stäng",
-  "Close details": "Stäng detaljer",
   Closed: "Stängda",
   Collapse: "Fäll ihop",
   Color: "Färg",
@@ -209,10 +208,7 @@ export const sv: Dict = {
   "Envelopes have changed since this was generated — generate a new suggestion.": "Kuverten har ändrats sedan det här togs fram — ta fram ett nytt förslag.",
   "Envelopes stay as they are — you assigned this by hand.": "Kuverten lämnas som de är — du fördelade det för hand.",
   "Excess {amount}": "Överskott {amount}",
-  "Exclude from the total": "Uteslut från totalen",
-  "Include again": "Inkludera igen",
   Reset: "Återställ",
-  "Without {names}": "Utan {names}",
   Expense: "Utgift",
   "Export backup (JSON)": "Exportera säkerhetskopia (JSON)",
   "Failed to load the image.": "Bilden kunde inte läsas in.",
@@ -302,7 +298,6 @@ export const sv: Dict = {
   "No envelopes with a budget or spending this month.": "Inga kuvert med budget eller utgifter den här månaden.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.": "Inga kuvert med mål. Sätt ett månadsmål när du redigerar ett kuvert.",
   "No funds to distribute": "Inga medel att fördela",
-  "No spending in this period.": "Inga utgifter under den här perioden.",
   "No transactions.": "Inga transaktioner.",
   "Not available with your OpenAI key.": "Inte tillgänglig med din OpenAI-nyckel.",
   "Not sending": "Skickar inte",
@@ -519,7 +514,6 @@ export const sv: Dict = {
   "Tops envelopes up to last month's allocations. Uncheck what you don't want.":
     "Fyller på kuverten upp till förra månadens tilldelningar. Bocka av det du inte vill ha.",
   Total: "Totalt",
-  "Total spending": "Totala utgifter",
   Transaction: "Transaktion",
   "Transaction change": "Transaktionsändring",
   "Transaction deletion": "Transaktionsborttagning",
@@ -727,7 +721,6 @@ export const sv: Dict = {
   "One click and Enveo runs in its own window — offline, full screen, no browser bar.":
     "Ett klick och Enveo körs i sitt eget fönster — offline, i helskärm, utan webbläsarfält.",
   "Open in Transactions ›": "Öppna i Transaktioner ›",
-  "Open transactions ›": "Öppna transaktioner ›",
   Out: "Ut",
   "Past months are judged against today's target — changing a goal rewrites its history.":
     "Tidigare månader bedöms mot dagens mål — att ändra ett mål skriver om dess historik.",
@@ -781,10 +774,6 @@ export const sv: Dict = {
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} steg kvar till en avslutad plan · {pct}% av månaden gången",
     other: "{n} steg kvar till en avslutad plan · {pct}% av månaden gången",
-  },
-  "{n} transaction · avg {avg} · largest {largest} | {n} transactions · avg {avg} · largest {largest}": {
-    one: "{n} transaktion · snitt {avg} · störst {largest}",
-    other: "{n} transaktioner · snitt {avg} · störst {largest}",
   },
   "A source is asked for more than it has": "En källa ombeds ge mer än den har",
   "Amount from {name}": "Belopp från {name}",

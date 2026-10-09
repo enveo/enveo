@@ -5,7 +5,9 @@ import type { ScreenId } from "../chrome";
 export type PanelView =
   | { kind: "empty"; hint: "envelope" | "report" | "account" | "generic" }
   | { kind: "envelope"; envelopeId: string; month: string; source: "selection" | "fallback" }
-  | { kind: "report"; view: ReportTab; source: "selection" | "fallback" }
+  | { kind: "report"; view: Exclude<ReportTab, "spending">; source: "selection" }
+  /** The Spending report fills the primary pane; the panel holds its filters or a transaction. */
+  | { kind: "spending" }
   | { kind: "widgets"; widgetId: WideWidgetId }
   | { kind: "widgetPicker" }
   | { kind: "account"; accountId: string; source: "selection" | "fallback" }
@@ -61,8 +63,9 @@ export function resolvePanel(
 
   if (a.acctView) return { kind: "account", accountId: a.acctView.accountId, source: "selection" };
   if (a.screen === "reports") {
+    if (a.reportsView === "spending") return { kind: "spending" };
     if (a.reportsView !== "overview") return { kind: "report", view: a.reportsView, source: "selection" };
-    return { kind: "report", view: "spending", source: "fallback" };
+    return { kind: "empty", hint: "report" };
   }
   if (a.screen === "start" && a.widgetPicker) return { kind: "widgetPicker" };
   if (a.screen === "start" && a.widgetSettings) return { kind: "widgets", widgetId: a.widgetSettings };

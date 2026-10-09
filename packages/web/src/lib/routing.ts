@@ -1,7 +1,10 @@
+import type { ExploreStep } from "@enveo/shared";
 import type { ScreenId } from "../components/chrome";
+import { decodePath, encodePath } from "../screens/reports/spendingPath";
 import type { ReportTab, ReportView } from "../screens/reports/types";
 
-export type Route = { screen: ScreenId; reportsView: ReportView; envelopeId: string | null };
+/** `spendPath`: the Spending report's drill-down, one history entry per level. */
+export type Route = { screen: ScreenId; reportsView: ReportView; envelopeId: string | null; spendPath?: readonly ExploreStep[] };
 
 const REGULAR: readonly ScreenId[] = ["budget", "transactions", "accounts", "reports", "activity", "settings"];
 const TABS: readonly ReportTab[] = ["assets", "cashflow", "spending", "budgets", "goals", "month", "trends"];
@@ -20,7 +23,11 @@ export function routeToUrl(r: Route): string {
   // live, 2026-08-24). Keeping the URL constant makes that push a "none" — the class dies at the
   // source. A deep /add reload landing on a fresh Add with no envelope pane behind it is the
   // already-accepted behaviour (reconciliation ruling: "/add reload lands on a fresh Add").
-  return r.envelopeId && r.screen !== "addExpense" ? `${path}?env=${encodeURIComponent(r.envelopeId)}` : path;
+  const q = new URLSearchParams();
+  if (r.envelopeId && r.screen !== "addExpense") q.set("env", r.envelopeId);
+  if (r.screen === "reports" && r.reportsView === "spending" && r.spendPath?.length) q.set("p", encodePath(r.spendPath));
+  const qs = q.toString().replaceAll("%7E", "~");
+  return qs ? `${path}?${qs}` : path;
 }
 
 /**
@@ -45,11 +52,15 @@ export function parseUrl(pathname: string, search: string): Route {
   const [seg1 = "", seg2 = ""] = pathname.split("/").filter(Boolean);
   const screen: ScreenId = seg1 === "add" ? "addExpense" : (REGULAR as readonly string[]).includes(seg1) ? (seg1 as ScreenId) : "start";
   const tab = (TABS as readonly string[]).includes(seg2) ? (seg2 as ReportTab) : undefined;
-  const env = new URLSearchParams(search).get("env");
+  const q = new URLSearchParams(search);
+  const env = q.get("env");
+  const reportsView = screen === "reports" && tab ? tab : "overview";
+  const spendPath = reportsView === "spending" ? decodePath(q.get("p")) : [];
   return {
     screen,
-    reportsView: screen === "reports" && tab ? tab : "overview",
+    reportsView,
 
     envelopeId: env?.length === 36 ? env : null,
+    ...(spendPath.length ? { spendPath } : {}),
   };
 }

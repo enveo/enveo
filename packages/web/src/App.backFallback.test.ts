@@ -63,6 +63,11 @@ describe("backFallback — the six rungs, most specific first", () => {
     }
   });
 
+  test("a drilled-in Spending report goes up one level before it leaves for the hub", () => {
+    expect(backFallback(s({ screen: "reports", reportsView: "spending", spendDepth: 2 }))).toBe("spending-up");
+    expect(backFallback(s({ screen: "reports", reportsView: "spending", spendDepth: 0 }))).toBe("reports-overview");
+  });
+
   test("rung 6: any other non-start screen backs to start", () => {
     for (const screen of ["budget", "transactions", "accounts", "settings"] as const satisfies readonly ScreenId[]) {
       expect(backFallback(s({ screen }))).toBe("to-start");

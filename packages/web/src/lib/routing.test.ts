@@ -164,3 +164,22 @@ describe("no History side effects", () => {
     expect(() => routeToUrl({ screen: "reports", reportsView: "trends", envelopeId: ENV_ID })).not.toThrow();
   });
 });
+
+describe("spending drill path", () => {
+  const spendPath = [
+    { dim: "envelope" as const, key: ENV_ID },
+    { dim: "category" as const, key: null },
+  ];
+
+  test("round-trips through the URL", () => {
+    const route: Route = { screen: "reports", reportsView: "spending", envelopeId: null, spendPath };
+    expect(routeToUrl(route)).toBe(`/reports/spending?p=e.${ENV_ID}~c.-`);
+    expect(parse(routeToUrl(route))).toEqual(route);
+  });
+
+  test("is dropped outside the Spending report and when malformed", () => {
+    expect(routeToUrl({ screen: "reports", reportsView: "assets", envelopeId: null, spendPath })).toBe("/reports/assets");
+    expect(parseUrl("/reports/spending", "?p=x.1~e.2").spendPath).toBeUndefined();
+    expect(parseUrl("/reports/spending", "?p=e.1~e.2").spendPath).toBeUndefined();
+  });
+});

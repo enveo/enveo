@@ -15,6 +15,7 @@ import { createTransactionSearchIndex, matchesTransactionFilters, matchesTransac
 import { useElementWidth } from "../../lib/useElementWidth";
 import type { ViewMode } from "../../lib/viewMode";
 import type { Tab as AddTab } from "../../screens/Add";
+import type { SpendingView } from "../../screens/reports/spendingView";
 import type { ReportTab, ReportView } from "../../screens/reports/types";
 import { WideHome } from "../../screens/WideHome";
 import type { ScreenId } from "../chrome";
@@ -67,9 +68,11 @@ function BandHeader({
   panelClosed,
   onTogglePanel,
   compact,
+  hideMonth,
 }: {
   screen: ScreenId;
   month: string;
+  hideMonth: boolean;
   onPrev: () => void;
   onNext: () => void;
   onAdd: () => void;
@@ -105,7 +108,7 @@ function BandHeader({
       }}
     >
       <span style={{ fontSize: 17, fontWeight: 600, color: C.text, flexShrink: 0 }}>{t(SCREEN_TITLE[screen])}</span>
-      {screen !== "settings" && (
+      {screen !== "settings" && !hideMonth && (
         <div style={{ display: "flex", alignItems: "center", gap: 11, flexShrink: 0 }}>
           <button
             onClick={onPrev}
@@ -307,6 +310,13 @@ type WideShellBag = {
   onEditTxnPanel: (t: Transaction) => void;
 
   onDuplicateTxnPanel: (t: Transaction) => void;
+
+  spendView: SpendingView;
+  setSpendView: (v: SpendingView) => void;
+  /** The transaction the Spending report shows in the panel instead of its filters. */
+  spendTxn: string | null;
+  setSpendTxn: (id: string | null) => void;
+  onDuplicateSpendTxn: (t: Transaction) => void;
 };
 
 export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellBag; rightSlot?: RightSlot; children: ReactNode }) {
@@ -351,6 +361,11 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     setTxnView,
     onEditTxnPanel,
     onDuplicateTxnPanel,
+    spendView,
+    setSpendView,
+    spendTxn,
+    setSpendTxn,
+    onDuplicateSpendTxn,
   } = bag;
   const C = useTheme();
   const { t } = useT();
@@ -437,8 +452,9 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     if (view.kind === "envelope") {
       if (view.source === "selection") setEnvView(null);
       else setPanelClosed(true);
-    } else if (view.kind === "report") {
-      if (view.source === "selection") setReportsView("overview");
+    } else if (view.kind === "report") setReportsView("overview");
+    else if (view.kind === "spending") {
+      if (spendTxn) setSpendTxn(null);
       else setPanelClosed(true);
     } else if (view.kind === "widgets") setWidgetSettings(null);
     else if (view.kind === "widgetPicker") setWidgetPicker(false);
@@ -467,9 +483,9 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 ? acctView
                 : view.kind === "txn"
                   ? txnView
-                  : view.source === "selection"
-                    ? view.view
-                    : null;
+                  : view.kind === "spending"
+                    ? (spendTxn ?? "spending")
+                    : view.view;
   const prevSelection = useRef(selection);
   useEffect(() => {
     if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);
@@ -533,6 +549,8 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
         <BandHeader
           screen={primaryScreen}
           month={month}
+          // The Spending report has its own period filter; the global month would contradict it.
+          hideMonth={primaryScreen === "reports" && reportsView === "spending"}
           onPrev={prev}
           onNext={next}
           onAdd={() => {
@@ -628,6 +646,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             onEditEnvelopeTxn={onEditEnvelopeTxn}
             onEditTxnPanel={onEditTxnPanel}
             onDuplicateTxnPanel={onDuplicateTxnPanel}
+            spending={{ view: spendView, setView: setSpendView, txnId: spendTxn, onDuplicateTxn: onDuplicateSpendTxn }}
             onPrev={prev}
             onNext={next}
             editTxn={editTxn}
