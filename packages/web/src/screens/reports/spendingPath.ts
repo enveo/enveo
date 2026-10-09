@@ -34,9 +34,9 @@ export function shiftMonth(month: string, delta: number): string {
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
 }
 
-/** Twelve calendar months ending this month, all accounts, top level. */
-export function defaultSpendingView(thisMonth: string): SpendingView {
-  return { from: monthStart(shiftMonth(thisMonth, -11)), to: monthEnd(thisMonth), custom: false, account: null, path: [], grouping: null };
+/** Twelve calendar months ending this month, all accounts. */
+export function defaultSpendingView(thisMonth: string, path: readonly ExploreStep[] = []): SpendingView {
+  return { from: monthStart(shiftMonth(thisMonth, -11)), to: monthEnd(thisMonth), custom: false, account: null, path, grouping: null };
 }
 
 const CODE: Record<ExploreDim, string> = { group: "g", envelope: "e", category: "c", place: "p" };

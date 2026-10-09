@@ -62,7 +62,7 @@ export function ReportsScreen({
   /** The Spending report's state, owned by App. Absent where Spending cannot open (side panel). */
   spending?: {
     view: SpendingView;
-    setView: (v: SpendingView) => void;
+    setView: (v: SpendingView, replace?: boolean) => void;
     /** History-aware: goes up one drill level. */
     onBack: () => void;
     onOpenTxn: (txnId: string) => void;

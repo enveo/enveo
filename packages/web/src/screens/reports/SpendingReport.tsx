@@ -16,7 +16,7 @@ import {
   statementLines,
   sumEntries,
 } from "@enveo/shared";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "../../components/chrome";
 import { ScrollPicker } from "../../components/pickers";
 import { DeltaTag, useReportBand } from "../../components/reportKit";
@@ -170,7 +170,8 @@ export function SpendingReport({
 }: {
   state: StateResponse;
   view: SpendingView;
-  setView: (v: SpendingView) => void;
+  /** `replace`: correct the current history entry instead of adding a level. */
+  setView: (v: SpendingView, replace?: boolean) => void;
   onBack: () => void;
   onOpenTxn: (txnId: string) => void;
   /** Wide layout: the transaction shown in the side panel. */
@@ -200,6 +201,25 @@ export function SpendingReport({
   const txnNames = useTxnNames();
   const rows = useMemo(() => (grouping === "txn" ? [] : breakdownEntries(list, grouping)), [list, grouping]);
   const pathKey = encodePath(view.path);
+  // Each level is its own screen: a new level starts at the top, going back restores the parent.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const el = rootRef.current?.closest<HTMLElement>(".gs");
+    if (!el) return;
+    el.scrollTop = scrollByLevel.get(pathKey) ?? 0;
+    // Recorded as it happens: by cleanup time the next level's content is already in place and the
+    // browser has clamped the position to it.
+    const remember = () => scrollByLevel.set(pathKey, el.scrollTop);
+    el.addEventListener("scroll", remember, { passive: true });
+    return () => el.removeEventListener("scroll", remember);
+  }, [pathKey]);
+  // A path from a link or history may name an envelope, category or place deleted or merged
+  // since: keep the part that still exists.
+  useEffect(() => {
+    const ids = { group: state.groups, envelope: state.envelopes, category: state.categories, place: state.places };
+    const stale = view.path.findIndex((s) => s.key !== null && !ids[s.dim].some((x) => x.id === s.key));
+    if (stale >= 0) setView({ ...view, path: view.path.slice(0, stale), grouping: null }, true);
+  }, [state, view, setView]);
   useEffect(() => setShown(50), [pathKey, grouping, view.from, view.to, view.account]);
 
   const last = view.path.at(-1);
@@ -328,7 +348,7 @@ export function SpendingReport({
   );
 
   return (
-    <div style={{ fontFamily: font }}>
+    <div ref={rootRef} style={{ fontFamily: font }}>
       {header}
       {hero}
       <div style={{ padding: `4px ${P}px 24px` }}>
@@ -383,6 +403,9 @@ export function SpendingReport({
     </div>
   );
 }
+
+/** Scroll position of each level visited this session, keyed by its encoded path. */
+const scrollByLevel = new Map<string, number>();
 
 const linkBtn = {
   display: "block",
@@ -738,7 +761,11 @@ function FilterSheet({
   return (
     // Swipe-to-dismiss is off: the date wheels own vertical drags inside this sheet.
     <Sheet show={show} onClose={onClose} lockSwipe>
-      <FilterSheetContent view={view} entries={entries} names={names} state={state} onApply={onApply} />
+      {/* Horizontal drags in here must not reach App's swipe-back, which would navigate the report
+          underneath and leave this draft pointing at the old level. */}
+      <div onTouchStart={(e) => e.stopPropagation()}>
+        <FilterSheetContent view={view} entries={entries} names={names} state={state} onApply={onApply} />
+      </div>
     </Sheet>
   );
 }

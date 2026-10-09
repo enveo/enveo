@@ -127,7 +127,7 @@ function AppContent() {
   const [reportsView, setReportsView] = useState<ReportView>(r0.reportsView);
   // Spending report: the drill path is part of the URL (one history entry per level); period,
   // account and grouping are kept here so they survive opening a transaction for edit.
-  const [spendView, setSpendView] = useState<SpendingView>(() => ({ ...defaultSpendingView(currentMonth()), path: r0.spendPath ?? [] }));
+  const [spendView, setSpendView] = useState<SpendingView>(() => defaultSpendingView(currentMonth(), r0.spendPath));
   // Wide only: the transaction the Spending report shows in the side panel instead of the filters.
   const [spendTxn, setSpendTxn] = useState<string | null>(null);
   // Month report's selected day, kept in App for the SAME reason as `reportsView`: opening a
@@ -211,6 +211,9 @@ function AppContent() {
     if (s === "reports") {
       setReportsView("overview");
       setMonthDay(null);
+      // Spending starts at its top level again; its period and account stay.
+      setSpendView((v) => ({ ...v, path: [], grouping: null }));
+      setSpendTxn(null);
     }
     setScreen(s);
   };
@@ -228,18 +231,16 @@ function AppContent() {
     setScreen("addExpense");
   };
 
-  // Opening the Spending report from elsewhere starts at its top level; period and account stay.
-  const showReport = (v: ReportView, fresh = reportsView !== "spending") => {
-    if (v === "spending" && fresh) {
-      setSpendView((s) => ({ ...s, path: [], grouping: null }));
-      setSpendTxn(null);
-    }
-    setReportsView(v);
+  const showSpendPanel = (txnId: string | null) => {
+    setEnvView(null);
+    setAcctView(null);
+    setSpendTxn(txnId);
+    setPanelClosed(false);
   };
 
   const openReports = (tab: ReportTab) => {
     nav("reports");
-    showReport(tab, true);
+    setReportsView(tab);
   };
 
   const onOpenMonthDay = (d: string) => {
@@ -393,7 +394,6 @@ function AppContent() {
       nav(r.screen);
       setReportsView(r.reportsView);
       setSpendView((v) => ({ ...v, path: r.spendPath ?? [] }));
-      setSpendTxn(null);
       if (r.envelopeId) setEnvView({ envelopeId: r.envelopeId, month });
       if (acctRestore) setAcctView(acctRestore);
     };
@@ -412,17 +412,6 @@ function AppContent() {
     return () => window.removeEventListener("popstate", onPop);
   });
 
-  // A drill path from a link or history may name an envelope, category or place that was deleted
-  // or merged since: keep the part that still exists and fix the URL in place.
-  useEffect(() => {
-    if (!state || reportsView !== "spending") return;
-    const ids = { group: state.groups, envelope: state.envelopes, category: state.categories, place: state.places };
-    const stale = spendView.path.findIndex((s) => s.key !== null && !ids[s.dim].some((x) => x.id === s.key));
-    if (stale < 0) return;
-    justPopped.current = true;
-    setSpendView((v) => ({ ...v, path: v.path.slice(0, stale), grouping: null }));
-  }, [state, reportsView, spendView.path]);
-
   // Swipe right = go back (screens with a back arrow — pinned PWA has no Safari gesture).
   const canBack = envView !== null || screen === "addExpense" || screen === "settings" || (screen === "reports" && reportsView === "spending");
   const back = () => {
@@ -430,6 +419,9 @@ function AppContent() {
       history.back();
       return;
     }
+    // No entry of ours below this one (a reloaded or deep-linked page): the fallback replaces it
+    // instead of pushing, or the next back would return to the screen it just left.
+    justPopped.current = true;
     switch (
       backFallback({ screen, envView, reportsView, envEditOpen: envEdit !== null, envActionsOpen: envActions !== null, spendDepth: spendView.path.length })
     ) {
@@ -446,11 +438,7 @@ function AppContent() {
         setEnvView(null);
         break;
       case "spending-up":
-        // No history entry below this one (a deep link was reloaded): replace it with its parent
-        // rather than pushing, or the next back would return to the child it just left.
-        justPopped.current = true;
         setSpendView((v) => ({ ...v, path: v.path.slice(0, -1), grouping: null }));
-        setSpendTxn(null);
         break;
       case "reports-overview":
         setReportsView("overview");
@@ -566,32 +554,27 @@ function AppContent() {
             month={month}
             view={wide && reportsView !== "spending" ? "overview" : reportsView}
             onView={(v) => {
-              showReport(v);
+              setReportsView(v);
               setAcctView(null);
             }}
             spending={{
               view: spendView,
-              setView: setSpendView,
-              onBack: back,
-              onOpenTxn: (id) => {
-                if (wide) {
-                  // An envelope or account opened from the panel outranks the report's own pane.
-                  setEnvView(null);
-                  setAcctView(null);
-                  return setSpendTxn(id);
-                }
-                const tx = store.getLedger()?.transactions.find((x) => x.id === id);
-                if (tx) editTxnFrom(tx, "reports");
+              setView: (v, replace) => {
+                // `replace`: fix this history entry in place instead of adding one.
+                if (replace) justPopped.current = true;
+                setSpendView(v);
               },
+              onBack: back,
               txnId: spendTxn,
-              onOpenFilters: wide
-                ? () => {
-                    setEnvView(null);
-                    setAcctView(null);
-                    setSpendTxn(null);
-                    setPanelClosed(false);
-                  }
-                : undefined,
+              // Wide: the transaction (or, with null, the filters) goes to the side panel, over any
+              // envelope or account the panel was showing. Phone: the transaction opens for edit.
+              onOpenTxn: wide
+                ? showSpendPanel
+                : (id) => {
+                    const tx = store.getLedger()?.transactions.find((x) => x.id === id);
+                    if (tx) editTxnFrom(tx, "reports");
+                  },
+              onOpenFilters: wide ? () => showSpendPanel(null) : undefined,
             }}
             monthDay={monthDay}
             onSelectDay={setMonthDay}
