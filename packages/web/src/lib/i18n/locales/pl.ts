@@ -1499,4 +1499,7 @@ export const pl: Dict = {
   "{pct} of group {name}": "{pct} grupy {name}",
   "{pct} of category {name}": "{pct} kategorii {name}",
   "{pct} of place {name}": "{pct} miejsca {name}",
+  Day: "Dzień",
+  Month: "Miesiąc",
+  Year: "Rok",
 };

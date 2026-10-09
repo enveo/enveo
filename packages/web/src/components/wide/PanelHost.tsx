@@ -1,6 +1,6 @@
-import type { Transaction, WideWidgetId, WidgetOpts } from "@enveo/shared";
-import { lazy } from "react";
-import type { StateResponse } from "../../lib/api";
+import { computeStateResponse, monthOf, type Transaction, type WideWidgetId, type WidgetOpts } from "@enveo/shared";
+import { lazy, useMemo } from "react";
+import { type StateResponse, useLedgerVersion } from "../../lib/api";
 import { useBudgetPreferences, useTheme } from "../../lib/contexts";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
@@ -259,6 +259,14 @@ export function PanelHost({
   // The Spending report can show a transaction from any month; `state.transactions` holds only the
   // viewed one, so it comes from the replica.
   const spendTx = view.kind === "spending" && spending.txnId ? (store.getLedger()?.transactions.find((x) => x.id === spending.txnId) ?? null) : null;
+  // Its envelope figures belong to the transaction's own month, not the month the app is on.
+  const spendTxMonth = spendTx ? monthOf(spendTx.date) : null;
+  const version = useLedgerVersion();
+  const spendTxState = useMemo(() => {
+    const l = spendTxMonth ? store.getLedger() : null;
+    return l && spendTxMonth ? computeStateResponse(l, spendTxMonth) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spendTxMonth, version]);
   const label =
     view.kind === "spending"
       ? spendTx
@@ -357,12 +365,12 @@ export function PanelHost({
           />
         );
       case "spending":
-        return spendTx ? (
+        return spendTx && spendTxState && spendTxMonth ? (
           <TxnPanel
             key={spendTx.id}
             txnId={spendTx.id}
-            state={{ ...state, transactions: [spendTx] }}
-            month={month}
+            state={{ ...spendTxState, transactions: [spendTx] }}
+            month={spendTxMonth}
             onOpenEnvelope={onOpenEnvelope}
             onEditTxn={onEditTxn}
             onDuplicateTxn={spending.onDuplicateTxn}

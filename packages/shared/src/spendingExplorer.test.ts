@@ -7,8 +7,9 @@ import {
   defaultGrouping,
   type ExploreFilter,
   filterEntries,
+  mergeByTransaction,
   monthlyTotals,
-  skipSingleRows,
+  openingGrouping,
   spendingEntries,
   statementLines,
   sumEntries,
@@ -66,7 +67,7 @@ describe("spendingEntries", () => {
       fc.property(ledgerArb(), (ledger: Ledger) => {
         const cl = asClientLedger(ledger);
         const f = { ...all, from: "2026-07-01", to: "2026-07-31" };
-        const rows = breakdownEntries(filterEntries(spendingEntries(cl), f), "envelope");
+        const rows = breakdownEntries(filterEntries(spendingEntries(cl), f), "envelope").filter((r) => r.amount !== 0);
         const expected = computeSpendingByDimension(cl, "2026-07", "2026-07", "envelope");
         expect(rows.map((r) => [r.key, r.amount]).sort()).toEqual(expected.map((r) => [r.key, r.amount]).sort());
       }),
@@ -119,29 +120,40 @@ describe("filter, breakdown and drill", () => {
     ).toBe("envelope");
   });
 
-  it("skips levels that would list a single row", () => {
-    const f = skipSingleRows(
-      entries,
-      {
-        ...all,
-        path: [
-          { dim: "envelope", key: "HOME" },
-          { dim: "category", key: "RENT" },
-        ],
-      },
-      true,
-    );
-    expect(f.path).toEqual([
-      { dim: "envelope", key: "HOME" },
-      { dim: "category", key: "RENT" },
-      { dim: "place", key: "LANDLORD" },
+  it("opens past groupings that would list a single row, without narrowing the filter", () => {
+    const rent = {
+      ...all,
+      path: [
+        { dim: "envelope" as const, key: "HOME" },
+        { dim: "category" as const, key: "RENT" },
+      ],
+    };
+    expect(openingGrouping(entries, rent, true)).toBe("txn");
+    expect(openingGrouping(entries, { ...all, path: [{ dim: "envelope", key: "HOME" }] }, true)).toBe("category");
+  });
+
+  it("keeps a row whose purchase and refund net to zero, so it is still a separate row", () => {
+    const zero = [
+      ...entries.filter((e) => e.id === "rent1"),
+      { ...entries.find((e) => e.id === "lamp")!, amount: 50_00 },
+      { ...entries.find((e) => e.id === "refund")!, amount: -50_00 },
+    ];
+    expect(breakdownEntries(zero, "category").map((r) => [r.key, r.amount])).toEqual([
+      ["RENT", 900_00],
+      ["DECOR", 0],
     ]);
+    expect(openingGrouping(zero, all, true)).toBe("category");
+  });
+
+  it("merges the split items of one transaction and marks what differs", () => {
+    const merged = mergeByTransaction(entries).find((e) => e.txnId === "split")!;
+    expect(merged).toMatchObject({ id: "split", amount: 70_00, mixed: ["envelope", "category"] });
   });
 
   it("folds three or more identical payments at one place into one line", () => {
     const lines = statementLines(filterEntries(entries, { ...all, path: [{ dim: "envelope", key: "HOME" }] }));
     expect(lines[0]).toMatchObject({ count: 3, amount: 2700_00 });
-    expect(lines.slice(1).map((l) => l.entry.id)).toEqual(["lamp", "split:i2", "refund"]);
+    expect(lines.slice(1).map((l) => l.entry.id)).toEqual(["lamp", "split", "refund"]);
   });
 
   it("totals every month the range touches", () => {

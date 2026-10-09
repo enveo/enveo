@@ -21,6 +21,8 @@ export interface SpendingEntry {
   place: string | null;
   account: string;
   amount: Money;
+  /** Set by `mergeByTransaction`: dimensions whose value differs between the merged split items. */
+  mixed?: readonly ExploreDim[];
 }
 
 export interface ExploreStep {
@@ -90,7 +92,10 @@ export interface ExploreRow {
   entries: SpendingEntry[];
 }
 
-/** Rows sorted by amount, largest first; months newest first. Rows netting to zero are dropped. */
+/**
+ * Rows sorted by amount, largest first; months newest first. A row whose purchases and refunds net
+ * to zero stays: dropping it would hide its entries, and a level would look like it had one row.
+ */
 export function breakdownEntries(entries: readonly SpendingEntry[], g: Exclude<ExploreGrouping, "txn">): ExploreRow[] {
   const rows = new Map<string | null, ExploreRow>();
   for (const e of entries) {
@@ -101,7 +106,7 @@ export function breakdownEntries(entries: readonly SpendingEntry[], g: Exclude<E
     rows.set(key, row);
   }
   for (const r of rows.values()) r.entries = sortLargest(r.entries);
-  const list = [...rows.values()].filter((r) => r.amount !== 0);
+  const list = [...rows.values()];
   return g === "month" ? list.sort((a, b) => (b.key ?? "").localeCompare(a.key ?? "")) : list.sort((a, b) => b.amount - a.amount);
 }
 
@@ -128,18 +133,39 @@ export function defaultGrouping(f: ExploreFilter, spansMonths: boolean): Explore
 }
 
 /**
- * Appends steps while the level would list a single row (rent paid to one landlord), so a drill
- * never lands on a screen that only repeats its parent.
+ * The grouping a level opens with, passing over groupings that would list a single row (rent paid
+ * to one landlord), so a level never only repeats its parent. Nothing is added to the filter: the
+ * skipped dimensions stay open, and a wider period that brings a second landlord shows it.
  */
-export function skipSingleRows(entries: readonly SpendingEntry[], f: ExploreFilter, spansMonths: boolean): ExploreFilter {
+export function openingGrouping(entries: readonly SpendingEntry[], f: ExploreFilter, spansMonths: boolean): ExploreGrouping {
+  const list = filterEntries(entries, f);
   let cur = f;
   for (;;) {
     const g = defaultGrouping(cur, spansMonths);
-    if (g === "txn" || g === "account" || g === "month") return cur;
-    const rows = breakdownEntries(filterEntries(entries, cur), g);
-    if (rows.length !== 1) return cur;
+    if (g === "txn" || g === "account" || g === "month") return g;
+    const rows = breakdownEntries(list, g);
+    if (rows.length !== 1) return g;
     cur = { ...cur, path: [...cur.path, { dim: g, key: rows[0]!.key }] };
   }
+}
+
+/**
+ * One entry per transaction: the split items that matched are summed, so a receipt split across
+ * two categories of one envelope is one line with its whole amount, not two smaller ones.
+ */
+export function mergeByTransaction(entries: readonly SpendingEntry[]): SpendingEntry[] {
+  const byTxn = new Map<string, SpendingEntry>();
+  for (const e of entries) {
+    const m = byTxn.get(e.txnId);
+    if (!m) {
+      byTxn.set(e.txnId, { ...e, id: e.txnId });
+      continue;
+    }
+    const mixed = new Set(m.mixed);
+    for (const d of ["group", "envelope", "category"] as const) if (m[d] !== e[d]) mixed.add(d);
+    byTxn.set(e.txnId, { ...m, amount: m.amount + e.amount, mixed: [...mixed] });
+  }
+  return [...byTxn.values()];
 }
 
 export interface StatementLine {
@@ -149,12 +175,14 @@ export interface StatementLine {
   amount: Money;
 }
 
-/** A section's preview: repeated identical payments folded, largest line first. */
+/** A section's preview, per transaction: repeated identical payments folded, largest line first. */
 export function statementLines(entries: readonly SpendingEntry[]): StatementLine[] {
   const groups = new Map<string, SpendingEntry[]>();
-  for (const e of entries) {
+  for (const e of mergeByTransaction(entries)) {
     const k = `${e.place ?? ""}|${e.amount}`;
-    groups.set(k, [...(groups.get(k) ?? []), e]);
+    const g = groups.get(k);
+    if (g) g.push(e);
+    else groups.set(k, [e]);
   }
   const lines: StatementLine[] = [];
   for (const g of groups.values()) {

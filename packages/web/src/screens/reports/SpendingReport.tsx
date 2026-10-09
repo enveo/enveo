@@ -1,16 +1,16 @@
 import {
   availableGroupings,
   breakdownEntries,
-  defaultGrouping,
   type ExploreDim,
   type ExploreGrouping,
   type ExploreRow,
   filterEntries,
   median,
+  mergeByTransaction,
   monthlyTotals,
+  openingGrouping,
   type SpendingEntry,
   type StatementLine,
-  skipSingleRows,
   sortLargest,
   spendingEntries,
   statementLines,
@@ -91,6 +91,20 @@ function useEntries(): SpendingEntry[] {
   }, [version]);
 }
 
+/** A transaction's own name or note, for lines whose place is not set. */
+function useTxnNames(): Map<string, string> {
+  const version = useLedgerVersion();
+  return useMemo(() => {
+    const m = new Map<string, string>();
+    for (const tx of store.getLedger()?.transactions ?? []) {
+      const n = tx.name || tx.note;
+      if (n) m.set(tx.id, n);
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
+}
+
 function useNames(state: StateResponse) {
   const { t, lang } = useT();
   return useMemo(() => {
@@ -126,22 +140,22 @@ function periodLabel(v: SpendingView, t: (m: Message) => string, lang: Parameter
   return `${shortDate(v.from, lang, withYear)} – ${shortDate(v.to, lang, withYear)}`;
 }
 
-/** The grouping this level shows: the user's pick for this exact level, else the natural next one. */
-export function groupingOf(v: SpendingView): ExploreGrouping {
+/** The grouping this level shows: the user's pick for this exact level, else the natural next one
+ *  that lists more than one row. */
+export function groupingOf(entries: readonly SpendingEntry[], v: SpendingView): ExploreGrouping {
   const f = filterOf(v);
   const spans = spansMonths(v);
   const picked = v.grouping?.pathKey === encodePath(v.path) ? v.grouping.g : null;
-  return picked && availableGroupings(f, spans).includes(picked) ? picked : defaultGrouping(f, spans);
+  return picked && availableGroupings(f, spans).includes(picked) ? picked : openingGrouping(entries, f, spans);
 }
 
 /** Drilling into a row: a path dimension opens a new level; an account or a month narrows the
  *  current level in place (they are filters, not path steps). */
-export function drillInto(entries: readonly SpendingEntry[], v: SpendingView, g: ExploreGrouping, key: string | null): SpendingView {
+export function drillInto(v: SpendingView, g: ExploreGrouping, key: string | null): SpendingView {
   if (g === "account") return { ...v, account: key, grouping: null };
   if (g === "month") return key ? { ...v, from: monthStart(key), to: monthEnd(key), custom: false, grouping: null } : v;
   if (g === "txn") return v;
-  const next = skipSingleRows(entries, { ...filterOf(v), path: [...v.path, { dim: g, key }] }, spansMonths(v));
-  return { ...v, path: next.path, grouping: null };
+  return { ...v, path: [...v.path, { dim: g, key }], grouping: null };
 }
 
 export function SpendingReport({
@@ -181,7 +195,9 @@ export function SpendingReport({
   const f = filterOf(view);
   const list = useMemo(() => filterEntries(entries, f), [entries, f.from, f.to, f.account, f.path]);
   const total = sumEntries(list);
-  const grouping = groupingOf(view);
+  const grouping = useMemo(() => groupingOf(entries, view), [entries, view]);
+  const txns = useMemo(() => sortLargest(mergeByTransaction(list)), [list]);
+  const txnNames = useTxnNames();
   const rows = useMemo(() => (grouping === "txn" ? [] : breakdownEntries(list, grouping)), [list, grouping]);
   const pathKey = encodePath(view.path);
   useEffect(() => setShown(50), [pathKey, grouping, view.from, view.to, view.account]);
@@ -226,7 +242,7 @@ export function SpendingReport({
     return monthlyTotals(filterEntries(entries, { ...f, from, to: monthEnd(month) }), from, monthEnd(month));
   }, [entries, list, month, view.from, view.to, f.account, f.path]);
 
-  const drill = (g: ExploreGrouping, key: string | null) => setView(drillInto(entries, view, g, key));
+  const drill = (g: ExploreGrouping, key: string | null) => setView(drillInto(view, g, key));
   const openFilters = () => (onOpenFilters ? onOpenFilters() : setSheet(true));
 
   const fixed = new Set<ExploreGrouping>(view.path.map((s) => s.dim));
@@ -296,17 +312,18 @@ export function SpendingReport({
     </div>
   );
 
-  const line = (l: StatementLine, sectionDim: ExploreGrouping | null) => (
+  // A folded "12×" line stands for several payments: it opens the section's level, where they are listed.
+  const line = (l: StatementLine, sectionDim: ExploreGrouping | null, onDrill?: () => void) => (
     <EntryLine
       key={l.entry.id}
       line={l}
       fixed={sectionDim ? new Set([...fixed, sectionDim]) : fixed}
       names={names}
-      txnName={txnLabel(l.entry.txnId)}
+      txnName={txnNames.get(l.entry.txnId) ?? null}
       selected={selectedTxnId === l.entry.txnId}
       columns={desktop}
       withYear={monthsSpanned > 12}
-      onClick={() => onOpenTxn(l.entry.txnId)}
+      onClick={() => (l.count > 1 && onDrill ? onDrill() : onOpenTxn(l.entry.txnId))}
     />
   );
 
@@ -319,16 +336,14 @@ export function SpendingReport({
           {list.length === 0
             ? ""
             : grouping === "txn"
-              ? tp("{n} transaction, largest first | {n} transactions, largest first", list.length)
+              ? tp("{n} transaction, largest first | {n} transactions, largest first", txns.length)
               : t(GROUPING_HEADER[grouping])}
         </div>
         {list.length === 0 && <div style={{ fontSize: 13, color: C.mute, padding: "18px 0" }}>{t("No spending for these filters.")}</div>}
         {grouping === "txn" ? (
           <>
-            {sortLargest(list)
-              .slice(0, shown)
-              .map((e) => line({ entry: e, count: 1, amount: e.amount }, null))}
-            {list.length > shown && (
+            {txns.slice(0, shown).map((e) => line({ entry: e, count: 1, amount: e.amount }, null))}
+            {txns.length > shown && (
               <button onClick={() => setShown((n) => n + 100)} style={linkBtn}>
                 {t("Show more")}
               </button>
@@ -346,7 +361,7 @@ export function SpendingReport({
               max={rows[0]!.amount}
               onDrill={() => drill(grouping, r.key)}
             >
-              {(lines) => lines.map((l) => line(l, grouping))}
+              {(lines) => lines.map((l) => line(l, grouping, () => drill(grouping, r.key)))}
             </Section>
           ))
         )}
@@ -367,11 +382,6 @@ export function SpendingReport({
       )}
     </div>
   );
-
-  function txnLabel(txnId: string): string | null {
-    const tx = store.getLedger()?.transactions.find((x) => x.id === txnId);
-    return tx ? tx.name || tx.note || null : null;
-  }
 }
 
 const linkBtn = {
@@ -409,8 +419,8 @@ function Section({
   const C = useTheme();
   const M = useMask();
   const { tp, lang } = useT();
-  const lines = statementLines(row.entries).slice(0, 3);
-  const restN = row.entries.length - lines.reduce((n, l) => n + l.count, 0);
+  const { lines, txnCount } = useMemo(() => ({ lines: statementLines(row.entries).slice(0, 3), txnCount: mergeByTransaction(row.entries).length }), [row]);
+  const restN = txnCount - lines.reduce((n, l) => n + l.count, 0);
   const restAmt = row.amount - lines.reduce((s, l) => s + l.amount, 0);
   return (
     <section style={{ padding: "6px 0 12px", borderTop: `1px solid ${C.line}` }}>
@@ -507,7 +517,13 @@ function EntryLine({
   // account unless an account filter already says which.
   const open = [...(["place", "category", "envelope"] as const).filter((d) => !fixed.has(d)), ...(fixed.has("account") ? [] : (["account"] as const))];
   const nameOf = (d: (typeof open)[number]) =>
-    d === "account" ? names.name("account", e.account) : d === "place" && e.place === null ? (txnName ?? names.name("place", null)) : names.name(d, e[d]);
+    d === "account"
+      ? names.name("account", e.account)
+      : d === "place" && e.place === null
+        ? (txnName ?? names.name("place", null))
+        : d !== "place" && e.mixed?.includes(d)
+          ? t("Split transaction")
+          : names.name(d, e[d]);
   const [first, second] = open;
   const label = first ? nameOf(first) : (txnName ?? "");
   const metaDims = [second, open.includes("account") && first !== "account" && second !== "account" ? ("account" as const) : undefined];
@@ -745,6 +761,7 @@ function FilterSheetContent({
   const { t, tp } = useT();
   const [draft, setDraft] = useState(view);
   const matching = useMemo(() => filterEntries(entries, filterOf(draft)), [entries, draft]);
+  const txnCount = useMemo(() => mergeByTransaction(matching).length, [matching]);
   return (
     <>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
@@ -783,7 +800,7 @@ function FilterSheetContent({
             fontFamily: "inherit",
           }}
         >
-          {tp("Show {n} transaction | Show {n} transactions", matching.length)}
+          {tp("Show {n} transaction | Show {n} transactions", txnCount)}
           <span style={{ fontWeight: 600, opacity: 0.8, fontSize: 13.5 }}>{M(sumEntries(matching))}</span>
         </button>
       </div>
@@ -822,15 +839,21 @@ export function FilterBody({
 
   const narrowDims: ExploreDim[] = view.path.some((s) => s.dim === "group") ? ["group", "envelope", "category", "place"] : ["envelope", "category", "place"];
   const stepOf = (d: ExploreDim) => view.path.find((s) => s.dim === d);
+  // Changing an earlier choice offers everything under the levels BEFORE it and drops the levels
+  // after it, which belonged to the old choice; a dimension not on the path yet narrows the end.
+  const before = (d: ExploreDim) => {
+    const i = view.path.findIndex((s) => s.dim === d);
+    return i < 0 ? view.path : view.path.slice(0, i);
+  };
   const choose = (d: ExploreDim, key: string | null) => {
-    const path = stepOf(d) ? view.path.map((s) => (s.dim === d ? { dim: d, key } : s)) : [...view.path, { dim: d, key }];
+    const path = [...before(d), { dim: d, key }];
     setOpen(null);
     // An envelope already implies its group.
     set({ path: d === "envelope" ? path.filter((s) => s.dim !== "group") : path, grouping: null });
   };
   const remove = (d: ExploreDim) => set({ path: view.path.filter((s) => s.dim !== d), grouping: null });
   const accounts = state.accounts.filter((a) => !a.archived || a.id === view.account);
-  const grouping = groupingOf(view);
+  const grouping = groupingOf(entries, view);
 
   return (
     <div style={{ color: C.text }}>
@@ -877,9 +900,7 @@ export function FilterBody({
         {narrowDims.map((d) => {
           const step = stepOf(d);
           const isOpen = open === d;
-          const options = isOpen
-            ? breakdownEntries(filterEntries(entries, { ...filterOf(view), path: view.path.filter((s) => s.dim !== d) }), d).slice(0, 15)
-            : [];
+          const options = isOpen ? breakdownEntries(filterEntries(entries, { ...filterOf(view), path: before(d) }), d) : [];
           return (
             <div key={d} style={{ borderRadius: 12, background: C.chip, marginBottom: 6, overflow: "hidden" }}>
               <div style={{ display: "flex", alignItems: "center" }}>
@@ -1081,9 +1102,9 @@ function DateRange({ from, to, onChange }: { from: string; to: string; onChange:
       </div>
       {editing && (
         <div key={editing} style={{ display: "flex", justifyContent: "center", marginTop: 4 }}>
-          <ScrollPicker items={DAYS} selected={d} onSelect={(v) => setPart(v, m - 1, y)} width="28%" />
-          <ScrollPicker items={months} selected={months[m - 1]!} onSelect={(v) => setPart(d, months.indexOf(v), y)} width="44%" />
-          <ScrollPicker items={years.includes(y) ? years : [y, ...years]} selected={y} onSelect={(v) => setPart(d, m - 1, v)} width="28%" />
+          <ScrollPicker label={t("Day")} items={DAYS} selected={d} onSelect={(v) => setPart(v, m - 1, y)} width="28%" />
+          <ScrollPicker label={t("Month")} items={months} selected={months[m - 1]!} onSelect={(v) => setPart(d, months.indexOf(v), y)} width="44%" />
+          <ScrollPicker label={t("Year")} items={years.includes(y) ? years : [y, ...years]} selected={y} onSelect={(v) => setPart(d, m - 1, v)} width="28%" />
         </div>
       )}
     </div>

@@ -412,8 +412,19 @@ function AppContent() {
     return () => window.removeEventListener("popstate", onPop);
   });
 
+  // A drill path from a link or history may name an envelope, category or place that was deleted
+  // or merged since: keep the part that still exists and fix the URL in place.
+  useEffect(() => {
+    if (!state || reportsView !== "spending") return;
+    const ids = { group: state.groups, envelope: state.envelopes, category: state.categories, place: state.places };
+    const stale = spendView.path.findIndex((s) => s.key !== null && !ids[s.dim].some((x) => x.id === s.key));
+    if (stale < 0) return;
+    justPopped.current = true;
+    setSpendView((v) => ({ ...v, path: v.path.slice(0, stale), grouping: null }));
+  }, [state, reportsView, spendView.path]);
+
   // Swipe right = go back (screens with a back arrow — pinned PWA has no Safari gesture).
-  const canBack = envView !== null || screen === "addExpense" || screen === "settings";
+  const canBack = envView !== null || screen === "addExpense" || screen === "settings" || (screen === "reports" && reportsView === "spending");
   const back = () => {
     if (history.state === true) {
       history.back();
@@ -435,6 +446,9 @@ function AppContent() {
         setEnvView(null);
         break;
       case "spending-up":
+        // No history entry below this one (a deep link was reloaded): replace it with its parent
+        // rather than pushing, or the next back would return to the child it just left.
+        justPopped.current = true;
         setSpendView((v) => ({ ...v, path: v.path.slice(0, -1), grouping: null }));
         setSpendTxn(null);
         break;
@@ -560,13 +574,20 @@ function AppContent() {
               setView: setSpendView,
               onBack: back,
               onOpenTxn: (id) => {
-                if (wide) return setSpendTxn(id);
+                if (wide) {
+                  // An envelope or account opened from the panel outranks the report's own pane.
+                  setEnvView(null);
+                  setAcctView(null);
+                  return setSpendTxn(id);
+                }
                 const tx = store.getLedger()?.transactions.find((x) => x.id === id);
                 if (tx) editTxnFrom(tx, "reports");
               },
               txnId: spendTxn,
               onOpenFilters: wide
                 ? () => {
+                    setEnvView(null);
+                    setAcctView(null);
                     setSpendTxn(null);
                     setPanelClosed(false);
                   }
