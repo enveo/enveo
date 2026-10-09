@@ -212,7 +212,7 @@ function AppContent() {
       setReportsView("overview");
       setMonthDay(null);
       // Spending starts at its top level again; its period and account stay.
-      setSpendView((v) => ({ ...v, path: [], grouping: null }));
+      setSpendView((v) => ({ ...v, path: [] }));
       setSpendTxn(null);
     }
     setScreen(s);

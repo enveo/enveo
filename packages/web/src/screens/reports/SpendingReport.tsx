@@ -191,7 +191,7 @@ export function SpendingReport({
   const entries = useEntries();
   const names = useNames(state);
   const [sheet, setSheet] = useState(false);
-  const [shown, setShown] = useState(50);
+  const [, rerender] = useState(0);
 
   const f = filterOf(view);
   const list = useMemo(() => filterEntries(entries, f), [entries, f.from, f.to, f.account, f.path]);
@@ -201,26 +201,36 @@ export function SpendingReport({
   const txnNames = useTxnNames();
   const rows = useMemo(() => (grouping === "txn" ? [] : breakdownEntries(list, grouping)), [list, grouping]);
   const pathKey = encodePath(view.path);
-  // Each level is its own screen: a new level starts at the top, going back restores the parent.
+  // Each level is its own screen: a new level starts at the top with 50 transactions, and going
+  // back (or returning from an edit, which remounts this) restores both how many were shown and
+  // where the list was scrolled — the count first, so the position is not clamped to a shorter list.
+  const levelKey = [pathKey, grouping, view.from, view.to, view.account].join("|");
+  const memory = levelMemory.get(levelKey) ?? { top: 0, shown: 50 };
+  const shown = memory.shown;
+  const showMore = () => {
+    levelMemory.set(levelKey, { ...memory, shown: shown + 100 });
+    rerender((n) => n + 1);
+  };
   const rootRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     const el = rootRef.current?.closest<HTMLElement>(".gs");
     if (!el) return;
-    el.scrollTop = scrollByLevel.get(pathKey) ?? 0;
+    el.scrollTop = levelMemory.get(levelKey)?.top ?? 0;
     // Recorded as it happens: by cleanup time the next level's content is already in place and the
     // browser has clamped the position to it.
-    const remember = () => scrollByLevel.set(pathKey, el.scrollTop);
+    const remember = () => levelMemory.set(levelKey, { shown: levelMemory.get(levelKey)?.shown ?? 50, top: el.scrollTop });
     el.addEventListener("scroll", remember, { passive: true });
     return () => el.removeEventListener("scroll", remember);
-  }, [pathKey]);
+  }, [levelKey]);
   // A path from a link or history may name an envelope, category or place deleted or merged
   // since: keep the part that still exists.
   useEffect(() => {
     const ids = { group: state.groups, envelope: state.envelopes, category: state.categories, place: state.places };
     const stale = view.path.findIndex((s) => s.key !== null && !ids[s.dim].some((x) => x.id === s.key));
-    if (stale >= 0) setView({ ...view, path: view.path.slice(0, stale), grouping: null }, true);
+    // After this commit's effects: App's routing effect (a parent, so it runs after this one)
+    // would otherwise consume the "replace" before the corrected path is rendered.
+    if (stale >= 0) queueMicrotask(() => setView({ ...view, path: view.path.slice(0, stale), grouping: null }, true));
   }, [state, view, setView]);
-  useEffect(() => setShown(50), [pathKey, grouping, view.from, view.to, view.account]);
 
   const last = view.path.at(-1);
   const title = last ? names.name(last.dim, last.key) : t("Spending");
@@ -364,7 +374,7 @@ export function SpendingReport({
           <>
             {txns.slice(0, shown).map((e) => line({ entry: e, count: 1, amount: e.amount }, null))}
             {txns.length > shown && (
-              <button onClick={() => setShown((n) => n + 100)} style={linkBtn}>
+              <button onClick={showMore} style={linkBtn}>
                 {t("Show more")}
               </button>
             )}
@@ -404,8 +414,8 @@ export function SpendingReport({
   );
 }
 
-/** Scroll position of each level visited this session, keyed by its encoded path. */
-const scrollByLevel = new Map<string, number>();
+/** Scroll position and statement length of each level visited this session. */
+const levelMemory = new Map<string, { top: number; shown: number }>();
 
 const linkBtn = {
   display: "block",
@@ -761,11 +771,7 @@ function FilterSheet({
   return (
     // Swipe-to-dismiss is off: the date wheels own vertical drags inside this sheet.
     <Sheet show={show} onClose={onClose} lockSwipe>
-      {/* Horizontal drags in here must not reach App's swipe-back, which would navigate the report
-          underneath and leave this draft pointing at the old level. */}
-      <div onTouchStart={(e) => e.stopPropagation()}>
-        <FilterSheetContent view={view} entries={entries} names={names} state={state} onApply={onApply} />
-      </div>
+      <FilterSheetContent view={view} entries={entries} names={names} state={state} onApply={onApply} />
     </Sheet>
   );
 }

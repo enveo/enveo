@@ -195,7 +195,9 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, children
 
   // lockSwipe: sheets whose body owns vertical drag (ScrollPicker wheels in DateSheet) opt out of
   // swipe-to-dismiss, otherwise spinning a wheel closes the sheet. They still close via backdrop/buttons.
+  // A gesture inside a sheet is the sheet's: it must not reach the screen's swipe-back underneath.
   const onTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
     if (lockSwipe) return;
     drag.current = { y0: e.touches[0]!.clientY, scroll0: currentScrollTop(), dy: 0, active: false };
   };
