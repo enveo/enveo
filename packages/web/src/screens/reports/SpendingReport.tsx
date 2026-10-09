@@ -208,7 +208,8 @@ export function SpendingReport({
   const memory = levelMemory.get(levelKey) ?? { top: 0, shown: 50 };
   const shown = memory.shown;
   const showMore = () => {
-    levelMemory.set(levelKey, { ...memory, shown: shown + 100 });
+    // The map, not `memory`: scrolling has updated `top` since this render.
+    levelMemory.set(levelKey, { top: levelMemory.get(levelKey)?.top ?? 0, shown: shown + 100 });
     rerender((n) => n + 1);
   };
   const rootRef = useRef<HTMLDivElement | null>(null);
