@@ -21,6 +21,7 @@ import { GoalsReport } from "./reports/GoalsReport";
 import { MonthReport } from "./reports/MonthReport";
 import { ReportsHub } from "./reports/ReportsHub";
 import { SpendingReport } from "./reports/SpendingReport";
+import { monthEnd, monthStart } from "./reports/spendingPath";
 import type { SpendingView } from "./reports/spendingView";
 import { TrendsReport } from "./reports/TrendsReport";
 import type { ReportTab, ReportView } from "./reports/types";
@@ -139,7 +140,12 @@ export function ReportsScreen({
         hubSpending={hubSpending}
         dailySpending={dailySpending}
         envelopeTrends={envelopeTrends}
-        onView={onView}
+        onView={(v) => {
+          // The hub's Spending card shows the viewed month; its report opens on that month.
+          if (v === "spending" && spending)
+            spending.setView({ ...spending.view, from: monthStart(month), to: monthEnd(month), custom: false, path: [], grouping: null });
+          onView(v);
+        }}
         onMenu={onMenu}
         onPrev={onPrev}
         onNext={onNext}

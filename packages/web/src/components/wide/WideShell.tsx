@@ -15,6 +15,7 @@ import { createTransactionSearchIndex, matchesTransactionFilters, matchesTransac
 import { useElementWidth } from "../../lib/useElementWidth";
 import type { ViewMode } from "../../lib/viewMode";
 import type { Tab as AddTab } from "../../screens/Add";
+import { monthEnd, monthStart } from "../../screens/reports/spendingPath";
 import type { SpendingView } from "../../screens/reports/spendingView";
 import type { ReportTab, ReportView } from "../../screens/reports/types";
 import { WideHome } from "../../screens/WideHome";
@@ -582,7 +583,11 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 onOpenEnvelope={onOpenEnvelope}
                 onOpenTxns={openTxns}
                 onQuickAdd={onQuickAdd}
-                onOpenReport={onOpenReport}
+                onOpenReport={(tab) => {
+                  // The Spending widget shows the viewed month; its report opens on that month.
+                  if (tab === "spending") setSpendView({ ...spendView, from: monthStart(month), to: monthEnd(month), custom: false, path: [], grouping: null });
+                  onOpenReport(tab);
+                }}
                 onOpenMonthDay={onOpenMonthDay}
                 edit={boardEdit}
                 onWidgetSettings={(id) => {
