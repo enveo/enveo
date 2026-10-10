@@ -5,6 +5,7 @@ import {
   type ExploreGrouping,
   type ExploreRow,
   filterEntries,
+  identicalLineKey,
   median,
   mergeByTransaction,
   monthlyTotals,
@@ -199,15 +200,8 @@ export function SpendingReport({
   const grouping = useMemo(() => groupingOf(entries, view), [entries, view]);
   const txns = useMemo(() => sortLargest(mergeByTransaction(list)), [list]);
   const txnNames = useTxnNames();
-  // A folded "n×" line stands for payments that would read identically: same name, place,
-  // category, account and amount. Nameless payments without a place never fold.
-  const foldKey = useCallback(
-    (e: SpendingEntry) => {
-      const name = txnNames.get(e.txnId) ?? null;
-      return name === null && e.place === null ? null : [name, e.place, e.category, e.account, e.amount].join("|");
-    },
-    [txnNames],
-  );
+  // A folded "n×" line stands only for payments that would read identically.
+  const foldKey = useCallback((e: SpendingEntry) => identicalLineKey(e, txnNames.get(e.txnId) ?? null), [txnNames]);
   const rows = useMemo(() => (grouping === "txn" ? [] : breakdownEntries(list, grouping)), [list, grouping]);
   const pathKey = encodePath(view.path);
   // Each level is its own screen: a new level starts at the top with 50 transactions, and going

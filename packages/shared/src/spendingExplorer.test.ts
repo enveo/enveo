@@ -7,6 +7,7 @@ import {
   defaultGrouping,
   type ExploreFilter,
   filterEntries,
+  identicalLineKey,
   mergeByTransaction,
   monthlyTotals,
   openingGrouping,
@@ -171,6 +172,15 @@ describe("filter, breakdown and drill", () => {
     const byName = (e: (typeof rent)[number]) => `${e.txnId === "rent2" ? "Deposit" : "Rent"}|${e.amount}`;
     expect(statementLines(rent, byName).map((l) => l.count)).toEqual([1, 1, 1]);
     expect(statementLines(rent, () => null).length).toBe(3);
+  });
+
+  it("folds identical lines only: same name, envelope and no split", () => {
+    const base = entries.find((e) => e.id === "rent1")!;
+    const k = (over: Partial<typeof base>, name: string | null = "Lunch") => identicalLineKey({ ...base, ...over }, name);
+    expect(k({})).toBe(k({ txnId: "other" }));
+    expect(k({ envelope: "FOOD" })).not.toBe(k({}));
+    expect(k({ mixed: ["category"] })).toBeNull();
+    expect(k({ place: null }, null)).toBeNull();
   });
 
   it("totals every month the range touches", () => {

@@ -179,6 +179,16 @@ export interface StatementLine {
 /** Payments fold when they share a place and an amount; nothing without a place folds. */
 const placeAndAmount = (e: SpendingEntry): string | null => (e.place === null ? null : `${e.place}|${e.amount}`);
 
+/**
+ * Fold key for lines that would read identically: the transaction's name (or null), place,
+ * envelope, category, account and amount. A merged split never folds (its parts differ), nor does
+ * a payment with neither a name nor a place (nothing says the payments are the same thing).
+ */
+export function identicalLineKey(e: SpendingEntry, name: string | null): string | null {
+  if (e.mixed?.length || (name === null && e.place === null)) return null;
+  return [name, e.place, e.envelope, e.category, e.account, e.amount].join("|");
+}
+
 /** A section's preview, per transaction: repeated identical payments folded, largest line first. */
 export function statementLines(entries: readonly SpendingEntry[], foldKey: (e: SpendingEntry) => string | null = placeAndAmount): StatementLine[] {
   const groups = new Map<string, SpendingEntry[]>();
