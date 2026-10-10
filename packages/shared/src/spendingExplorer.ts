@@ -176,18 +176,25 @@ export interface StatementLine {
   amount: Money;
 }
 
+/** Payments fold when they share a place and an amount; nothing without a place folds. */
+const placeAndAmount = (e: SpendingEntry): string | null => (e.place === null ? null : `${e.place}|${e.amount}`);
+
 /** A section's preview, per transaction: repeated identical payments folded, largest line first. */
-export function statementLines(entries: readonly SpendingEntry[]): StatementLine[] {
+export function statementLines(entries: readonly SpendingEntry[], foldKey: (e: SpendingEntry) => string | null = placeAndAmount): StatementLine[] {
   const groups = new Map<string, SpendingEntry[]>();
+  const lines: StatementLine[] = [];
   for (const e of mergeByTransaction(entries)) {
-    const k = `${e.place ?? ""}|${e.amount}`;
+    const k = foldKey(e);
+    if (k === null) {
+      lines.push({ entry: e, count: 1, amount: e.amount });
+      continue;
+    }
     const g = groups.get(k);
     if (g) g.push(e);
     else groups.set(k, [e]);
   }
-  const lines: StatementLine[] = [];
   for (const g of groups.values()) {
-    if (g.length >= 3 && g[0]!.place !== null) lines.push({ entry: g[0]!, count: g.length, amount: g[0]!.amount * g.length });
+    if (g.length >= 3) lines.push({ entry: g[0]!, count: g.length, amount: g[0]!.amount * g.length });
     else for (const e of g) lines.push({ entry: e, count: 1, amount: e.amount });
   }
   return lines.sort((a, b) => b.amount - a.amount || b.entry.date.localeCompare(a.entry.date));

@@ -16,7 +16,7 @@ import {
   statementLines,
   sumEntries,
 } from "@enveo/shared";
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "../../components/chrome";
 import { ScrollPicker } from "../../components/pickers";
 import { DeltaTag, useReportBand } from "../../components/reportKit";
@@ -199,6 +199,15 @@ export function SpendingReport({
   const grouping = useMemo(() => groupingOf(entries, view), [entries, view]);
   const txns = useMemo(() => sortLargest(mergeByTransaction(list)), [list]);
   const txnNames = useTxnNames();
+  // A folded "n×" line stands for payments that would read identically: same name, place,
+  // category, account and amount. Nameless payments without a place never fold.
+  const foldKey = useCallback(
+    (e: SpendingEntry) => {
+      const name = txnNames.get(e.txnId) ?? null;
+      return name === null && e.place === null ? null : [name, e.place, e.category, e.account, e.amount].join("|");
+    },
+    [txnNames],
+  );
   const rows = useMemo(() => (grouping === "txn" ? [] : breakdownEntries(list, grouping)), [list, grouping]);
   const pathKey = encodePath(view.path);
   // Each level is its own screen: a new level starts at the top with 50 transactions, and going
@@ -402,6 +411,7 @@ export function SpendingReport({
               max={rows[0]!.amount}
               onDrill={() => drill(grouping, r.key)}
               open={openSections.includes(r.key ?? "")}
+              foldKey={foldKey}
               onToggle={() => toggleSection(r.key)}
             >
               {(lines) => lines.map((l) => line(l, grouping, () => drill(grouping, r.key)))}
@@ -455,6 +465,7 @@ function Section({
   onDrill,
   open,
   onToggle,
+  foldKey,
   children,
 }: {
   row: ExploreRow;
@@ -466,12 +477,13 @@ function Section({
   onDrill: () => void;
   open: boolean;
   onToggle: () => void;
+  foldKey: (e: SpendingEntry) => string | null;
   children: (lines: StatementLine[]) => ReactNode;
 }) {
   const C = useTheme();
   const M = useMask();
   const { t, tp, lang } = useT();
-  const all = useMemo(() => statementLines(row.entries), [row]);
+  const all = useMemo(() => statementLines(row.entries, foldKey), [row, foldKey]);
   const top = all.slice(0, 3);
   const restN = all.slice(3).reduce((n, l) => n + l.count, 0);
   const restAmt = row.amount - top.reduce((s, l) => s + l.amount, 0);
@@ -519,7 +531,9 @@ function Section({
         </span>
         <span style={{ width: 40, textAlign: "right", fontSize: 11.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{pctLabel(share, lang)}</span>
       </div>
-      {children(open ? all : top)}
+      {children(top)}
+      {/* The toggle stays right under the first lines and the rest unfolds below it, so focus
+          stays in view and Tab moves on into the revealed transactions. */}
       {restN > 0 && (
         <button
           onClick={onToggle}
@@ -539,6 +553,7 @@ function Section({
           {!open && <span>{M(restAmt)}</span>}
         </button>
       )}
+      {open && children(all.slice(3))}
     </section>
   );
 }
@@ -573,7 +588,7 @@ function EntryLine({
   const dimName = (d: "place" | "category" | "envelope") => (d !== "place" && e.mixed?.includes(d) ? t("Split transaction") : names.name(d, e[d]));
   const own = (["place", "category", "envelope"] as const).find((d) => e[d] !== null && !e.mixed?.includes(d));
   const label = txnName ?? (own ? dimName(own) : "—");
-  const placeMeta = !fixed.has("place") && e.place !== null && txnName !== null ? dimName("place") : null;
+  const placeMeta = !fixed.has("place") && e.place !== null && txnName !== null && dimName("place") !== label ? dimName("place") : null;
   const kindMeta = !fixed.has("category") ? dimName("category") : !fixed.has("envelope") ? dimName("envelope") : null;
   const meta = [
     line.count > 1 ? t("{amount} each", { amount: M(e.amount) }) : null,

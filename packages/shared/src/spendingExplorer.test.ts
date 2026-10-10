@@ -166,6 +166,13 @@ describe("filter, breakdown and drill", () => {
     expect(lines.slice(1).map((l) => l.entry.id)).toEqual(["lamp", "split", "refund"]);
   });
 
+  it("folds only payments the caller says read the same", () => {
+    const rent = filterEntries(entries, { ...all, path: [{ dim: "category", key: "RENT" }] });
+    const byName = (e: (typeof rent)[number]) => `${e.txnId === "rent2" ? "Deposit" : "Rent"}|${e.amount}`;
+    expect(statementLines(rent, byName).map((l) => l.count)).toEqual([1, 1, 1]);
+    expect(statementLines(rent, () => null).length).toBe(3);
+  });
+
   it("totals every month the range touches", () => {
     expect(monthlyTotals(entries, "2025-12-15", "2026-02-01")).toEqual([
       { month: "2025-12", amount: 0 },
