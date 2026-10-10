@@ -205,11 +205,17 @@ export function SpendingReport({
   // back (or returning from an edit, which remounts this) restores both how many were shown and
   // where the list was scrolled — the count first, so the position is not clamped to a shorter list.
   const levelKey = [pathKey, grouping, view.from, view.to, [...view.accounts].sort().join(",")].join("|");
-  const memory = levelMemory.get(levelKey) ?? { top: 0, shown: 50 };
-  const shown = memory.shown;
+  // Always merged into the map's current entry: scrolling updates `top` between renders.
+  const remember = (patch: Partial<LevelState>) => levelMemory.set(levelKey, { ...(levelMemory.get(levelKey) ?? NEW_LEVEL), ...patch });
+  const { shown, open: openSections } = levelMemory.get(levelKey) ?? NEW_LEVEL;
   const showMore = () => {
-    // The map, not `memory`: scrolling has updated `top` since this render.
-    levelMemory.set(levelKey, { top: levelMemory.get(levelKey)?.top ?? 0, shown: shown + 100 });
+    remember({ shown: shown + 100 });
+    rerender((n) => n + 1);
+  };
+  // A section's "n more" unfolds its remaining transactions on this screen; the header still drills.
+  const toggleSection = (key: string | null) => {
+    const k = key ?? "";
+    remember({ open: openSections.includes(k) ? openSections.filter((x) => x !== k) : [...openSections, k] });
     rerender((n) => n + 1);
   };
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -219,9 +225,9 @@ export function SpendingReport({
     el.scrollTop = levelMemory.get(levelKey)?.top ?? 0;
     // Recorded as it happens: by cleanup time the next level's content is already in place and the
     // browser has clamped the position to it.
-    const remember = () => levelMemory.set(levelKey, { shown: levelMemory.get(levelKey)?.shown ?? 50, top: el.scrollTop });
-    el.addEventListener("scroll", remember, { passive: true });
-    return () => el.removeEventListener("scroll", remember);
+    const onScroll = () => remember({ top: el.scrollTop });
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
   }, [levelKey]);
   // A path from a link or history may name an envelope, category or place deleted or merged
   // since: keep the part that still exists. Same for a deleted account in the account filter.
@@ -395,6 +401,8 @@ export function SpendingReport({
               share={total > 0 ? r.amount / total : 0}
               max={rows[0]!.amount}
               onDrill={() => drill(grouping, r.key)}
+              open={openSections.includes(r.key ?? "")}
+              onToggle={() => toggleSection(r.key)}
             >
               {(lines) => lines.map((l) => line(l, grouping, () => drill(grouping, r.key)))}
             </Section>
@@ -420,7 +428,9 @@ export function SpendingReport({
 }
 
 /** Scroll position and statement length of each level visited this session. */
-const levelMemory = new Map<string, { top: number; shown: number }>();
+type LevelState = { top: number; shown: number; open: string[] };
+const levelMemory = new Map<string, LevelState>();
+const NEW_LEVEL: LevelState = { top: 0, shown: 50, open: [] };
 
 const linkBtn = {
   display: "block",
@@ -443,6 +453,8 @@ function Section({
   share,
   max,
   onDrill,
+  open,
+  onToggle,
   children,
 }: {
   row: ExploreRow;
@@ -452,14 +464,17 @@ function Section({
   share: number;
   max: number;
   onDrill: () => void;
+  open: boolean;
+  onToggle: () => void;
   children: (lines: StatementLine[]) => ReactNode;
 }) {
   const C = useTheme();
   const M = useMask();
-  const { tp, lang } = useT();
-  const { lines, txnCount } = useMemo(() => ({ lines: statementLines(row.entries).slice(0, 3), txnCount: mergeByTransaction(row.entries).length }), [row]);
-  const restN = txnCount - lines.reduce((n, l) => n + l.count, 0);
-  const restAmt = row.amount - lines.reduce((s, l) => s + l.amount, 0);
+  const { t, tp, lang } = useT();
+  const all = useMemo(() => statementLines(row.entries), [row]);
+  const top = all.slice(0, 3);
+  const restN = all.slice(3).reduce((n, l) => n + l.count, 0);
+  const restAmt = row.amount - top.reduce((s, l) => s + l.amount, 0);
   return (
     <section style={{ padding: "6px 0 12px", borderTop: `1px solid ${C.line}` }}>
       <button
@@ -504,10 +519,11 @@ function Section({
         </span>
         <span style={{ width: 40, textAlign: "right", fontSize: 11.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{pctLabel(share, lang)}</span>
       </div>
-      {children(lines)}
+      {children(open ? all : top)}
       {restN > 0 && (
         <button
-          onClick={onDrill}
+          onClick={onToggle}
+          aria-expanded={open}
           style={{
             ...linkBtn,
             display: "flex",
@@ -519,8 +535,8 @@ function Section({
             fontVariantNumeric: "tabular-nums",
           }}
         >
-          <span>{tp("{n} more | {n} more", restN)}</span>
-          <span>{M(restAmt)}</span>
+          <span>{open ? t("Collapse") : tp("{n} more | {n} more", restN)}</span>
+          {!open && <span>{M(restAmt)}</span>}
         </button>
       )}
     </section>
@@ -551,27 +567,22 @@ function EntryLine({
   const M = useMask();
   const { t, lang } = useT();
   const e = line.entry;
-  // Label: the most specific thing the level has not fixed yet; meta: the next one, plus the
-  // account unless an account filter already says which.
-  const open = [...(["place", "category", "envelope"] as const).filter((d) => !fixed.has(d)), ...(fixed.has("account") ? [] : (["account"] as const))];
-  const nameOf = (d: (typeof open)[number]) =>
-    d === "account"
-      ? names.name("account", e.account)
-      : d === "place" && e.place === null
-        ? (txnName ?? names.name("place", null))
-        : d !== "place" && e.mixed?.includes(d)
-          ? t("Split transaction")
-          : names.name(d, e[d]);
-  const [first, second] = open;
-  const label = first ? nameOf(first) : (txnName ?? "");
-  const metaDims = [second, open.includes("account") && first !== "account" && second !== "account" ? ("account" as const) : undefined];
-  const meta =
-    line.count > 1
-      ? t("{amount} each", { amount: M(e.amount) })
-      : metaDims
-          .filter((d) => d !== undefined)
-          .map(nameOf)
-          .join(", ");
+  // Label: the transaction itself — its name or note, else its place, category or envelope.
+  // Meta: what the level has not fixed yet (place, then category or envelope), and the account
+  // unless exactly one account is selected.
+  const dimName = (d: "place" | "category" | "envelope") => (d !== "place" && e.mixed?.includes(d) ? t("Split transaction") : names.name(d, e[d]));
+  const own = (["place", "category", "envelope"] as const).find((d) => e[d] !== null && !e.mixed?.includes(d));
+  const label = txnName ?? (own ? dimName(own) : "—");
+  const placeMeta = !fixed.has("place") && e.place !== null && txnName !== null ? dimName("place") : null;
+  const kindMeta = !fixed.has("category") ? dimName("category") : !fixed.has("envelope") ? dimName("envelope") : null;
+  const meta = [
+    line.count > 1 ? t("{amount} each", { amount: M(e.amount) }) : null,
+    placeMeta,
+    kindMeta !== label ? kindMeta : null,
+    fixed.has("account") ? null : names.name("account", e.account),
+  ]
+    .filter(Boolean)
+    .join(", ");
   const when = line.count > 1 ? `${line.count}×` : shortDate(e.date, lang, withYear);
   return (
     <button
