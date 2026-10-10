@@ -204,7 +204,7 @@ export function SpendingReport({
   // Each level is its own screen: a new level starts at the top with 50 transactions, and going
   // back (or returning from an edit, which remounts this) restores both how many were shown and
   // where the list was scrolled — the count first, so the position is not clamped to a shorter list.
-  const levelKey = [pathKey, grouping, view.from, view.to, view.accounts.join(",")].join("|");
+  const levelKey = [pathKey, grouping, view.from, view.to, [...view.accounts].sort().join(",")].join("|");
   const memory = levelMemory.get(levelKey) ?? { top: 0, shown: 50 };
   const shown = memory.shown;
   const showMore = () => {
@@ -224,13 +224,16 @@ export function SpendingReport({
     return () => el.removeEventListener("scroll", remember);
   }, [levelKey]);
   // A path from a link or history may name an envelope, category or place deleted or merged
-  // since: keep the part that still exists.
+  // since: keep the part that still exists. Same for a deleted account in the account filter.
   useEffect(() => {
     const ids = { group: state.groups, envelope: state.envelopes, category: state.categories, place: state.places };
     const stale = view.path.findIndex((s) => s.key !== null && !ids[s.dim].some((x) => x.id === s.key));
+    const accounts = view.accounts.filter((id) => state.accounts.some((a) => a.id === id));
+    if (stale < 0 && accounts.length === view.accounts.length) return;
+    const path = stale < 0 ? view.path : view.path.slice(0, stale);
     // After this commit's effects: App's routing effect (a parent, so it runs after this one)
     // would otherwise consume the "replace" before the corrected path is rendered.
-    if (stale >= 0) queueMicrotask(() => setView({ ...view, path: view.path.slice(0, stale), grouping: null }, true));
+    queueMicrotask(() => setView({ ...view, path, accounts, grouping: null }, true));
   }, [state, view, setView]);
 
   const last = view.path.at(-1);
