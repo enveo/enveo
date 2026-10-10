@@ -436,6 +436,16 @@ type LevelState = { top: number; shown: number; open: string[] };
 const levelMemory = new Map<string, LevelState>();
 const NEW_LEVEL: LevelState = { top: 0, shown: 50, open: [] };
 
+const moreRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  width: "100%",
+  margin: 0,
+  padding: "6px 0 0 56px",
+  fontSize: 12,
+  fontVariantNumeric: "tabular-nums",
+} as const;
+
 const linkBtn = {
   display: "block",
   margin: "8px 0",
@@ -481,6 +491,17 @@ function Section({
   const top = all.slice(0, 3);
   const restN = all.slice(3).reduce((n, l) => n + l.count, 0);
   const restAmt = row.amount - top.reduce((s, l) => s + l.amount, 0);
+  // The toggle that was pressed is replaced by its counterpart; focus follows it there.
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
+  const refocus = useRef(false);
+  const toggle = () => {
+    refocus.current = true;
+    onToggle();
+  };
+  useEffect(() => {
+    if (refocus.current) toggleRef.current?.focus();
+    refocus.current = false;
+  }, [open]);
   return (
     <section style={{ padding: "6px 0 12px", borderTop: `1px solid ${C.line}` }}>
       <button
@@ -526,28 +547,30 @@ function Section({
         <span style={{ width: 40, textAlign: "right", fontSize: 11.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{pctLabel(share, lang)}</span>
       </div>
       {children(top)}
-      {/* The toggle stays right under the first lines and the rest unfolds below it, so focus
-          stays in view and Tab moves on into the revealed transactions. */}
-      {restN > 0 && (
-        <button
-          onClick={onToggle}
-          aria-expanded={open}
-          style={{
-            ...linkBtn,
-            display: "flex",
-            justifyContent: "space-between",
-            width: "100%",
-            margin: 0,
-            padding: "6px 0 0 56px",
-            fontSize: 12,
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          <span>{open ? t("Collapse") : tp("{n} more | {n} more", restN)}</span>
-          {!open && <span>{M(restAmt)}</span>}
+      {restN > 0 && !open && (
+        <button ref={toggleRef} onClick={toggle} aria-expanded={false} style={{ ...linkBtn, ...moreRow }}>
+          <span>{tp("{n} more | {n} more", restN)}</span>
+          <span>{M(restAmt)}</span>
         </button>
       )}
-      {open && children(all.slice(3))}
+      {/* The unfolded rest sits in its own panel, with "Collapse" at both ends: the top one where
+          "n more" was (it takes the focus), the bottom one where a long list ends. */}
+      {open && (
+        <div style={{ margin: "6px -8px 0", padding: "2px 8px 8px", borderRadius: 12, background: C.chip }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0 2px" }}>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
+              {tp("{n} remaining · {amount} | {n} remaining · {amount}", restN, { amount: M(restAmt) })}
+            </span>
+            <button ref={toggleRef} onClick={toggle} aria-expanded style={{ ...linkBtn, margin: 0, padding: "4px 0", fontSize: 12 }}>
+              {t("Collapse")} ⌃
+            </button>
+          </div>
+          {children(all.slice(3))}
+          <button onClick={toggle} aria-expanded style={{ ...linkBtn, margin: "6px auto 0", padding: "4px 8px", fontSize: 12 }}>
+            {t("Collapse")} ⌃
+          </button>
+        </div>
+      )}
     </section>
   );
 }

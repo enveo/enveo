@@ -1137,6 +1137,7 @@ export const MESSAGES = [
   "{n} over | {n} over",
   "{n} over · {near} near | {n} over · {near} near",
   "{n} page was left out — import it in another job. | {n} pages were left out — import them in another job.",
+  "{n} remaining · {amount} | {n} remaining · {amount}",
   "{n} rising · {m} falling",
   "{n} screenshot could not be read. It waits in Imports as a separate import you can retry. | {n} screenshots could not be read. They wait in Imports as a separate import you can retry.",
   "{n} screenshot was left out — add it in another import. | {n} screenshots were left out — add them in another import.",

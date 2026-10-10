@@ -1503,4 +1503,10 @@ export const pl: Dict = {
   Month: "Miesiąc",
   Year: "Rok",
   "{pct} of spending from the selected accounts": "{pct} wydatków z wybranych kont",
+  "{n} remaining · {amount} | {n} remaining · {amount}": {
+    one: "Pozostała {n} · {amount}",
+    few: "Pozostałe {n} · {amount}",
+    many: "Pozostałych {n} · {amount}",
+    other: "Pozostałe {n} · {amount}",
+  },
 };
