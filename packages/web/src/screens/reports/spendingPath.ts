@@ -13,7 +13,8 @@ export interface SpendingView {
   to: string;
   /** The user typed the range; keeps the date fields open even when it happens to match a preset. */
   custom: boolean;
-  account: string | null;
+  /** Empty means every account. */
+  accounts: readonly string[];
   path: readonly ExploreStep[];
   /** A grouping the user picked, valid only on the level it was picked on. */
   grouping: { pathKey: string; g: ExploreGrouping } | null;
@@ -36,7 +37,7 @@ export function shiftMonth(month: string, delta: number): string {
 
 /** Twelve calendar months ending this month, all accounts. */
 export function defaultSpendingView(thisMonth: string, path: readonly ExploreStep[] = []): SpendingView {
-  return { from: monthStart(shiftMonth(thisMonth, -11)), to: monthEnd(thisMonth), custom: false, account: null, path, grouping: null };
+  return { from: monthStart(shiftMonth(thisMonth, -11)), to: monthEnd(thisMonth), custom: false, accounts: [], path, grouping: null };
 }
 
 const CODE: Record<ExploreDim, string> = { group: "g", envelope: "e", category: "c", place: "p" };

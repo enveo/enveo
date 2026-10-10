@@ -152,7 +152,7 @@ export function groupingOf(entries: readonly SpendingEntry[], v: SpendingView): 
 /** Drilling into a row: a path dimension opens a new level; an account or a month narrows the
  *  current level in place (they are filters, not path steps). */
 export function drillInto(v: SpendingView, g: ExploreGrouping, key: string | null): SpendingView {
-  if (g === "account") return { ...v, account: key, grouping: null };
+  if (g === "account") return key ? { ...v, accounts: [key], grouping: null } : v;
   if (g === "month") return key ? { ...v, from: monthStart(key), to: monthEnd(key), custom: false, grouping: null } : v;
   if (g === "txn") return v;
   return { ...v, path: [...v.path, { dim: g, key }], grouping: null };
@@ -194,7 +194,7 @@ export function SpendingReport({
   const [, rerender] = useState(0);
 
   const f = filterOf(view);
-  const list = useMemo(() => filterEntries(entries, f), [entries, f.from, f.to, f.account, f.path]);
+  const list = useMemo(() => filterEntries(entries, f), [entries, f.from, f.to, f.accounts, f.path]);
   const total = sumEntries(list);
   const grouping = useMemo(() => groupingOf(entries, view), [entries, view]);
   const txns = useMemo(() => sortLargest(mergeByTransaction(list)), [list]);
@@ -204,7 +204,7 @@ export function SpendingReport({
   // Each level is its own screen: a new level starts at the top with 50 transactions, and going
   // back (or returning from an edit, which remounts this) restores both how many were shown and
   // where the list was scrolled — the count first, so the position is not clamped to a shorter list.
-  const levelKey = [pathKey, grouping, view.from, view.to, view.account].join("|");
+  const levelKey = [pathKey, grouping, view.from, view.to, view.accounts.join(",")].join("|");
   const memory = levelMemory.get(levelKey) ?? { top: 0, shown: 50 };
   const shown = memory.shown;
   const showMore = () => {
@@ -242,13 +242,14 @@ export function SpendingReport({
 
   // Share of the parent level: whatever the last step narrowed, measured against the level above it.
   const share = (() => {
-    if (!last && view.account === null) return null;
-    const whole = sumEntries(filterEntries(entries, last ? { ...f, path: view.path.slice(0, -1) } : { ...f, account: null }));
+    if (!last && view.accounts.length === 0) return null;
+    const whole = sumEntries(filterEntries(entries, last ? { ...f, path: view.path.slice(0, -1) } : { ...f, accounts: [] }));
     if (whole <= 0 || total >= whole) return null;
     const pct = pctLabel(total / whole, lang);
     const parent = view.path.at(-2);
     if (parent) return t(SHARE_OF[parent.dim], { pct, name: names.name(parent.dim, parent.key) });
-    if (last && view.account !== null) return t("{pct} of spending from {account}", { pct, account: names.name("account", view.account) });
+    if (last && view.accounts.length > 1) return t("{pct} of spending from the selected accounts", { pct });
+    if (last && view.accounts.length === 1) return t("{pct} of spending from {account}", { pct, account: accountsLabel(view.accounts, names) });
     return t("{pct} of all spending", { pct });
   })();
   const monthsSpanned = monthlyTotals([], view.from, view.to).length;
@@ -271,13 +272,13 @@ export function SpendingReport({
     const months = lastMonths(month, 12);
     const from = monthStart(months[0]!);
     return monthlyTotals(filterEntries(entries, { ...f, from, to: monthEnd(month) }), from, monthEnd(month));
-  }, [entries, list, month, view.from, view.to, f.account, f.path]);
+  }, [entries, list, month, view.from, view.to, f.accounts, f.path]);
 
   const drill = (g: ExploreGrouping, key: string | null) => setView(drillInto(view, g, key));
   const openFilters = () => (onOpenFilters ? onOpenFilters() : setSheet(true));
 
   const fixed = new Set<ExploreGrouping>(view.path.map((s) => s.dim));
-  if (view.account !== null) fixed.add("account");
+  if (view.accounts.length === 1) fixed.add("account");
 
   const bandBg = band ? C.headerBg : C.bg;
   const ink = hc(C.headerInk, C.text);
@@ -665,6 +666,12 @@ function MonthBars({
   );
 }
 
+/** One account by name; several as the first name and how many more ("Checking +2"). */
+function accountsLabel(ids: readonly string[], names: Names): string {
+  const first = names.name("account", ids[0] ?? null);
+  return ids.length > 1 ? `${first} +${ids.length - 1}` : first;
+}
+
 /** The one filter control: period and account on top, the drill path under it (middle levels
  *  collapse to "…" unless `full`). */
 export function FilterBar({
@@ -687,7 +694,7 @@ export function FilterBar({
   const { hc } = useReportBand();
   const ink = hc(C.headerInk, C.text);
   const mute = hc(C.headerMute, C.mute);
-  const ctx = `${periodLabel(view, t, lang)} · ${view.account ? names.name("account", view.account) : t("All accounts")}`;
+  const ctx = `${periodLabel(view, t, lang)} · ${view.accounts.length ? accountsLabel(view.accounts, names) : t("All accounts")}`;
   const all = view.path.map((s) => names.name(s.dim, s.key));
   const path = all.length > 2 && !full ? [all[0]!, "…", all.at(-1)!] : all;
   return (
@@ -886,7 +893,10 @@ export function FilterBody({
     set({ path: d === "envelope" ? path.filter((s) => s.dim !== "group") : path, grouping: null });
   };
   const remove = (d: ExploreDim) => set({ path: view.path.filter((s) => s.dim !== d), grouping: null });
-  const accounts = state.accounts.filter((a) => !a.archived || a.id === view.account);
+  const accounts = state.accounts.filter((a) => !a.archived || view.accounts.includes(a.id));
+  // Pills toggle: any set of accounts, none selected meaning all of them.
+  const toggleAccount = (id: string) =>
+    set({ accounts: view.accounts.includes(id) ? view.accounts.filter((x) => x !== id) : [...view.accounts, id], grouping: null });
   const grouping = groupingOf(entries, view);
 
   return (
@@ -919,11 +929,11 @@ export function FilterBody({
       </Block>
       <Block label={t("Account")}>
         <Pills>
-          <Pill on={view.account === null} onClick={() => set({ account: null, grouping: null })}>
+          <Pill on={view.accounts.length === 0} onClick={() => set({ accounts: [], grouping: null })}>
             {t("All accounts")}
           </Pill>
           {accounts.map((a) => (
-            <Pill key={a.id} on={view.account === a.id} onClick={() => set({ account: a.id, grouping: null })}>
+            <Pill key={a.id} on={view.accounts.includes(a.id)} onClick={() => toggleAccount(a.id)}>
               <span aria-hidden style={{ width: 8, height: 8, borderRadius: 3, background: a.color, flexShrink: 0 }} />
               {a.name}
             </Pill>

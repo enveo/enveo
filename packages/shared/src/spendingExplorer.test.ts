@@ -16,7 +16,7 @@ import {
 } from "./spendingExplorer";
 import type { Ledger } from "./types";
 
-const all: ExploreFilter = { from: "2000-01-01", to: "2999-12-31", account: null, path: [] };
+const all: ExploreFilter = { from: "2000-01-01", to: "2999-12-31", accounts: [], path: [] };
 
 function fixture() {
   const a = acc({ id: "A" });
@@ -80,12 +80,22 @@ describe("filter, breakdown and drill", () => {
   const entries = spendingEntries(fixture());
 
   it("filters by inclusive dates, account and path", () => {
-    const f: ExploreFilter = { from: "2026-02-01", to: "2026-03-02", account: "B", path: [{ dim: "envelope", key: "HOME" }] };
+    const f: ExploreFilter = { from: "2026-02-01", to: "2026-03-02", accounts: ["B"], path: [{ dim: "envelope", key: "HOME" }] };
     expect(
       filterEntries(entries, f)
         .map((e) => e.id)
         .sort(),
     ).toEqual(["lamp", "refund", "split:i2"]);
+  });
+
+  it("filters by several accounts at once; none means all", () => {
+    const both = filterEntries(entries, { ...all, accounts: ["A", "B"] });
+    expect(both.length).toBe(entries.length);
+    expect(
+      filterEntries(entries, { ...all, accounts: ["A"] })
+        .map((e) => e.id)
+        .sort(),
+    ).toEqual(["rent1", "rent2", "rent3"]);
   });
 
   it("breaks down largest first and nets refunds", () => {

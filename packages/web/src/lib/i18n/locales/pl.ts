@@ -1502,4 +1502,5 @@ export const pl: Dict = {
   Day: "Dzień",
   Month: "Miesiąc",
   Year: "Rok",
+  "{pct} of spending from the selected accounts": "{pct} wydatków z wybranych kont",
 };

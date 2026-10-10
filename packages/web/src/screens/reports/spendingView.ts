@@ -41,4 +41,4 @@ export function lastMonths(thisMonth: string, n: number): string[] {
 
 export const spansMonths = (v: Pick<SpendingView, "from" | "to">): boolean => v.from.slice(0, 7) !== v.to.slice(0, 7);
 
-export const filterOf = (v: SpendingView): ExploreFilter => ({ from: v.from, to: v.to, account: v.account, path: v.path });
+export const filterOf = (v: SpendingView): ExploreFilter => ({ from: v.from, to: v.to, accounts: v.accounts, path: v.path });

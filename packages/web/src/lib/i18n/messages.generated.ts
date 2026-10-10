@@ -1153,6 +1153,7 @@ export const MESSAGES = [
   "{pct} of envelope {name}",
   "{pct} of group {name}",
   "{pct} of place {name}",
+  "{pct} of spending from the selected accounts",
   "{pct} of spending from {account}",
   "{pct}% of net worth",
   "{place} — add details",

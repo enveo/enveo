@@ -35,7 +35,8 @@ export interface ExploreFilter {
   /** Inclusive 'YYYY-MM-DD' bounds. */
   from: string;
   to: string;
-  account: string | null;
+  /** Empty means every account. */
+  accounts: readonly string[];
   path: readonly ExploreStep[];
 }
 
@@ -79,7 +80,7 @@ export function groupingKey(e: SpendingEntry, g: Exclude<ExploreGrouping, "txn">
 
 export function filterEntries(entries: readonly SpendingEntry[], f: ExploreFilter): SpendingEntry[] {
   return entries.filter(
-    (e) => e.date >= f.from && e.date <= f.to && (f.account === null || e.account === f.account) && f.path.every((s) => e[s.dim] === s.key),
+    (e) => e.date >= f.from && e.date <= f.to && (f.accounts.length === 0 || f.accounts.includes(e.account)) && f.path.every((s) => e[s.dim] === s.key),
   );
 }
 
@@ -121,7 +122,7 @@ const PATH_ORDER: readonly ExploreDim[] = ["envelope", "group", "category", "pla
 export function availableGroupings(f: ExploreFilter, spansMonths: boolean): ExploreGrouping[] {
   const has = (d: ExploreDim) => f.path.some((s) => s.dim === d);
   const dims = PATH_ORDER.filter((d) => !has(d) && !(d === "group" && has("envelope")));
-  return [...dims, ...(f.account === null ? (["account"] as const) : []), ...(spansMonths ? (["month"] as const) : []), "txn"];
+  return [...dims, ...(f.accounts.length !== 1 ? (["account"] as const) : []), ...(spansMonths ? (["month"] as const) : []), "txn"];
 }
 
 /** The grouping a level opens with: the natural next dimension after the last step. */
