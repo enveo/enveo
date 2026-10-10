@@ -43,6 +43,7 @@ import {
   type SpendingView,
   singleMonthOf,
   spansMonths,
+  withPeriod,
 } from "./spendingView";
 
 const GROUPING_LABEL: Record<ExploreGrouping, Message> = {
@@ -896,7 +897,7 @@ function FilterSheetContent({
 }
 
 export function clearedView(): SpendingView {
-  return defaultSpendingView(currentMonth());
+  return withPeriod(defaultSpendingView());
 }
 
 /** Period, account, narrowing and grouping. Shared by the phone sheet (draft) and the wide side
@@ -1209,7 +1210,7 @@ export function SpendingFiltersPanel({ state, view, setView }: { state: StateRes
   const names = useNames(state);
   return (
     <div className="gsh" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 16px 16px" }}>
-      <FilterBody view={view} onChange={setView} entries={entries} names={names} state={state} />
+      <FilterBody view={withPeriod(view)} onChange={setView} entries={entries} names={names} state={state} />
     </div>
   );
 }

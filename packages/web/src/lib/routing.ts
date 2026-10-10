@@ -23,11 +23,14 @@ export function routeToUrl(r: Route): string {
   // live, 2026-08-24). Keeping the URL constant makes that push a "none" — the class dies at the
   // source. A deep /add reload landing on a fresh Add with no envelope pane behind it is the
   // already-accepted behaviour (reconciliation ruling: "/add reload lands on a fresh Add").
-  const q = new URLSearchParams();
-  if (r.envelopeId && r.screen !== "addExpense") q.set("env", r.envelopeId);
-  if (r.screen === "reports" && r.reportsView === "spending" && r.spendPath?.length) q.set("p", encodePath(r.spendPath));
-  const qs = q.toString().replaceAll("%7E", "~");
-  return qs ? `${path}?${qs}` : path;
+  // The drill path is URL-safe as encoded (letters, digits, `.`, `-`, `_`, `~`).
+  const q = [
+    r.envelopeId && r.screen !== "addExpense" ? `env=${encodeURIComponent(r.envelopeId)}` : "",
+    r.screen === "reports" && r.reportsView === "spending" && r.spendPath?.length ? `p=${encodePath(r.spendPath)}` : "",
+  ]
+    .filter(Boolean)
+    .join("&");
+  return q ? `${path}?${q}` : path;
 }
 
 /**

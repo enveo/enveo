@@ -21,8 +21,7 @@ import { GoalsReport } from "./reports/GoalsReport";
 import { MonthReport } from "./reports/MonthReport";
 import { ReportsHub } from "./reports/ReportsHub";
 import { SpendingReport } from "./reports/SpendingReport";
-import { monthEnd, monthStart } from "./reports/spendingPath";
-import type { SpendingView } from "./reports/spendingView";
+import { monthEnd, monthStart, type SpendingView, withPeriod } from "./reports/spendingView";
 import { TrendsReport } from "./reports/TrendsReport";
 import type { ReportTab, ReportView } from "./reports/types";
 
@@ -162,7 +161,7 @@ export function ReportsScreen({
       {view === "spending" && spending && (
         <SpendingReport
           state={state}
-          view={spending.view}
+          view={withPeriod(spending.view)}
           setView={spending.setView}
           onBack={spending.onBack}
           onOpenTxn={spending.onOpenTxn}

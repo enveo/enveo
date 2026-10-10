@@ -15,8 +15,7 @@ import { createTransactionSearchIndex, matchesTransactionFilters, matchesTransac
 import { useElementWidth } from "../../lib/useElementWidth";
 import type { ViewMode } from "../../lib/viewMode";
 import type { Tab as AddTab } from "../../screens/Add";
-import { monthEnd, monthStart } from "../../screens/reports/spendingPath";
-import type { SpendingView } from "../../screens/reports/spendingView";
+import { monthEnd, monthStart, type SpendingView } from "../../screens/reports/spendingView";
 import type { ReportTab, ReportView } from "../../screens/reports/types";
 import { WideHome } from "../../screens/WideHome";
 import type { ScreenId } from "../chrome";

@@ -20,24 +20,10 @@ export interface SpendingView {
   grouping: { pathKey: string; g: ExploreGrouping } | null;
 }
 
-export function monthStart(month: string): string {
-  return `${month}-01`;
-}
-
-export function monthEnd(month: string): string {
-  const [y, m] = month.split("-").map(Number) as [number, number];
-  return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
-}
-
-export function shiftMonth(month: string, delta: number): string {
-  const [y, m] = month.split("-").map(Number) as [number, number];
-  const i = y * 12 + m - 1 + delta;
-  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
-}
-
-/** Twelve calendar months ending this month, all accounts. */
-export function defaultSpendingView(thisMonth: string, path: readonly ExploreStep[] = []): SpendingView {
-  return { from: monthStart(shiftMonth(thisMonth, -11)), to: monthEnd(thisMonth), custom: false, accounts: [], path, grouping: null };
+/** All accounts, top level. The empty period stands for the default twelve months: the report
+ *  fills it in (`withPeriod`), which keeps date arithmetic out of the boot bundle. */
+export function defaultSpendingView(path: readonly ExploreStep[] = []): SpendingView {
+  return { from: "", to: "", custom: false, accounts: [], path, grouping: null };
 }
 
 const CODE: Record<ExploreDim, string> = { group: "g", envelope: "e", category: "c", place: "p" };

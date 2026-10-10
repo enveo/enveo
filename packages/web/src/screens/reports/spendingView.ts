@@ -1,8 +1,18 @@
 import type { ExploreFilter } from "@enveo/shared";
+import { currentMonth, shiftMonth } from "../../lib/dates";
 import { type Message, msg } from "../../lib/i18n";
-import { monthEnd, monthStart, type SpendingView, shiftMonth } from "./spendingPath";
+import type { SpendingView } from "./spendingPath";
 
-export { decodePath, defaultSpendingView, encodePath, monthEnd, monthStart, type SpendingView } from "./spendingPath";
+export { decodePath, defaultSpendingView, encodePath, type SpendingView } from "./spendingPath";
+
+export function monthStart(month: string): string {
+  return `${month}-01`;
+}
+
+export function monthEnd(month: string): string {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+}
 
 export type PeriodPreset = "month" | "3m" | "6m" | "12m" | "year";
 
@@ -40,5 +50,8 @@ export function lastMonths(thisMonth: string, n: number): string[] {
 }
 
 export const spansMonths = (v: Pick<SpendingView, "from" | "to">): boolean => v.from.slice(0, 7) !== v.to.slice(0, 7);
+
+/** The view with its period filled in: an empty one is the default twelve months. */
+export const withPeriod = (v: SpendingView): SpendingView => (v.from ? v : { ...v, ...presetRange("12m", currentMonth()) });
 
 export const filterOf = (v: SpendingView): ExploreFilter => ({ from: v.from, to: v.to, accounts: v.accounts, path: v.path });

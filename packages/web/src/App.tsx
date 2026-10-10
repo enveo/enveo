@@ -127,7 +127,7 @@ function AppContent() {
   const [reportsView, setReportsView] = useState<ReportView>(r0.reportsView);
   // Spending report: the drill path is part of the URL (one history entry per level); period,
   // account and grouping are kept here so they survive opening a transaction for edit.
-  const [spendView, setSpendView] = useState<SpendingView>(() => defaultSpendingView(currentMonth(), r0.spendPath));
+  const [spendView, setSpendView] = useState<SpendingView>(() => defaultSpendingView(r0.spendPath));
   // Wide only: the transaction the Spending report shows in the side panel instead of the filters.
   const [spendTxn, setSpendTxn] = useState<string | null>(null);
   // Month report's selected day, kept in App for the SAME reason as `reportsView`: opening a
