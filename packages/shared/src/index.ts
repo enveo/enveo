@@ -19,6 +19,7 @@ export * from "./importStatement";
 export * from "./ops";
 export * from "./preferences";
 export * from "./reports";
+export * from "./spendingExplorer";
 export * from "./stateResponse";
 export * from "./summary";
 export * from "./types";

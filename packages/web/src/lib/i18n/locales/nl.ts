@@ -116,7 +116,6 @@ export const nl: Dict = {
   "Clear & reset": "Legen en resetten",
   "Clear search": "Zoekopdracht wissen",
   Close: "Sluiten",
-  "Close details": "Details sluiten",
   Closed: "Gesloten",
   Collapse: "Inklappen",
   Color: "Kleur",
@@ -209,10 +208,7 @@ export const nl: Dict = {
     "De enveloppen zijn gewijzigd sinds dit werd gegenereerd — genereer een nieuwe suggestie.",
   "Envelopes stay as they are — you assigned this by hand.": "De enveloppen blijven zoals ze zijn — je hebt dit met de hand toegewezen.",
   "Excess {amount}": "Te veel {amount}",
-  "Exclude from the total": "Uitsluiten van het totaal",
-  "Include again": "Weer opnemen",
   Reset: "Resetten",
-  "Without {names}": "Zonder {names}",
   Expense: "Uitgave",
   "Export backup (JSON)": "Back-up exporteren (JSON)",
   "Failed to load the image.": "De afbeelding kon niet worden geladen.",
@@ -304,7 +300,6 @@ export const nl: Dict = {
   "No envelopes with a goal. Set a monthly target when editing an envelope.":
     "Geen enveloppen met een doel. Stel een maanddoel in bij het bewerken van een envelop.",
   "No funds to distribute": "Geen middelen om te verdelen",
-  "No spending in this period.": "Geen uitgaven in deze periode.",
   "No transactions.": "Geen transacties.",
   "Not available with your OpenAI key.": "Niet beschikbaar met je OpenAI-sleutel.",
   "Not sending": "Wordt niet verstuurd",
@@ -526,7 +521,6 @@ export const nl: Dict = {
   "Tops envelopes up to last month's allocations. Uncheck what you don't want.":
     "Vult de enveloppen aan tot de toewijzingen van vorige maand. Vink uit wat je niet wilt.",
   Total: "Totaal",
-  "Total spending": "Totale uitgaven",
   Transaction: "Transactie",
   "Transaction change": "Transactie gewijzigd",
   "Transaction deletion": "Transactie verwijderd",
@@ -733,7 +727,6 @@ export const nl: Dict = {
   "One click and Enveo runs in its own window — offline, full screen, no browser bar.":
     "Eén klik en Enveo draait in zijn eigen venster — offline, op volledig scherm, zonder browserbalk.",
   "Open in Transactions ›": "Openen in Transacties ›",
-  "Open transactions ›": "Transacties openen ›",
   Out: "Uit",
   "Past months are judged against today's target — changing a goal rewrites its history.":
     "Afgelopen maanden worden beoordeeld op basis van het huidige doel — een doel wijzigen herschrijft de geschiedenis ervan.",
@@ -787,10 +780,6 @@ export const nl: Dict = {
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} stap tot een afgesloten plan · {pct}% van de maand voorbij",
     other: "{n} stappen tot een afgesloten plan · {pct}% van de maand voorbij",
-  },
-  "{n} transaction · avg {avg} · largest {largest} | {n} transactions · avg {avg} · largest {largest}": {
-    one: "{n} transactie · gem. {avg} · grootste {largest}",
-    other: "{n} transacties · gem. {avg} · grootste {largest}",
   },
   "A source is asked for more than it has": "Van een bron wordt meer gevraagd dan er is",
   "Amount from {name}": "Bedrag uit {name}",

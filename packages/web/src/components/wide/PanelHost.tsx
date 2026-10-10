@@ -1,12 +1,14 @@
-import type { Transaction, WideWidgetId, WidgetOpts } from "@enveo/shared";
-import { lazy } from "react";
-import type { StateResponse } from "../../lib/api";
+import { computeStateResponse, monthOf, type Transaction, type WideWidgetId, type WidgetOpts } from "@enveo/shared";
+import { lazy, useMemo } from "react";
+import { type StateResponse, useLedgerVersion } from "../../lib/api";
 import { useBudgetPreferences, useTheme } from "../../lib/contexts";
 import { type Message, msg, useT } from "../../lib/i18n";
+import { store } from "../../lib/store";
 import { font, TEAL, tint } from "../../lib/theme";
 import { resolveWidgetScroll, toggleEnabled } from "../../lib/wideBoard";
 import { WIDGET_CATALOG } from "../../lib/widgetCatalog";
 import { AddScreen, type Tab as AddTab } from "../../screens/Add";
+import type { SpendingView } from "../../screens/reports/spendingView";
 import type { ReportView } from "../../screens/reports/types";
 import { TITLES } from "../../screens/reports/types";
 import { LazyChunk } from "../lazy";
@@ -22,6 +24,8 @@ import { TxnPanel } from "./TxnPanel";
 // the hub there (App forces its `view` to "overview"), this one always shows a specific tab
 // (`resolvePanel` only ever produces the `report` kind for a non-"overview" `reportsView`).
 const ReportsScreen = lazy(() => import("../../screens/Reports").then((m) => ({ default: m.ReportsScreen })));
+
+const SpendingFiltersPanel = lazy(() => import("../../screens/reports/SpendingReport").then((m) => ({ default: m.SpendingFiltersPanel })));
 
 const EnvelopesOptions = lazy(() => import("../EditWidgetsSheet").then((m) => ({ default: m.EnvelopesOptions })));
 
@@ -219,6 +223,7 @@ export function PanelHost({
   editTxn,
   addPreset,
   onDoneEdit,
+  spending,
 }: {
   view: PanelView;
   onClose: () => void;
@@ -246,32 +251,48 @@ export function PanelHost({
   editTxn: Transaction | null;
   addPreset: { tab?: AddTab; importSheet?: boolean; duplicateFrom?: Transaction };
   onDoneEdit: () => void;
+  spending: { view: SpendingView; setView: (v: SpendingView) => void; txnId: string | null; onDuplicateTxn: (t: Transaction) => void };
 }) {
   const C = useTheme();
   const { t } = useT();
 
+  // The Spending report can show a transaction from any month; `state.transactions` holds only the
+  // viewed one, so it comes from the replica.
+  const spendTx = view.kind === "spending" && spending.txnId ? (store.getLedger()?.transactions.find((x) => x.id === spending.txnId) ?? null) : null;
+  // Its envelope figures belong to the transaction's own month, not the month the app is on.
+  const spendTxMonth = spendTx ? monthOf(spendTx.date) : null;
+  const version = useLedgerVersion();
+  const spendTxState = useMemo(() => {
+    const l = spendTxMonth ? store.getLedger() : null;
+    return l && spendTxMonth ? computeStateResponse(l, spendTxMonth) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spendTxMonth, version]);
   const label =
-    view.kind === "report"
-      ? t(TITLES[view.view])
-      : view.kind === "widgets"
-        ? t(WIDGET_CATALOG[view.widgetId].title)
-        : view.kind === "widgetPicker"
-          ? t("Add widget")
-          : view.kind === "account"
-            ? // Name only — this reads the VIEWED-month `state.accounts`, which is fine for a
-              // field that never varies by month; the balance itself (AccountPanel's own concern)
-              // must never come from here (the 3.6.2 rule).
-              (state.accounts.find((a) => a.id === view.accountId)?.name ?? "")
-            : view.kind === "envelope"
-              ? (state.envelopes.find((e) => e.id === view.envelopeId)?.name ?? "")
-              : view.kind === "txn"
-                ? (() => {
-                    const tx = state.transactions.find((x) => x.id === view.txnId);
-                    if (!tx) return "";
-                    const txEnv = tx.envelopeId ? state.envelopes.find((e) => e.id === tx.envelopeId) : null;
-                    return tx.name || tx.note || txEnv?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
-                  })()
-                : "";
+    view.kind === "spending"
+      ? spendTx
+        ? spendTx.name || spendTx.note || t("Transaction")
+        : t("Filters")
+      : view.kind === "report"
+        ? t(TITLES[view.view])
+        : view.kind === "widgets"
+          ? t(WIDGET_CATALOG[view.widgetId].title)
+          : view.kind === "widgetPicker"
+            ? t("Add widget")
+            : view.kind === "account"
+              ? // Name only — this reads the VIEWED-month `state.accounts`, which is fine for a
+                // field that never varies by month; the balance itself (AccountPanel's own concern)
+                // must never come from here (the 3.6.2 rule).
+                (state.accounts.find((a) => a.id === view.accountId)?.name ?? "")
+              : view.kind === "envelope"
+                ? (state.envelopes.find((e) => e.id === view.envelopeId)?.name ?? "")
+                : view.kind === "txn"
+                  ? (() => {
+                      const tx = state.transactions.find((x) => x.id === view.txnId);
+                      if (!tx) return "";
+                      const txEnv = tx.envelopeId ? state.envelopes.find((e) => e.id === tx.envelopeId) : null;
+                      return tx.name || tx.note || txEnv?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
+                    })()
+                  : "";
 
   const body = (() => {
     switch (view.kind) {
@@ -342,6 +363,22 @@ export function PanelHost({
             onEditTxn={onEditTxnPanel}
             onDuplicateTxn={onDuplicateTxnPanel}
           />
+        );
+      case "spending":
+        return spendTx && spendTxState && spendTxMonth ? (
+          <TxnPanel
+            key={spendTx.id}
+            txnId={spendTx.id}
+            state={{ ...spendTxState, transactions: [spendTx] }}
+            month={spendTxMonth}
+            onOpenEnvelope={onOpenEnvelope}
+            onEditTxn={onEditTxn}
+            onDuplicateTxn={spending.onDuplicateTxn}
+          />
+        ) : (
+          <LazyChunk>
+            <SpendingFiltersPanel state={state} view={spending.view} setView={spending.setView} />
+          </LazyChunk>
         );
       default:
         return assertNever(view);

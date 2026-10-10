@@ -5,17 +5,12 @@ import {
   computeEnvelopeTrends,
   computeNetWorthSeries,
   computeSpendingByDimension,
-  computeSpendingDetail,
   type DaySpending,
   largestExpenses,
-  prevMonth,
-  type SpendingDetail,
-  type SpendingDimension,
-  spendingBaseline,
   type Transaction,
   topPlaces,
 } from "@enveo/shared";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { type StateResponse, useLedgerVersion } from "../lib/api";
 import { useMask } from "../lib/contexts";
 import { store } from "../lib/store";
@@ -26,6 +21,7 @@ import { GoalsReport } from "./reports/GoalsReport";
 import { MonthReport } from "./reports/MonthReport";
 import { ReportsHub } from "./reports/ReportsHub";
 import { SpendingReport } from "./reports/SpendingReport";
+import { monthEnd, monthStart, type SpendingView, withPeriod } from "./reports/spendingView";
 import { TrendsReport } from "./reports/TrendsReport";
 import type { ReportTab, ReportView } from "./reports/types";
 
@@ -46,6 +42,7 @@ export function ReportsScreen({
   onNext,
   onOpenTxns,
   selected,
+  spending,
 }: {
   state: StateResponse;
   month: string;
@@ -62,18 +59,21 @@ export function ReportsScreen({
   onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string; date?: string }) => void;
 
   selected?: ReportTab;
+  /** The Spending report's state, owned by App. Absent where Spending cannot open (side panel). */
+  spending?: {
+    view: SpendingView;
+    setView: (v: SpendingView, replace?: boolean) => void;
+    /** History-aware: goes up one drill level. */
+    onBack: () => void;
+    onOpenTxn: (txnId: string) => void;
+    /** Wide layout: the transaction shown in the side panel instead of the filters. */
+    txnId: string | null;
+    /** Wide layout: show the filters in the side panel. */
+    onOpenFilters?: () => void;
+  };
 }) {
   const M = useMask();
   const version = useLedgerVersion();
-
-  const [dim, setDim] = useState<SpendingDimension>("envelope");
-  const [range, setRange] = useState(1);
-
-  const fromMonth = useMemo(() => {
-    let m = month;
-    for (let i = 0; i < range - 1; i++) m = prevMonth(m);
-    return m;
-  }, [month, range]);
 
   const netWorth = useMemo(() => {
     if (view !== "assets" && view !== "overview") return [];
@@ -83,34 +83,11 @@ export function ReportsScreen({
   }, [version, month, view]);
 
   const cashflow = useMemo(() => {
-    if (view !== "cashflow" && view !== "overview" && view !== "spending" && view !== "month") return [];
+    if (view !== "cashflow" && view !== "overview" && view !== "month") return [];
     const l = store.getLedger();
     return l ? computeCashflowSeries(l, month, 12) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
-  const spending = useMemo(() => {
-    if (view !== "spending") return [];
-    const l = store.getLedger();
-    return l ? computeSpendingByDimension(l, fromMonth, month, dim) : [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, fromMonth, month, dim, view]);
-
-  const spBaseline = useMemo(() => {
-    if (view !== "spending") return new Map<string | null, number>();
-    const l = store.getLedger();
-    return l ? spendingBaseline(l, month, dim, 3) : new Map<string | null, number>();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, month, dim, view]);
-
-  const spendDetailFor = useMemo(() => {
-    return (key: string | null): SpendingDetail | null => {
-      if (view !== "spending" || key === null) return null;
-      const l = store.getLedger();
-      return l ? computeSpendingDetail(l, fromMonth, month, dim, key) : null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, fromMonth, month, dim, view]);
-
   const hubSpending = useMemo(() => {
     if (view !== "overview") return [];
     const l = store.getLedger();
@@ -162,7 +139,12 @@ export function ReportsScreen({
         hubSpending={hubSpending}
         dailySpending={dailySpending}
         envelopeTrends={envelopeTrends}
-        onView={onView}
+        onView={(v) => {
+          // The hub's Spending card shows the viewed month; its report opens on that month.
+          if (v === "spending" && spending)
+            spending.setView({ ...spending.view, from: monthStart(month), to: monthEnd(month), custom: false, path: [], grouping: null });
+          onView(v);
+        }}
         onMenu={onMenu}
         onPrev={onPrev}
         onNext={onNext}
@@ -176,23 +158,16 @@ export function ReportsScreen({
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
       {view === "assets" && <AssetsReport netWorth={netWorth} state={state} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} />}
       {view === "cashflow" && <CashflowReport cashflow={cashflow} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} />}
-      {view === "spending" && (
+      {view === "spending" && spending && (
         <SpendingReport
-          spending={spending}
-          cashflow={cashflow}
-          spBaseline={spBaseline}
-          spendDetailFor={spendDetailFor}
           state={state}
-          dim={dim}
-          setDim={setDim}
-          range={range}
-          setRange={setRange}
-          M={M}
-          month={month}
-          onPrev={onPrev}
-          onNext={onNext}
-          onBack={back}
-          onOpenTxns={onOpenTxns}
+          view={withPeriod(spending.view)}
+          setView={spending.setView}
+          onBack={spending.onBack}
+          onOpenTxn={spending.onOpenTxn}
+          selectedTxnId={spending.txnId}
+          filtersOpen={spending.onOpenFilters !== undefined && spending.txnId === null}
+          onOpenFilters={spending.onOpenFilters}
         />
       )}
       {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} />}

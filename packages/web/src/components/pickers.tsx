@@ -10,11 +10,14 @@ export function ScrollPicker<T extends string | number>({
   selected,
   onSelect,
   width,
+  label,
 }: {
   items: T[];
   selected: T;
   onSelect: (v: T) => void;
   width?: string;
+  /** Names the wheel for assistive technology (e.g. "Day"). */
+  label?: string;
 }) {
   const C = useTheme();
   const ref = useRef<HTMLDivElement | null>(null);
@@ -78,6 +81,17 @@ export function ScrollPicker<T extends string | number>({
         ref={ref}
         className="gs"
         onScroll={onScroll}
+        // Keyboard: the wheel is a spin button, the arrows step through it.
+        tabIndex={0}
+        role="spinbutton"
+        aria-label={label}
+        aria-valuetext={String(selected)}
+        onKeyDown={(e) => {
+          const next = items[items.indexOf(selected) + (e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : NaN)];
+          if (next === undefined) return;
+          e.preventDefault();
+          onSelect(next);
+        }}
         style={{
           height: IH,
           overflowY: "auto",

@@ -25,6 +25,7 @@ import type { TransactionFilters } from "./lib/transactionSearch";
 import { APP_VERSION, buildLabel } from "./lib/version";
 import { PHONE_COL, useViewMode } from "./lib/viewMode";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
+import { defaultSpendingView, type SpendingView } from "./screens/reports/spendingPath";
 import type { ReportTab, ReportView } from "./screens/reports/types";
 import { StartScreen } from "./screens/Start";
 
@@ -74,7 +75,7 @@ const initialTransactionFilters = (): TransactionFilters => ({
   amount: null,
 });
 
-export type BackFallback = "close-env-edit" | "close-env-actions" | "close-add" | "close-envelope" | "reports-overview" | "to-start" | null;
+export type BackFallback = "close-env-edit" | "close-env-actions" | "close-add" | "close-envelope" | "spending-up" | "reports-overview" | "to-start" | null;
 
 export function backFallback(s: {
   screen: ScreenId;
@@ -82,11 +83,13 @@ export function backFallback(s: {
   reportsView: ReportView;
   envEditOpen: boolean;
   envActionsOpen: boolean;
+  spendDepth?: number;
 }): BackFallback {
   if (s.envEditOpen) return "close-env-edit";
   if (s.envActionsOpen) return "close-env-actions";
   if (s.screen === "addExpense") return "close-add";
   if (s.envView) return "close-envelope";
+  if (s.screen === "reports" && s.reportsView === "spending" && (s.spendDepth ?? 0) > 0) return "spending-up";
   if (s.screen === "reports" && s.reportsView !== "overview") return "reports-overview";
   if (s.screen !== "start") return "to-start";
   return null;
@@ -122,6 +125,11 @@ function AppContent() {
   const [panelClosed, setPanelClosed] = useState(false);
 
   const [reportsView, setReportsView] = useState<ReportView>(r0.reportsView);
+  // Spending report: the drill path is part of the URL (one history entry per level); period,
+  // account and grouping are kept here so they survive opening a transaction for edit.
+  const [spendView, setSpendView] = useState<SpendingView>(() => defaultSpendingView(r0.spendPath));
+  // Wide only: the transaction the Spending report shows in the side panel instead of the filters.
+  const [spendTxn, setSpendTxn] = useState<string | null>(null);
   // Month report's selected day, kept in App for the SAME reason as `reportsView`: opening a
   // transaction from the day panel for edit switches `screen` to "addExpense" and back,
   // unmounting ReportsScreen (and MonthReport) in between — local state there would be lost.
@@ -203,6 +211,9 @@ function AppContent() {
     if (s === "reports") {
       setReportsView("overview");
       setMonthDay(null);
+      // Spending starts at its top level again; its period and account stay.
+      setSpendView((v) => ({ ...v, path: [] }));
+      setSpendTxn(null);
     }
     setScreen(s);
   };
@@ -218,6 +229,13 @@ function AppContent() {
     setEditReturn("start");
     setAddPreset(kind === "transfer" ? { tab: "transfer" } : { importSheet: true });
     setScreen("addExpense");
+  };
+
+  const showSpendPanel = (txnId: string | null) => {
+    setEnvView(null);
+    setAcctView(null);
+    setSpendTxn(txnId);
+    setPanelClosed(false);
   };
 
   const openReports = (tab: ReportTab) => {
@@ -294,9 +312,10 @@ function AppContent() {
 
   const editTxnFromList = (t: Transaction) => editTxnFrom(t, "transactions");
 
-  const duplicateTxnFromPanel = (t: Transaction) => {
+  const duplicateTxnFromPanel = (t: Transaction) => duplicateTxnFrom(t, "transactions");
+  const duplicateTxnFrom = (t: Transaction, from: ScreenId) => {
     setEditTxn(null);
-    setEditReturn("transactions");
+    setEditReturn(from);
     setAddPreset({ duplicateFrom: t });
     setScreen("addExpense");
   };
@@ -374,6 +393,7 @@ function AppContent() {
       const acctRestore = r.screen === "accounts" ? acctViewBeforeEditRef.current : null;
       nav(r.screen);
       setReportsView(r.reportsView);
+      setSpendView((v) => ({ ...v, path: r.spendPath ?? [] }));
       if (r.envelopeId) setEnvView({ envelopeId: r.envelopeId, month });
       if (acctRestore) setAcctView(acctRestore);
     };
@@ -381,7 +401,7 @@ function AppContent() {
     if (routingActive) {
       if (envView && !state?.envelopes.some((e) => e.id === envView.envelopeId)) setEnvView(null);
       else {
-        const url = routeToUrl({ screen, reportsView, envelopeId: envView?.envelopeId ?? null });
+        const url = routeToUrl({ screen, reportsView, envelopeId: envView?.envelopeId ?? null, spendPath: spendView.path });
 
         const act = historyAction(url !== location.pathname + location.search, history.state != null, justPopped.current);
         if (act === "push") history.pushState(true, "", url);
@@ -393,13 +413,18 @@ function AppContent() {
   });
 
   // Swipe right = go back (screens with a back arrow — pinned PWA has no Safari gesture).
-  const canBack = envView !== null || screen === "addExpense" || screen === "settings";
+  const canBack = envView !== null || screen === "addExpense" || screen === "settings" || (screen === "reports" && reportsView === "spending");
   const back = () => {
     if (history.state === true) {
       history.back();
       return;
     }
-    switch (backFallback({ screen, envView, reportsView, envEditOpen: envEdit !== null, envActionsOpen: envActions !== null })) {
+    // No entry of ours below this one (a reloaded or deep-linked page): the fallback replaces it
+    // instead of pushing, or the next back would return to the screen it just left.
+    justPopped.current = true;
+    switch (
+      backFallback({ screen, envView, reportsView, envEditOpen: envEdit !== null, envActionsOpen: envActions !== null, spendDepth: spendView.path.length })
+    ) {
       case "close-env-edit":
         setEnvEdit(null);
         break;
@@ -411,6 +436,9 @@ function AppContent() {
         break;
       case "close-envelope":
         setEnvView(null);
+        break;
+      case "spending-up":
+        setSpendView((v) => ({ ...v, path: v.path.slice(0, -1), grouping: null }));
         break;
       case "reports-overview":
         setReportsView("overview");
@@ -524,10 +552,29 @@ function AppContent() {
           <ReportsScreen
             state={state}
             month={month}
-            view={wide ? "overview" : reportsView}
+            view={wide && reportsView !== "spending" ? "overview" : reportsView}
             onView={(v) => {
               setReportsView(v);
               setAcctView(null);
+            }}
+            spending={{
+              view: spendView,
+              setView: (v, replace) => {
+                // `replace`: fix this history entry in place instead of adding one.
+                if (replace) justPopped.current = true;
+                setSpendView(v);
+              },
+              onBack: back,
+              txnId: spendTxn,
+              // Wide: the transaction (or, with null, the filters) goes to the side panel, over any
+              // envelope or account the panel was showing. Phone: the transaction opens for edit.
+              onOpenTxn: wide
+                ? showSpendPanel
+                : (id) => {
+                    const tx = store.getLedger()?.transactions.find((x) => x.id === id);
+                    if (tx) editTxnFrom(tx, "reports");
+                  },
+              onOpenFilters: wide ? () => showSpendPanel(null) : undefined,
             }}
             monthDay={monthDay}
             onSelectDay={setMonthDay}
@@ -538,7 +585,7 @@ function AppContent() {
             onPrev={prev}
             onNext={next}
             onOpenTxns={openTxns}
-            selected={wide && !acctView ? (reportsView !== "overview" ? reportsView : "spending") : undefined}
+            selected={wide && !acctView && reportsView !== "overview" ? reportsView : undefined}
           />
         </LazyChunk>
       )}
@@ -701,6 +748,11 @@ function AppContent() {
               setTxnView,
               onEditTxnPanel: editTxnFromList,
               onDuplicateTxnPanel: duplicateTxnFromPanel,
+              spendView,
+              setSpendView,
+              spendTxn,
+              setSpendTxn,
+              onDuplicateSpendTxn: (t) => duplicateTxnFrom(t, "reports"),
             }}
             rightSlot={wideRightSlot}
           >

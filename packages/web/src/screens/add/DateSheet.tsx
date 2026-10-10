@@ -53,9 +53,9 @@ export function DateSheet({ show, date, onClose, onChange }: { show: boolean; da
             </button>
           </div>
           <div style={{ display: "flex", justifyContent: "center", marginTop: 4 }}>
-            <ScrollPicker items={days} selected={d} onSelect={(v) => set(v, m - 1, y)} width="28%" />
-            <ScrollPicker items={months} selected={months[m - 1]!} onSelect={(v) => set(d, months.indexOf(v), y)} width="44%" />
-            <ScrollPicker items={years} selected={y} onSelect={(v) => set(d, m - 1, v)} width="28%" />
+            <ScrollPicker label={t("Day")} items={days} selected={d} onSelect={(v) => set(v, m - 1, y)} width="28%" />
+            <ScrollPicker label={t("Month")} items={months} selected={months[m - 1]!} onSelect={(v) => set(d, months.indexOf(v), y)} width="44%" />
+            <ScrollPicker label={t("Year")} items={years} selected={y} onSelect={(v) => set(d, m - 1, v)} width="28%" />
           </div>
         </>
       )}

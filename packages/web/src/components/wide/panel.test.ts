@@ -26,19 +26,16 @@ describe("resolvePanel", () => {
     }
   });
 
-  test("Reports at the hub overview (no envelope, no subview) falls back to the Spending report (v3:2213's own selReport default)", () => {
-    expect(resolvePanel({ screen: "reports", reportsView: "overview", envView: null }, FB)).toEqual({
-      kind: "report",
-      view: "spending",
-      source: "fallback",
-    });
+  test("Reports at the hub overview (no envelope, no subview) asks the user to choose a report", () => {
+    expect(resolvePanel({ screen: "reports", reportsView: "overview", envView: null }, FB)).toEqual({ kind: "empty", hint: "report" });
   });
 
-  test("Reports on any subview (no envelope) resolves to that subview's report pane, as a real selection", () => {
-    const tabs: readonly ReportTab[] = ["assets", "cashflow", "spending", "budgets", "goals", "month", "trends"];
+  test("Reports on any subview (no envelope) resolves to that subview's report pane; Spending gets its own filters pane", () => {
+    const tabs = ["assets", "cashflow", "budgets", "goals", "month", "trends"] as const;
     for (const view of tabs) {
       expect(resolvePanel({ screen: "reports", reportsView: view, envView: null }, FB)).toEqual({ kind: "report", view, source: "selection" });
     }
+    expect(resolvePanel({ screen: "reports", reportsView: "spending", envView: null }, FB)).toEqual({ kind: "spending" });
   });
 
   test("Start and Budget (no envelope) fall back to the first envelope, regardless of reportsView", () => {
@@ -108,7 +105,7 @@ describe("resolvePanel", () => {
     expect(first).toEqual(second);
   });
 
-  test("exhaustively covers every kind — no eighth kind sneaks in", () => {
+  test("exhaustively covers every kind — no ninth kind sneaks in", () => {
     const kinds = new Set<PanelView["kind"]>();
     for (const screen of SCREENS) {
       for (const reportsView of REPORT_VIEWS) {
@@ -121,7 +118,7 @@ describe("resolvePanel", () => {
     // With every fallback id populated (FB), Activity is the only screen that deliberately has no
     // side-panel content and therefore reaches the existing "empty" kind. Accounts/Settings fall
     // back to "account" and Transactions falls back to "txn".
-    expect([...kinds].sort()).toEqual(["account", "add", "empty", "envelope", "report", "txn", "widgetPicker", "widgets"]);
+    expect([...kinds].sort()).toEqual(["account", "add", "empty", "envelope", "report", "spending", "txn", "widgetPicker", "widgets"]);
   });
 
   describe("PR5's `widgets` kind (the wide board's gear target)", () => {

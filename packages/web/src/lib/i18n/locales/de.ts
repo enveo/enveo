@@ -116,7 +116,6 @@ export const de: Dict = {
   "Clear & reset": "Leeren & zurücksetzen",
   "Clear search": "Suche leeren",
   Close: "Schließen",
-  "Close details": "Details schließen",
   Closed: "Geschlossen",
   Collapse: "Einklappen",
   Color: "Farbe",
@@ -211,10 +210,7 @@ export const de: Dict = {
     "Die Umschläge haben sich seit der Erstellung geändert — erzeuge einen neuen Vorschlag.",
   "Envelopes stay as they are — you assigned this by hand.": "Die Umschläge bleiben unverändert — du hast das von Hand zugewiesen.",
   "Excess {amount}": "Überschuss {amount}",
-  "Exclude from the total": "Vom Gesamtbetrag ausschließen",
-  "Include again": "Wieder einschließen",
   Reset: "Zurücksetzen",
-  "Without {names}": "Ohne {names}",
   Expense: "Ausgabe",
   "Export backup (JSON)": "Sicherung exportieren (JSON)",
   "Failed to load the image.": "Das Bild konnte nicht geladen werden.",
@@ -306,7 +302,6 @@ export const de: Dict = {
   "No envelopes with a goal. Set a monthly target when editing an envelope.":
     "Keine Umschläge mit Ziel. Lege beim Bearbeiten eines Umschlags ein Monatsziel fest.",
   "No funds to distribute": "Keine Mittel zum Verteilen",
-  "No spending in this period.": "Keine Ausgaben in diesem Zeitraum.",
   "No transactions.": "Keine Transaktionen.",
   "Not available with your OpenAI key.": "Mit deinem OpenAI-Schlüssel nicht verfügbar.",
   "Not sending": "Wird nicht gesendet",
@@ -529,7 +524,6 @@ export const de: Dict = {
   "Tops envelopes up to last month's allocations. Uncheck what you don't want.":
     "Füllt die Umschläge auf die Zuweisungen des Vormonats auf. Hake ab, was du nicht möchtest.",
   Total: "Gesamt",
-  "Total spending": "Ausgaben gesamt",
   Transaction: "Transaktion",
   "Transaction change": "Transaktion geändert",
   "Transaction deletion": "Transaktion gelöscht",
@@ -734,7 +728,6 @@ export const de: Dict = {
   "One click and Enveo runs in its own window — offline, full screen, no browser bar.":
     "Ein Klick, und Enveo läuft in einem eigenen Fenster — offline, im Vollbild, ohne Browserleiste.",
   "Open in Transactions ›": "In Transaktionen öffnen ›",
-  "Open transactions ›": "Transaktionen öffnen ›",
   Out: "Ausgang",
   "Past months are judged against today's target — changing a goal rewrites its history.":
     "Vergangene Monate werden am heutigen Ziel gemessen — eine Zieländerung schreibt ihre Geschichte um.",
@@ -789,10 +782,6 @@ export const de: Dict = {
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} Schritt bis zum abgeschlossenen Plan · {pct} % des Monats vorbei",
     other: "{n} Schritte bis zum abgeschlossenen Plan · {pct} % des Monats vorbei",
-  },
-  "{n} transaction · avg {avg} · largest {largest} | {n} transactions · avg {avg} · largest {largest}": {
-    one: "{n} Transaktion · Ø {avg} · größte {largest}",
-    other: "{n} Transaktionen · Ø {avg} · größte {largest}",
   },
   "A source is asked for more than it has": "Eine Quelle soll mehr geben, als sie hat",
   "Amount from {name}": "Betrag aus {name}",
