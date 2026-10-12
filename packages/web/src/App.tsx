@@ -312,7 +312,6 @@ function AppContent() {
 
   const editTxnFromList = (t: Transaction) => editTxnFrom(t, "transactions");
 
-  const duplicateTxnFromPanel = (t: Transaction) => duplicateTxnFrom(t, "transactions");
   const duplicateTxnFrom = (t: Transaction, from: ScreenId) => {
     setEditTxn(null);
     setEditReturn(from);
@@ -746,8 +745,9 @@ function AppContent() {
 
               txnView,
               setTxnView,
-              onEditTxnPanel: editTxnFromList,
-              onDuplicateTxnPanel: duplicateTxnFromPanel,
+              // The panel's transaction belongs to Start (Recent activity) or Transactions.
+              onEditTxnPanel: (t) => editTxnFrom(t, primaryScreen),
+              onDuplicateTxnPanel: (t) => duplicateTxnFrom(t, primaryScreen),
               spendView,
               setSpendView,
               spendTxn,

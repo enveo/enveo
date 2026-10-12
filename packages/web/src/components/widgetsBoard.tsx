@@ -162,7 +162,7 @@ export function AttentionWidget({ state, month, onNav, onOpenReport, onQuickAdd,
   );
 }
 
-export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
+export function RecentWidget({ onOpenTxns, onSelectTxn, selectedTxnId, onNav, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
@@ -240,7 +240,8 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
         rows.map((tx, i) => {
           const s = signed(tx);
 
-          const rowStyle = chromeless ? { ...rowBtnStyle(C, true), padding: "7px 0" } : rowBtnStyle(C, i === rows.length - 1);
+          const baseStyle = chromeless ? { ...rowBtnStyle(C, true), padding: "7px 0" } : rowBtnStyle(C, i === rows.length - 1);
+          const rowStyle = selectedTxnId === tx.id ? { ...baseStyle, background: C.selBg, borderRadius: 6, padding: "7px 6px" } : baseStyle;
           const headline = descOf(tx);
 
           const meta = metaLabel(tx);
@@ -250,7 +251,12 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
             : [shortDate(tx.date, lang)];
           const metaText = metaParts.filter(Boolean).join(" · ");
           return (
-            <button key={tx.id} onClick={() => onOpenTxns()} style={rowStyle}>
+            <button
+              key={tx.id}
+              onClick={() => (onSelectTxn ? onSelectTxn(tx.id) : onOpenTxns())}
+              aria-pressed={onSelectTxn ? selectedTxnId === tx.id : undefined}
+              style={rowStyle}
+            >
               {chromeless && <span style={{ width: 9, height: 9, borderRadius: 3, background: dotColor(tx), display: "block", flexShrink: 0 }} />}
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
                 <span style={{ fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{headline}</span>

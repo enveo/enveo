@@ -382,12 +382,19 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   const [widgetSettings, setWidgetSettings] = useState<WideWidgetId | null>(null);
 
   const [widgetPicker, setWidgetPicker] = useState(false);
+  // Recent activity's row, kept apart from the Transactions screen's `txnView` so neither screen
+  // inherits the other's selection.
+  const [homeTxn, setHomeTxn] = useState<{ txnId: string } | null>(null);
   useEffect(() => {
     if (primaryScreen !== "start") {
       setWidgetSettings(null);
       setWidgetPicker(false);
+      setHomeTxn(null);
     }
   }, [primaryScreen]);
+  useEffect(() => {
+    if (envView || acctView) setHomeTxn(null);
+  }, [envView, acctView]);
 
   useEffect(() => {
     if (!boardEdit) setWidgetPicker(false);
@@ -397,7 +404,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     () => computePanelFallbacks({ envelopes: state.envelopes, groups: state.groups, accounts: state.accounts }, month, filteredTransactions),
     [state.envelopes, state.groups, state.accounts, month, filteredTransactions],
   );
-  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, widgetPicker, acctView, txnView }, fallbacksForPanel);
+  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, widgetPicker, acctView, txnView, homeTxn }, fallbacksForPanel);
   const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -463,8 +470,10 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
       else setPanelClosed(true);
     } else if (view.kind === "add") onDoneEdit();
     else if (view.kind === "txn") {
-      if (view.source === "selection") setTxnView(null);
-      else setPanelClosed(true);
+      if (view.source === "selection") {
+        setTxnView(null);
+        setHomeTxn(null);
+      } else setPanelClosed(true);
     } else setPanelClosed(true);
   };
 
@@ -482,7 +491,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
               : view.kind === "account"
                 ? acctView
                 : view.kind === "txn"
-                  ? txnView
+                  ? (homeTxn ?? txnView)
                   : view.kind === "spending"
                     ? (spendTxn ?? "spending")
                     : view.view;
@@ -581,6 +590,14 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 onNav={nav}
                 onOpenEnvelope={onOpenEnvelope}
                 onOpenTxns={openTxns}
+                onSelectTxn={(txnId) => {
+                  setWidgetSettings(null);
+                  setWidgetPicker(false);
+                  setEnvView(null);
+                  setAcctView(null);
+                  setHomeTxn({ txnId });
+                }}
+                selectedTxnId={!panelClosed && view.kind === "txn" ? view.txnId : null}
                 onQuickAdd={onQuickAdd}
                 onOpenReport={(tab) => {
                   // The Spending widget shows the viewed month; its report opens on that month.

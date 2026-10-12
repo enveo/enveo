@@ -55,6 +55,7 @@ export function resolvePanel(
     widgetPicker?: boolean;
     acctView?: { accountId: string } | null;
     txnView?: { txnId: string } | null;
+    homeTxn?: { txnId: string } | null;
   },
   fb: PanelFallbacks,
 ): PanelView {
@@ -69,6 +70,7 @@ export function resolvePanel(
   }
   if (a.screen === "start" && a.widgetPicker) return { kind: "widgetPicker" };
   if (a.screen === "start" && a.widgetSettings) return { kind: "widgets", widgetId: a.widgetSettings };
+  if (a.screen === "start" && a.homeTxn) return { kind: "txn", txnId: a.homeTxn.txnId, source: "selection" };
   if (a.screen === "accounts" || a.screen === "settings") {
     return fb.firstAccountId ? { kind: "account", accountId: fb.firstAccountId, source: "fallback" } : { kind: "empty", hint: "account" };
   }
