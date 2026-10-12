@@ -501,7 +501,10 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
               : view.kind === "account"
                 ? acctView
                 : view.kind === "txn"
-                  ? (liveHomeTxn ?? txnView)
+                  ? // Home's row click opens the panel itself; a replica rebuild must not reopen a hidden one.
+                    primaryScreen === "start"
+                    ? null
+                    : txnView
                   : view.kind === "spending"
                     ? (spendTxn ?? "spending")
                     : view.view;
@@ -606,6 +609,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                   setEnvView(null);
                   setAcctView(null);
                   setHomeTxn({ txnId });
+                  setPanelClosed(false);
                 }}
                 selectedTxnId={!panelClosed && view.kind === "txn" ? view.txnId : null}
                 onQuickAdd={onQuickAdd}
