@@ -1,11 +1,12 @@
 import type { Transaction, WideWidgetId } from "@enveo/shared";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import type { StateResponse } from "../../lib/api";
+import { type StateResponse, useLedgerVersion } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel } from "../../lib/dates";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { InWideShell, type PaneRect, type PaneSurfaceHost } from "../../lib/shellContext";
+import { store } from "../../lib/store";
 import { CTA, font, TEAL } from "../../lib/theme";
 // Design parity wave A close, item 9: the Transactions band caption ("{n} shown") needs the SAME
 // filtering `TransactionsScreen` already does — imported HERE (the lazy wide chunk), never from
@@ -504,6 +505,12 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   useEffect(() => {
     if (primaryScreen === "transactions" && txnView && !filteredTransactions.some((tx) => tx.id === txnView.txnId)) setTxnView(null);
   }, [primaryScreen, txnView, filteredTransactions, setTxnView]);
+
+  // Recent activity spans every month, so a deleted selection is checked against the whole replica.
+  const ledgerVersion = useLedgerVersion();
+  useEffect(() => {
+    if (homeTxn && !store.getLedger()?.transactions.some((tx) => tx.id === homeTxn.txnId)) setHomeTxn(null);
+  }, [homeTxn, ledgerVersion]);
 
   // WebKit/iOS: WideShell freshly mounts right after the wide "Add" phone-column takeover
   // unmounts a full-screen fixed overlay (DockedNumpad/pickers, portalled to <body>) that sat
