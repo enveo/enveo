@@ -396,6 +396,15 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   useEffect(() => {
     if (envView || acctView) setHomeTxn(null);
   }, [envView, acctView]);
+  // Derived, not cleared: a deleted transaction falls the panel back, while a replica briefly
+  // rebuilt without it (rehydrate before outbox replay) keeps the selection. Recent activity spans
+  // every month, so the whole replica is checked.
+  const ledgerVersion = useLedgerVersion();
+  const liveHomeTxn = useMemo(
+    () => (homeTxn && store.getLedger()?.transactions.some((tx) => tx.id === homeTxn.txnId) ? homeTxn : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [homeTxn, ledgerVersion],
+  );
 
   useEffect(() => {
     if (!boardEdit) setWidgetPicker(false);
@@ -405,7 +414,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     () => computePanelFallbacks({ envelopes: state.envelopes, groups: state.groups, accounts: state.accounts }, month, filteredTransactions),
     [state.envelopes, state.groups, state.accounts, month, filteredTransactions],
   );
-  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, widgetPicker, acctView, txnView, homeTxn }, fallbacksForPanel);
+  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, widgetPicker, acctView, txnView, homeTxn: liveHomeTxn }, fallbacksForPanel);
   const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -472,8 +481,8 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     } else if (view.kind === "add") onDoneEdit();
     else if (view.kind === "txn") {
       if (view.source === "selection") {
-        setTxnView(null);
-        setHomeTxn(null);
+        if (primaryScreen === "start") setHomeTxn(null);
+        else setTxnView(null);
       } else setPanelClosed(true);
     } else setPanelClosed(true);
   };
@@ -492,7 +501,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
               : view.kind === "account"
                 ? acctView
                 : view.kind === "txn"
-                  ? (homeTxn ?? txnView)
+                  ? (liveHomeTxn ?? txnView)
                   : view.kind === "spending"
                     ? (spendTxn ?? "spending")
                     : view.view;
@@ -505,12 +514,6 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   useEffect(() => {
     if (primaryScreen === "transactions" && txnView && !filteredTransactions.some((tx) => tx.id === txnView.txnId)) setTxnView(null);
   }, [primaryScreen, txnView, filteredTransactions, setTxnView]);
-
-  // Recent activity spans every month, so a deleted selection is checked against the whole replica.
-  const ledgerVersion = useLedgerVersion();
-  useEffect(() => {
-    if (homeTxn && !store.getLedger()?.transactions.some((tx) => tx.id === homeTxn.txnId)) setHomeTxn(null);
-  }, [homeTxn, ledgerVersion]);
 
   // WebKit/iOS: WideShell freshly mounts right after the wide "Add" phone-column takeover
   // unmounts a full-screen fixed overlay (DockedNumpad/pickers, portalled to <body>) that sat
