@@ -1,11 +1,12 @@
 import type { Transaction, WideWidgetId } from "@enveo/shared";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import type { StateResponse } from "../../lib/api";
+import { type StateResponse, useLedgerVersion } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel } from "../../lib/dates";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { InWideShell, type PaneRect, type PaneSurfaceHost } from "../../lib/shellContext";
+import { store } from "../../lib/store";
 import { CTA, font, TEAL } from "../../lib/theme";
 // Design parity wave A close, item 9: the Transactions band caption ("{n} shown") needs the SAME
 // filtering `TransactionsScreen` already does — imported HERE (the lazy wide chunk), never from
@@ -382,12 +383,28 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   const [widgetSettings, setWidgetSettings] = useState<WideWidgetId | null>(null);
 
   const [widgetPicker, setWidgetPicker] = useState(false);
+  // Recent activity's row, kept apart from the Transactions screen's `txnView` so neither screen
+  // inherits the other's selection.
+  const [homeTxn, setHomeTxn] = useState<{ txnId: string } | null>(null);
   useEffect(() => {
     if (primaryScreen !== "start") {
       setWidgetSettings(null);
       setWidgetPicker(false);
+      setHomeTxn(null);
     }
   }, [primaryScreen]);
+  useEffect(() => {
+    if (envView || acctView) setHomeTxn(null);
+  }, [envView, acctView]);
+  // Derived, not cleared: a deleted transaction falls the panel back, while a replica briefly
+  // rebuilt without it (rehydrate before outbox replay) keeps the selection. Recent activity spans
+  // every month, so the whole replica is checked.
+  const ledgerVersion = useLedgerVersion();
+  const liveHomeTxn = useMemo(
+    () => (homeTxn && store.getLedger()?.transactions.some((tx) => tx.id === homeTxn.txnId) ? homeTxn : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [homeTxn, ledgerVersion],
+  );
 
   useEffect(() => {
     if (!boardEdit) setWidgetPicker(false);
@@ -397,7 +414,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     () => computePanelFallbacks({ envelopes: state.envelopes, groups: state.groups, accounts: state.accounts }, month, filteredTransactions),
     [state.envelopes, state.groups, state.accounts, month, filteredTransactions],
   );
-  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, widgetPicker, acctView, txnView }, fallbacksForPanel);
+  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, widgetPicker, acctView, txnView, homeTxn: liveHomeTxn }, fallbacksForPanel);
   const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -463,8 +480,10 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
       else setPanelClosed(true);
     } else if (view.kind === "add") onDoneEdit();
     else if (view.kind === "txn") {
-      if (view.source === "selection") setTxnView(null);
-      else setPanelClosed(true);
+      if (view.source === "selection") {
+        if (primaryScreen === "start") setHomeTxn(null);
+        else setTxnView(null);
+      } else setPanelClosed(true);
     } else setPanelClosed(true);
   };
 
@@ -482,7 +501,10 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
               : view.kind === "account"
                 ? acctView
                 : view.kind === "txn"
-                  ? txnView
+                  ? // Home's row click opens the panel itself; a replica rebuild must not reopen a hidden one.
+                    primaryScreen === "start"
+                    ? null
+                    : txnView
                   : view.kind === "spending"
                     ? (spendTxn ?? "spending")
                     : view.view;
@@ -581,6 +603,15 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 onNav={nav}
                 onOpenEnvelope={onOpenEnvelope}
                 onOpenTxns={openTxns}
+                onSelectTxn={(txnId) => {
+                  setWidgetSettings(null);
+                  setWidgetPicker(false);
+                  setEnvView(null);
+                  setAcctView(null);
+                  setHomeTxn({ txnId });
+                  setPanelClosed(false);
+                }}
+                selectedTxnId={!panelClosed && view.kind === "txn" ? view.txnId : null}
                 onQuickAdd={onQuickAdd}
                 onOpenReport={(tab) => {
                   // The Spending widget shows the viewed month; its report opens on that month.

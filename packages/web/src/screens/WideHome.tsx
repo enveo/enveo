@@ -18,6 +18,8 @@ export interface WideHomeProps {
   onNav: (s: ScreenId) => void;
   onOpenEnvelope: (envId: string, month: string) => void;
   onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
+  onSelectTxn: (id: string) => void;
+  selectedTxnId: string | null;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
   onOpenReport: (tab: ReportTab) => void;
   onOpenMonthDay: (date: string) => void;
@@ -118,6 +120,8 @@ export function WideHome({
   onNav,
   onOpenEnvelope,
   onOpenTxns,
+  onSelectTxn,
+  selectedTxnId,
   onQuickAdd,
   onOpenReport,
   onOpenMonthDay,
@@ -197,6 +201,8 @@ export function WideHome({
     onNav,
     onOpenEnvelope,
     onOpenTxns,
+    onSelectTxn,
+    selectedTxnId,
     onQuickAdd,
     onOpenReport,
     onOpenMonthDay,

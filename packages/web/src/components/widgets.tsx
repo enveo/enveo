@@ -26,6 +26,9 @@ export interface WidgetProps {
   onNav: (s: ScreenId) => void;
   onOpenEnvelope: (envId: string, month: string) => void;
   onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
+  /** Wide only: Recent activity opens a row in the side panel instead of the Transactions screen. */
+  onSelectTxn?: (id: string) => void;
+  selectedTxnId?: string | null;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
 
   onOpenReport?: (tab: ReportTab) => void;

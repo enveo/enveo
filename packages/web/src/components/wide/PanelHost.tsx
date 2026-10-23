@@ -256,9 +256,11 @@ export function PanelHost({
   const C = useTheme();
   const { t } = useT();
 
-  // The Spending report can show a transaction from any month; `state.transactions` holds only the
-  // viewed one, so it comes from the replica.
-  const spendTx = view.kind === "spending" && spending.txnId ? (store.getLedger()?.transactions.find((x) => x.id === spending.txnId) ?? null) : null;
+  // The Spending report and Recent activity can show a transaction from any month; `state.transactions`
+  // holds only the viewed one, so it comes from the replica.
+  const replicaTxnId =
+    view.kind === "spending" ? spending.txnId : view.kind === "txn" && !state.transactions.some((x) => x.id === view.txnId) ? view.txnId : null;
+  const spendTx = replicaTxnId ? (store.getLedger()?.transactions.find((x) => x.id === replicaTxnId) ?? null) : null;
   // Its envelope figures belong to the transaction's own month, not the month the app is on.
   const spendTxMonth = spendTx ? monthOf(spendTx.date) : null;
   const version = useLedgerVersion();
@@ -287,7 +289,7 @@ export function PanelHost({
                 ? (state.envelopes.find((e) => e.id === view.envelopeId)?.name ?? "")
                 : view.kind === "txn"
                   ? (() => {
-                      const tx = state.transactions.find((x) => x.id === view.txnId);
+                      const tx = state.transactions.find((x) => x.id === view.txnId) ?? spendTx;
                       if (!tx) return "";
                       const txEnv = tx.envelopeId ? state.envelopes.find((e) => e.id === tx.envelopeId) : null;
                       return tx.name || tx.note || txEnv?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
@@ -353,7 +355,17 @@ export function PanelHost({
           />
         );
       case "txn":
-        return (
+        return spendTx && spendTxState && spendTxMonth ? (
+          <TxnPanel
+            key={spendTx.id}
+            txnId={spendTx.id}
+            state={{ ...spendTxState, transactions: [spendTx] }}
+            month={spendTxMonth}
+            onOpenEnvelope={onOpenEnvelope}
+            onEditTxn={onEditTxnPanel}
+            onDuplicateTxn={onDuplicateTxnPanel}
+          />
+        ) : (
           <TxnPanel
             key={view.txnId}
             txnId={view.txnId}

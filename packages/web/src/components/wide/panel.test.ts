@@ -294,6 +294,18 @@ describe("resolvePanel", () => {
       });
     });
 
+    test("Start shows the Recent activity row it selected, never the Transactions screen's selection", () => {
+      expect(resolvePanel({ screen: "start", reportsView: "overview", envView: null, homeTxn: TXN }, FB)).toEqual({
+        kind: "txn",
+        txnId: TXN.txnId,
+        source: "selection",
+      });
+      expect(resolvePanel({ screen: "start", reportsView: "overview", envView: null, txnView: TXN }, FB)).toMatchObject({
+        kind: "envelope",
+        source: "fallback",
+      });
+    });
+
     test("add wins over a selected txn too", () => {
       expect(resolvePanel({ screen: "addExpense", reportsView: "overview", envView: null, txnView: TXN }, FB)).toEqual({ kind: "add" });
     });
