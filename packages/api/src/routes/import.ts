@@ -235,12 +235,12 @@ export function legacyItemsFromRecognition(result: ImportRecognitionResult) {
 }
 
 export const applyInput = z.object({
-  accountId: z.string().uuid(),
+  accountId: z.guid(),
   /** The budget the CLIENT believes it is writing to — the same PER-REQUEST tenant
    *  assertion as /sync/push (budgetAssertionFails): the server resolves the target
    *  budget from the session cookie alone, and the cookie can be swapped in another
    *  tab while the import sheet is open. Optional: a pre-fix client omits it. */
-  budgetId: z.string().uuid().optional(),
+  budgetId: z.guid().optional(),
   dryRun: z.boolean().optional(),
   items: z
     .array(
@@ -251,12 +251,12 @@ export const applyInput = z.object({
         name: z.string().default(""),
         tag: z.string(),
         rawPlace: z.string().nullable().optional(),
-        envelopeId: z.string().uuid().nullable(),
-        categoryId: z.string().uuid().nullable().optional(),
+        envelopeId: z.guid().nullable(),
+        categoryId: z.guid().nullable().optional(),
         placeName: z.string().nullable().optional(),
 
-        accountId: z.string().uuid().optional(),
-        toAccountId: z.string().uuid().nullable().optional(),
+        accountId: z.guid().optional(),
+        toAccountId: z.guid().nullable().optional(),
         isRefund: z.boolean().optional(), // expense only; otherwise ignored
         note: z.string().max(2000).optional(),
         /* Deliberate add despite a sure duplicate (the user edited an

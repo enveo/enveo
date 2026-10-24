@@ -2,27 +2,27 @@ import { z } from "zod";
 import { budgetPreferencesPatchSchema, reconcileBudgetPreferences } from "./preferences";
 
 export const txnItemPayload = z.object({
-  envelopeId: z.string().uuid(),
-  categoryId: z.string().uuid().nullable().optional(),
+  envelopeId: z.guid(),
+  categoryId: z.guid().nullable().optional(),
   amount: z.number().int().nonnegative(),
 });
 
 const txnBase = z.object({
   type: z.enum(["expense", "income", "transfer"]),
-  accountId: z.string().uuid(),
-  toAccountId: z.string().uuid().nullable().optional(),
+  accountId: z.guid(),
+  toAccountId: z.guid().nullable().optional(),
   amount: z.number().int().nonnegative(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   isRefund: z.boolean().optional(),
-  envelopeId: z.string().uuid().nullable().optional(),
-  placeId: z.string().uuid().nullable().optional(),
-  categoryId: z.string().uuid().nullable().optional(),
+  envelopeId: z.guid().nullable().optional(),
+  placeId: z.guid().nullable().optional(),
+  categoryId: z.guid().nullable().optional(),
   name: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
   tag: z.string().nullable().optional(),
   sourceRef: z.string().nullable().optional(),
-  allocationFromEnvelopeId: z.string().uuid().nullable().optional(),
-  allocationToEnvelopeId: z.string().uuid().nullable().optional(),
+  allocationFromEnvelopeId: z.guid().nullable().optional(),
+  allocationToEnvelopeId: z.guid().nullable().optional(),
   items: z.array(txnItemPayload).optional(),
 
   createdAt: z.string().datetime().optional(),
@@ -84,7 +84,7 @@ export const txnPayload = txnBase.superRefine(txnRules);
 export type TxnPayload = z.infer<typeof txnPayload>;
 
 export const allocPayload = z.object({
-  envelopeId: z.string().uuid(),
+  envelopeId: z.guid(),
   month: z.string().regex(/^\d{4}-\d{2}$/),
   amount: z.number().int(),
 });
@@ -99,7 +99,7 @@ export const accountPayload = z.object({
   initialBalance: z.number().int().optional(),
   archived: z.boolean().optional(),
   sort: z.number().int().optional(),
-  automaticEnvelopeId: z.string().uuid().nullable().optional(),
+  automaticEnvelopeId: z.guid().nullable().optional(),
 });
 export type AccountPayload = z.infer<typeof accountPayload>;
 
@@ -107,7 +107,7 @@ export const groupPayload = z.object({ name: z.string().min(1), sort: z.number()
 export type GroupPayload = z.infer<typeof groupPayload>;
 
 export const envelopePayload = z.object({
-  groupId: z.string().uuid(),
+  groupId: z.guid(),
   name: z.string().min(1),
   color: z.string().optional(),
   icon: z.string().optional(),
@@ -119,7 +119,7 @@ export const envelopePayload = z.object({
 });
 export type EnvelopePayload = z.infer<typeof envelopePayload>;
 
-const withId = { id: z.string().uuid() };
+const withId = { id: z.guid() };
 const idOnly = z.object(withId);
 
 export const opSchemas = {
@@ -153,17 +153,13 @@ export const opSchemas = {
   // ops would rewrite each transaction's LWW state and invite conflicts on other devices. The
   // source is repointed and then removed under the same delete rule (degrade to archive if
   // anything still holds it). Replaying a merge whose source is already gone is a no-op.
-  "category.merge": z
-    .object({ fromId: z.string().uuid(), intoId: z.string().uuid() })
-    .refine((v) => v.fromId !== v.intoId, { message: "cannot merge an entry into itself" }),
-  "place.merge": z
-    .object({ fromId: z.string().uuid(), intoId: z.string().uuid() })
-    .refine((v) => v.fromId !== v.intoId, { message: "cannot merge an entry into itself" }),
+  "category.merge": z.object({ fromId: z.guid(), intoId: z.guid() }).refine((v) => v.fromId !== v.intoId, { message: "cannot merge an entry into itself" }),
+  "place.merge": z.object({ fromId: z.guid(), intoId: z.guid() }).refine((v) => v.fromId !== v.intoId, { message: "cannot merge an entry into itself" }),
   "category.delete": idOnly,
   "place.delete": idOnly,
 
-  "budget.update": z.object({ id: z.string().uuid(), currency: z.string().regex(/^[A-Z]{3}$/) }),
-  "budget.preferences.update": z.object({ id: z.string().uuid(), patch: budgetPreferencesPatchSchema }).strict(),
+  "budget.update": z.object({ id: z.guid(), currency: z.string().regex(/^[A-Z]{3}$/) }),
+  "budget.preferences.update": z.object({ id: z.guid(), patch: budgetPreferencesPatchSchema }).strict(),
 } as const;
 
 export type OpKind = keyof typeof opSchemas;
@@ -180,7 +176,7 @@ export interface SyncOp<K extends OpKind = OpKind> {
 
 export const syncOpSchema = z
   .object({
-    opId: z.string().uuid(),
+    opId: z.guid(),
     kind: z.enum(OP_KINDS),
     payload: z.unknown(),
   })
@@ -193,7 +189,7 @@ export const syncOpSchema = z
     }
   });
 
-const zUuid = z.string().uuid();
+const zUuid = z.guid();
 const zYmd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected a YYYY-MM-DD date");
 const zYm = z.string().regex(/^\d{4}-\d{2}$/, "expected a YYYY-MM month");
 const zMoney = z.number().int();

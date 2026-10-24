@@ -39,15 +39,15 @@ export interface ImportJobRouteOptions {
 
 export const createImportJobInput = z
   .object({
-    id: z.string().uuid(),
-    budgetId: z.string().uuid(),
-    accountId: z.string().uuid(),
+    id: z.guid(),
+    budgetId: z.guid(),
+    accountId: z.guid(),
     locale: aiLocaleSchema,
     images: z.array(z.string()).min(1).max(IMPORT_JOB_MAX_IMAGES),
   })
   .strict();
-export const importJobMutationInput = z.object({ budgetId: z.string().uuid() }).strict();
-export const deleteImportJobsInput = importJobMutationInput.extend({ ids: z.array(z.string().uuid()).min(1).max(100) }).strict();
+export const importJobMutationInput = z.object({ budgetId: z.guid() }).strict();
+export const deleteImportJobsInput = importJobMutationInput.extend({ ids: z.array(z.guid()).min(1).max(100) }).strict();
 export const completeImportJobInput = importJobMutationInput.extend({
   receipt: importReceiptSchema.optional(),
   appliedCount: z.number().int().nonnegative(),
@@ -59,7 +59,7 @@ function userId(c: RouteContext): string | null {
 }
 
 function idParam(c: RouteContext): string {
-  return z.string().uuid().parse(c.req.param("id"));
+  return z.guid().parse(c.req.param("id"));
 }
 
 class InvalidImportJobPublicResponse extends Error {

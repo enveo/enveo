@@ -297,8 +297,8 @@ export const pushInput = z.object({
   clientId: z.string().min(1),
   /** The budget the CLIENT believes it is writing to — see budgetAssertionFails. Optional:
    *  a pre-2.0 client omits it, and so does a legacy e2ee replica that cannot name its budget. */
-  budgetId: z.string().uuid().optional(),
-  ops: z.array(z.object({ opId: z.string().uuid(), kind: z.string(), payload: z.unknown() })).max(100),
+  budgetId: z.guid().optional(),
+  ops: z.array(z.object({ opId: z.guid(), kind: z.string(), payload: z.unknown() })).max(100),
 });
 
 /**

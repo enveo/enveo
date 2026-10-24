@@ -17,7 +17,7 @@ import { type DbTransaction, db } from "../db/client";
 import { openAiModelFetch, transportFailureJson } from "../openaiHttp";
 import { extractImportForBudget, extractLegacyImportForBudget, ImportCycleOneFailure, legacyItemsFromRecognition } from "./import";
 
-const budgetId = z.string().uuid();
+const budgetId = z.guid();
 export const credentialBudgetInput = z.object({ budgetId }).strict();
 export const credentialSaveInput = z.object({ budgetId, key: z.string().min(1).max(4096) }).strict();
 export const credentialTestInput = z.object({ budgetId, model: z.enum(OPENAI_MODELS) }).strict();
@@ -54,7 +54,7 @@ export const legacyByokImportInput = z
     locale: aiLocaleSchema.optional(),
   })
   .strict();
-export const byokImportInput = legacyByokImportInput.extend({ accountId: z.string().uuid() });
+export const byokImportInput = legacyByokImportInput.extend({ accountId: z.guid() });
 
 export type CredentialUnavailableReason = "vault_unavailable";
 

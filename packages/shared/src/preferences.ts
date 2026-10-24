@@ -110,7 +110,7 @@ const langSchema = z.enum(LANGS);
 const themeModeSchema = z.enum(THEME_MODES);
 const accentThemeSchema = z.enum(ACCOUNT_ACCENT_THEMES);
 const openAiModelSchema = z.enum(OPENAI_MODELS);
-const uuidSchema = z.string().uuid();
+const uuidSchema = z.guid();
 
 export const accountPreferencesSchema = z
   .object({ schemaVersion: z.literal(1), lang: langSchema, themeMode: themeModeSchema, accentTheme: accentThemeSchema })

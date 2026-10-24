@@ -133,7 +133,7 @@ export const importJobScreenshotProgressSchema: z.ZodType<ImportJobScreenshotPro
   .object({ total: z.number().int().nonnegative(), read: z.number().int().nonnegative(), failed: z.number().int().nonnegative() })
   .strict();
 export const importJobPartialFailureSchema: z.ZodType<ImportJobPartialFailure> = z
-  .object({ retryJobId: z.string().uuid(), imageCount: z.number().int().positive() })
+  .object({ retryJobId: z.guid(), imageCount: z.number().int().positive() })
   .strict();
 
 export interface ImportJobProgress {
@@ -184,7 +184,7 @@ export interface ImportJobDetail extends ImportJobSummary {
 
 const importJobSummaryShape = {
   ...importJobProgressShape,
-  id: z.string().uuid(),
+  id: z.guid(),
   budgetId: z.string().min(1),
   accountId: z.string().min(1).nullable(),
   provider: importJobProviderSnapshotSchema,
