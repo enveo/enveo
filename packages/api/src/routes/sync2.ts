@@ -49,9 +49,9 @@ export const sync2PushInput = z.object({
    *  tenant assertion; `epoch` does NOT distinguish tenants: two independently-encrypted
    *  budgets both sit at epoch 1). REQUIRED since v2 — the op AAD is built from it, so a
    *  replica that cannot name its budget cannot have produced these rows. */
-  budgetId: z.string().uuid(),
+  budgetId: z.guid(),
   ops: z
-    .array(z.object({ opId: z.string().uuid(), ciphertext: v2Ciphertext }))
+    .array(z.object({ opId: z.guid(), ciphertext: v2Ciphertext }))
     .min(1)
     .max(500),
 });
@@ -73,7 +73,7 @@ export const sync2SnapshotInput = z.object({
 export const e2eeEnableInput = z.object({
   ...ownerAssertion,
   /** The budget the client encrypted FOR (the wrap/snapshot AAD name it) — asserted, not trusted. */
-  budgetId: z.string().uuid(),
+  budgetId: z.guid(),
   /** The epoch the client encrypted FOR: enable bumps the epoch, and the ciphertexts are bound
    *  to the NEW one, so the server must refuse a stale expectation instead of installing an
    *  envelope no future device could open (409 with the current meta; the client retries). */
@@ -91,7 +91,7 @@ export const e2eeEnableInput = z.object({
 
 export const e2eeDisableInput = z.object({
   ...ownerAssertion,
-  budgetId: z.string().uuid(),
+  budgetId: z.guid(),
   expectedEpoch: z.number().int().min(0),
 
   confirm: z.literal(E2EE_DISABLE_CONFIRM),
@@ -124,7 +124,7 @@ export const sync2ResetInput = z.object({
  *  Everything is REQUIRED: both tenant assertions, the epoch expectation and format-2 v2
  *  ciphertexts (a fresh envelope + a fresh checkpoint; the old envelope is never reused). */
 export const e2eeUpgradeV2Input = z.object({
-  budgetId: z.string().uuid(),
+  budgetId: z.guid(),
   userId: z.string().min(1),
   expectedEpoch: z.number().int().min(0),
   cipherVersion: z.literal(2),
@@ -138,7 +138,7 @@ export const e2eeUpgradeV2Input = z.object({
   ]),
 });
 
-export const e2eeUpgradeCredentialQuery = z.object({ budgetId: z.string().uuid(), expectedEpoch: z.coerce.number().int().min(0) }).strict();
+export const e2eeUpgradeCredentialQuery = z.object({ budgetId: z.guid(), expectedEpoch: z.coerce.number().int().min(0) }).strict();
 
 const ownerMismatch = (budgetId: string) => ({ error: "budget_mismatch", budgetId }) as const;
 
