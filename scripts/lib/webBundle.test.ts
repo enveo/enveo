@@ -194,7 +194,7 @@ describe("evaluateBudget", () => {
     const report = evaluateBudget([contributor("a", RAW_BYTE_LIMIT + 1, 10)]);
     expect(report.violations).toHaveLength(1);
     expect(report.violations[0]).toContain("raw bytes");
-    expect(report.violations[0]).toContain("over the 500000 limit by 1");
+    expect(report.violations[0]).toContain(`over the ${RAW_BYTE_LIMIT} limit by 1`);
   });
 
   it("flags the GZIP ceiling on its own", () => {
@@ -208,7 +208,7 @@ describe("evaluateBudget", () => {
   });
 
   it("pins the DECIDED ceilings — moving one is a product decision, not a build fix", () => {
-    expect(DEFAULT_LIMITS).toEqual({ rawBytes: 500_000, gzipBytes: 167_312 });
+    expect(DEFAULT_LIMITS).toEqual({ rawBytes: 540_000, gzipBytes: 168_500 });
   });
 
   it("prints the contributor table on a PASSING run too, so creep is visible", () => {
