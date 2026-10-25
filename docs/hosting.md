@@ -147,7 +147,7 @@ Set these on the **Enveo** service:
 | `BETTER_AUTH_SECRET` | `${{secret(64, "abcdef0123456789")}}` | **Required**, min 32 chars. In a Railway *template*, `secret()` generates it per deploy, so no two installs share a session secret. Setting it by hand: `openssl rand -hex 32`. |
 | `BETTER_AUTH_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Strongly recommended — see below. |
 | `DEPLOYMENT` | `selfhost` | Registration closes after the first (owner) account. |
-| `OPENAI_API_KEY` / `OPENAI_MODEL` | optional | Enables **server-mode** AI (screenshot import, budget suggestions), paid by the operator key. Without it, deterministic suggestions still work locally. Own OpenAI is separate: plain budgets call OpenAI through Enveo with the user's vaulted key; unlocked E2EE budgets call OpenAI directly with a client-decrypted zero-knowledge credential. |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | optional | Enables **server-mode** AI (screenshot import), paid by the operator key. Own OpenAI is separate: plain budgets call OpenAI through Enveo with the user's vaulted key; unlocked E2EE budgets call OpenAI directly with a client-decrypted zero-knowledge credential. |
 
 Own OpenAI requires a read-only key-ring file outside the database and container
 image; production deliberately rejects putting the raw ring JSON in an environment

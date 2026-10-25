@@ -37,13 +37,6 @@ export type SpendRoutesChildOutput = {
   };
   deprecatedChatDenied: { status: number; error: string | undefined; hasRetryAfterHeader: boolean };
   deprecatedChatOk: { status: number; content: string | undefined; charged: boolean };
-  suggestDenied: {
-    status: number;
-    source: string | undefined;
-    warnsAiUnavailable: boolean;
-    /** Denied suggest = local rules; the model is never fetched. */
-    upstreamNotCalled: boolean;
-  };
   stalledCounter: {
     status: number;
     contentOk: boolean;
@@ -67,7 +60,7 @@ async function main() {
   const postgres = (await import("postgres")).default;
   const s = await import("../db/schema");
   const { Hono } = await import("hono");
-  const { budgetSuggestRoutes } = await import("../routes/budgetSuggest");
+  const { aiProxyRoutes } = await import("../routes/aiProxy");
   const { importRoutes } = await import("../routes/import");
   const { operatorAiDeps } = await import("./transport");
   const { checkSpend, recordSpend, SPEND_POLICY, spendThresholdNanoUsd } = await import("./counter");
@@ -128,28 +121,12 @@ async function main() {
       c.set("userId", userId);
       await next();
     });
-    app.route("/", budgetSuggestRoutes);
+    app.route("/", aiProxyRoutes);
     app.route("/", importRoutes);
     return app;
   };
   const post = (app: ReturnType<typeof appFor>, path: string, body: unknown) =>
     app.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-
-  const ACC = "11111111-1111-1111-1111-111111111111";
-  const GRP = "22222222-2222-2222-2222-222222222222";
-  const ENV1 = "33333333-3333-3333-3333-333333333333";
-  const ledgerFixture = {
-    accounts: [{ id: ACC, name: "K", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: 1000_00, archived: false, sort: 0 }],
-    budgets: [],
-    groups: [{ id: GRP, name: "G", sort: 0 }],
-    envelopes: [
-      { id: ENV1, groupId: GRP, name: "Food", color: "#fff", icon: "tag", note: null, sort: 0, archived: false, monthlyTarget: null, isSavings: false },
-    ],
-    categories: [],
-    places: [],
-    allocations: [],
-    transactions: [],
-  };
 
   const u1 = await newUser("proxy-ok");
   const app1 = appFor(u1.userId);
@@ -192,19 +169,6 @@ async function main() {
   const body4 = (await res4.json()) as { content?: string };
   const deprecatedChatOk = { status: res4.status, content: body4.content, charged: (await spentOf(u3.userId)) === COST };
 
-  const u4 = await newUser("suggest-denied");
-  await exhaust(u4.userId);
-  const app4 = appFor(u4.userId);
-  const before4 = upstreamCalls;
-  const res5 = await post(app4, "/budget/suggest", { month: "2026-08", profile: "historical", useAi: true, ledger: ledgerFixture });
-  const body5 = (await res5.json()) as { source?: string; warnings?: string[] };
-  const suggestDenied = {
-    status: res5.status,
-    source: body5.source,
-    warnsAiUnavailable: (body5.warnings ?? []).includes("warn.aiUnavailable"),
-    upstreamNotCalled: upstreamCalls === before4,
-  };
-
   const u7 = await newUser("stalled");
   const app7 = appFor(u7.userId);
   const locker = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
@@ -242,7 +206,6 @@ async function main() {
     proxyDenied,
     deprecatedChatDenied,
     deprecatedChatOk,
-    suggestDenied,
     stalledCounter,
   };
   await emitChildResult(SENTINEL, out);

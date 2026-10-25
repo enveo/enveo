@@ -20,11 +20,10 @@ import { local } from "../lib/mutate";
 import { useWideHost } from "../lib/shellContext";
 import { CORAL, ENV_PALETTE, font, P, TEAL, tint } from "../lib/theme";
 
-// The budget assistant is the second AI surface (§3f). It is the only thing on this screen that
-// needs the AI dispatch and the response parsers, and it opens on a deliberate tap — so it loads
-// then. Allocation, the docked numpad and "Fill by goals" (pure local math) stay eager.
+// "Suggest" (top-up, presets and their editor) opens on a deliberate tap — so it loads then.
+// Allocation and the docked numpad stay eager.
 const BudgetSuggestSheet = lazy(() => import("../components/BudgetSuggestSheet").then((m) => ({ default: m.BudgetSuggestSheet })));
-// "Fill by goals" is the assistant's twin: same deliberate-tap lifecycle, same one-shot deep link
+// "Fill by goals" is Suggest's twin: same deliberate-tap lifecycle, same one-shot deep link
 // from the Goals report. Leaving one of the pair eager and the other lazy would draw an arbitrary
 // line through one feature.
 const FillGoalsSheet = lazy(() => import("../components/FillGoalsSheet").then((m) => ({ default: m.FillGoalsSheet })));

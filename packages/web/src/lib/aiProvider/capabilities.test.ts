@@ -1,38 +1,27 @@
 import { describe, expect, it } from "bun:test";
-import type { BudgetSuggestProfile } from "@enveo/shared";
-import { importExecution, importFlow, suggestionExecution } from "./capabilities";
+import { importExecution, importFlow } from "./capabilities";
 import type { AiStatus } from "./contracts";
 
 const status = (over: Partial<AiStatus> = {}): AiStatus => ({
   provider: "rules",
   code: "ready",
   configured: true,
-  capabilities: new Set(["budget-suggestion"]),
+  capabilities: new Set(),
   ...over,
 });
 
 describe("AI capability decisions", () => {
-  for (const profile of ["cautious", "historical"] satisfies BudgetSuggestProfile[]) {
-    it(`${profile} stays on local rules under Without AI`, () => {
-      expect(suggestionExecution(status(), profile)).toBe("local-rules");
-    });
-  }
-
-  it("custom prompts never silently fall back to rules", () => {
-    expect(suggestionExecution(status(), "custom")).toBe("unavailable");
+  it("Without AI there is no model execution", () => {
+    expect(importExecution(status())).toBe("unavailable");
   });
 
-  it("ready model providers execute suggestions and imports through their provider", () => {
-    const model = status({ provider: "openai", capabilities: new Set(["budget-suggestion", "custom-prompt", "screenshot-import"]) });
-    expect(suggestionExecution(model, "cautious")).toBe("provider");
-    expect(suggestionExecution(model, "custom")).toBe("provider");
+  it("ready model providers execute imports through their provider", () => {
+    const model = status({ provider: "openai", capabilities: new Set(["custom-prompt", "screenshot-import"]) });
     expect(importExecution(model)).toBe("provider");
   });
 
   it("E2EE rules/Enveo or a locked Own OpenAI provider expose no model execution", () => {
     const unavailable = status({ provider: "openai", code: "tier-unavailable", configured: false, capabilities: new Set() });
-    expect(suggestionExecution(unavailable, "cautious")).toBe("local-rules");
-    expect(suggestionExecution(unavailable, "custom")).toBe("unavailable");
     expect(importExecution(unavailable)).toBe("unavailable");
   });
 
@@ -41,7 +30,7 @@ describe("AI capability decisions", () => {
       provider: "openai",
       code: "ready",
       configured: true,
-      capabilities: new Set(["budget-suggestion", "custom-prompt", "screenshot-import"]),
+      capabilities: new Set(["custom-prompt", "screenshot-import"]),
     });
     expect(importExecution(direct)).toBe("provider");
     expect(importFlow(direct, "e2ee")).toBe("local-e2ee");

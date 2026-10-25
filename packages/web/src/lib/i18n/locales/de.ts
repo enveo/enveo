@@ -4,7 +4,6 @@ export const de: Dict = {
   Date: "Datum",
   "+ Add envelope": "+ Umschlag hinzufügen",
   "+ Add item": "+ Position hinzufügen",
-  "+ Add profile": "+ Profil hinzufügen",
   "+ Add “{name}”": "+ „{name}“ hinzufügen",
   "+ Group": "+ Gruppe",
   "1 mo": "1 Mon.",
@@ -15,13 +14,8 @@ export const de: Dict = {
   "= {amount}": "= {amount}",
   "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.":
     "Ein früherer Aktualisierungsversuch wurde unterbrochen, bevor er abgeschlossen werden konnte. Setze ihn fort, um die Aktualisierung mit dem damals gewählten Passwort abzuschließen — ein neues Passwort lässt sich erst festlegen, wenn dieser Versuch abgeschlossen oder verworfen ist.",
-  "A profile with this name already exists.": "Ein Profil mit diesem Namen existiert bereits.",
   AI: "KI",
-  "AI (corrected)": "KI (korrigiert)",
-  "AI is off — suggestions run locally on rules; nothing leaves this device.":
-    "KI ist aus — Vorschläge laufen lokal über Regeln; nichts verlässt dieses Gerät.",
   "AI requests go to OpenAI through the app server (operator's key).": "KI-Anfragen gehen über den App-Server an OpenAI (Schlüssel des Betreibers).",
-  "AI unavailable — rules were used instead.": "KI nicht verfügbar — es wurden stattdessen Regeln verwendet.",
   AVAILABLE: "VERFÜGBAR",
   Account: "Konto",
   "About {n}× the cost of the cheapest tier.": "Etwa {n}× die Kosten der günstigsten Stufe.",
@@ -91,7 +85,6 @@ export const de: Dict = {
     "Die Budgetdaten werden auf deinem Gerät verschlüsselt, bevor sie den Server erreichen. Serverseitige Funktionen stehen dann nicht zur Verfügung.",
   Budgets: "Budgets",
   "By envelope": "Nach Umschlag",
-  "By history": "Nach Historie",
   "By place": "Nach Ort",
   "CARRIED OVER": "ÜBERTRAG",
   Cancel: "Abbrechen",
@@ -136,17 +129,14 @@ export const de: Dict = {
   "Create your first envelopes": "Lege deine ersten Umschläge an",
   Currency: "Währung",
   "Current password": "Aktuelles Passwort",
-  Custom: "Eigen",
   "Custom color": "Eigene Farbe",
   "Custom envelope…": "Eigener Umschlag…",
-  "Custom profiles are stored only on this device.": "Eigene Profile werden nur auf diesem Gerät gespeichert.",
   "DISABLE-E2EE": "E2EE-AUS",
   Dark: "Dunkel",
   Delete: "Löschen",
   "Delete everything and start fresh": "Alles löschen und neu anfangen",
   "Delete everything and start over": "Alles löschen und neu beginnen",
   "Delete group": "Gruppe löschen",
-  "Delete profile “{name}”?": "Profil „{name}“ löschen?",
   "Delete the empty group “{name}”?": "Leere Gruppe „{name}“ löschen?",
   "Delete the envelope “{name}”? Its transactions will be left without an envelope.":
     "Umschlag „{name}“ löschen? Seine Transaktionen bleiben ohne Umschlag zurück.",
@@ -156,8 +146,6 @@ export const de: Dict = {
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Löscht ALLE Budgetdaten vom Server und von diesem Gerät — unwiderruflich. Exportiere zuerst eine Sicherung. Die App startet danach mit dem Einrichtungsassistenten.",
   "Deleting…": "Wird gelöscht…",
-  "Describe how to distribute (e.g. prioritize savings, less on entertainment)":
-    "Beschreibe, wie verteilt werden soll (z. B. Sparen priorisieren, weniger für Freizeit)",
   "Destination account": "Zielkonto",
   "Difference: {sign}{amount} → this will create a correcting {kind}": "Differenz: {sign}{amount} → dies erzeugt eine korrigierende {kind}",
   "Disable encryption": "Verschlüsselung deaktivieren",
@@ -221,7 +209,6 @@ export const de: Dict = {
   "From account": "Von Konto",
   Fun: "Freizeit",
   "Generate suggestion": "Vorschlag erzeugen",
-  "Generating…": "Wird erzeugt…",
   Goals: "Ziele",
   "Goes to": "Geht an",
   Good: "Gut",
@@ -266,9 +253,6 @@ export const de: Dict = {
   "Lowest cost — a typical screenshot import costs a fraction of a cent.":
     "Niedrigste Kosten — ein typischer Screenshot-Import kostet einen Bruchteil eines Cents.",
   "Manage envelopes": "Umschläge verwalten",
-  "Manage…": "Verwalten…",
-  "Median of historical monthly spending — resistant to one-off spikes; the free remainder is spread proportionally.":
-    "Median der historischen Monatsausgaben — robust gegen einmalige Ausreißer; der freie Rest wird proportional verteilt.",
   Menu: "Menü",
   Mode: "Modus",
   Model: "Modell",
@@ -277,7 +261,6 @@ export const de: Dict = {
   More: "Mehr",
   "More colors": "Mehr Farben",
   "Move the money between envelopes too": "Das Geld auch zwischen den Umschlägen bewegen",
-  "NO AI": "KEINE KI",
   Name: "Name",
   Net: "Netto",
   "Net worth": "Vermögen",
@@ -338,11 +321,9 @@ export const de: Dict = {
   Place: "Ort",
   "Place change": "Ortsänderung",
   "Place deletion": "Ortslöschung",
-  Predefined: "Vorgegeben",
   "Previous month": "Vorheriger Monat",
   Privacy: "Privatsphäre",
   "Previously selected model — it stays available until you pick a tier.": "Zuvor gewähltes Modell — es bleibt verfügbar, bis du eine Stufe wählst.",
-  Prompt: "Prompt",
   RESET: "RESET",
   "Rainy day": "Notgroschen",
   "Re-encrypt and upgrade": "Neu verschlüsseln und aktualisieren",
@@ -360,7 +341,6 @@ export const de: Dict = {
   "Replaces all current data with the data from the selected file.": "Ersetzt alle aktuellen Daten durch die Daten aus der gewählten Datei.",
   "Report a fix": "Korrektur melden",
   Reports: "Berichte",
-  "Requires AI (server mode or your own key).": "Erfordert KI (Servermodus oder eigener Schlüssel).",
   Restore: "Wiederherstellen",
   "Restore “{name}” · hidden": "„{name}“ wiederherstellen · ausgeblendet",
   "Resume upgrade": "Aktualisierung fortsetzen",
@@ -386,10 +366,7 @@ export const de: Dict = {
   "Sign out": "Abmelden",
   "Sign out and use another account": "Abmelden und anderes Konto verwenden",
   "Skip for now": "Vorerst überspringen",
-  "Some funds stayed in To be budgeted — envelopes are at their target caps.":
-    "Ein Teil der Mittel blieb in „Zu budgetieren“ — die Umschläge haben ihre Zielobergrenze erreicht.",
   Sort: "Sortieren",
-  "Source: {src}": "Quelle: {src}",
   Spending: "Ausgaben",
   "Split across envelopes": "Auf Umschläge aufteilen",
   "Split transaction": "Transaktion aufteilen",
@@ -397,7 +374,6 @@ export const de: Dict = {
   "Start with an empty budget": "Mit leerem Budget starten",
   "Starting balance": "Anfangssaldo",
   "Starting balance (0)": "Anfangssaldo (0)",
-  "Stick with rules": "Bei den Regeln bleiben",
   Strategy: "Strategie",
   Strong: "Stark",
   Subscriptions: "Abos",
@@ -410,15 +386,12 @@ export const de: Dict = {
   "Tap {action} to continue": "Tippe auf {action}, um fortzufahren",
   "That does not look like a valid email address.": "Das sieht nicht nach einer gültigen E-Mail-Adresse aus.",
   "That password is too long.": "Dieses Passwort ist zu lang.",
-  "The AI model (OpenAI) will receive: the amount to distribute, envelope names and aggregated spending stats from recent months.":
-    "Das KI-Modell (OpenAI) erhält: den zu verteilenden Betrag, die Namen der Umschläge und aggregierte Ausgabenstatistiken der letzten Monate.",
   "The AI model (OpenAI) will receive: the screenshots and the names of your envelopes and categories.":
     "Das KI-Modell (OpenAI) erhält: die Screenshots und die Namen deiner Umschläge und Kategorien.",
   "The AI service took too long to answer — nothing was changed. Try again in a moment.":
     "Der KI-Dienst hat zu lange für die Antwort gebraucht — es wurde nichts geändert. Versuche es gleich noch einmal.",
   "The account “{name}” will disappear from the Start screen and lists (you will find it under “Closed” on the Accounts screen). Its transactions and balance still count in the budget and reports.\n\nArchive it?":
     "Das Konto „{name}“ verschwindet vom Startbildschirm und aus den Listen (du findest es unter „Geschlossen“ auf dem Bildschirm Konten). Seine Transaktionen und sein Saldo zählen weiterhin im Budget und in den Berichten.\n\nArchivieren?",
-  "The agent proposed no distribution — refine your prompt.": "Der Agent hat keine Verteilung vorgeschlagen — präzisiere deinen Prompt.",
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "Die App spricht mit deinem eigenen Schlüssel direkt aus diesem Browser mit OpenAI — am Server vorbei.",
   "The backup is corrupted and was not loaded: {detail}": "Die Sicherung ist beschädigt und wurde nicht geladen: {detail}",
@@ -453,7 +426,6 @@ export const de: Dict = {
     "Die lokale Kopie — samt aller nicht gesendeten Änderungen — wird dauerhaft von diesem Gerät entfernt. Die Daten deines Kontos auf dem Server sind davon nicht betroffen.",
   "The local replica is not ready.": "Die lokale Replik ist nicht bereit.",
   "The password must be at least 8 characters.": "Das Passwort muss mindestens 8 Zeichen lang sein.",
-  "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Der Vorschlag übersteigt „Zu budgetieren“ — hake Positionen ab oder reduziere sie.",
   "The server hit an unexpected error. Nothing was changed — try again.":
     "Auf dem Server ist ein unerwarteter Fehler aufgetreten. Es wurde nichts geändert — versuche es erneut.",
   "The server refuses to sync this budget until its encryption is upgraded to the new format.":
@@ -512,7 +484,6 @@ export const de: Dict = {
   "This will replace all current data. Continue?": "Damit werden alle aktuellen Daten ersetzt. Fortfahren?",
   "To account": "Auf Konto",
   "To be budgeted": "Zu budgetieren",
-  "To be budgeted is ≤ 0 — there is nothing to distribute.": "„Zu budgetieren“ ist ≤ 0 — es gibt nichts zu verteilen.",
   "To be budgeted:": "Zu budgetieren:",
   Today: "Heute",
   "Toggle refund": "Erstattung umschalten",

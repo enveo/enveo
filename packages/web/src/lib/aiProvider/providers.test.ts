@@ -20,7 +20,7 @@ describe("AI provider implementations", () => {
   it("rules performs no transport and rejects model-only capabilities with a stable code", async () => {
     const provider = new RulesProvider();
     expect(await provider.status()).toMatchObject({ provider: "rules", code: "ready", configured: true });
-    expect([...(await provider.status()).capabilities]).toEqual(["budget-suggestion"]);
+    expect([...(await provider.status()).capabilities]).toEqual([]);
     await expect(provider.complete(request)).rejects.toThrow("ai_capability_unsupported");
     await expect(provider.extractImport(input)).rejects.toThrow("ai_capability_unsupported");
   });

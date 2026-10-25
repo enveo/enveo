@@ -1483,7 +1483,6 @@ export function ImportSheet({
       {/* Sibling of the Sheet (not a child) — the panel's transform would break position:fixed. */}
       <AiConsentSheet
         show={showConsent}
-        feature="import"
         onClose={() => setShowConsent(false)}
         onDecided={(mode) => {
           setShowConsent(false);

@@ -3,10 +3,10 @@ import type { AiProvider } from "./contracts";
 import { capabilitiesForProvider, UnsupportedCapabilityError } from "./contracts";
 
 describe("AI provider contracts", () => {
-  it("publishes stable capability sets for deterministic and model providers", () => {
-    expect([...capabilitiesForProvider("rules")]).toEqual(["budget-suggestion"]);
-    expect([...capabilitiesForProvider("enveo")]).toEqual(["budget-suggestion", "custom-prompt", "screenshot-import"]);
-    expect([...capabilitiesForProvider("openai")]).toEqual(["budget-suggestion", "custom-prompt", "screenshot-import"]);
+  it("publishes stable capability sets: AI off has none, model providers have all", () => {
+    expect([...capabilitiesForProvider("rules")]).toEqual([]);
+    expect([...capabilitiesForProvider("enveo")]).toEqual(["custom-prompt", "screenshot-import"]);
+    expect([...capabilitiesForProvider("openai")]).toEqual(["custom-prompt", "screenshot-import"]);
   });
 
   it("uses a machine-readable error when a capability is unsupported", () => {

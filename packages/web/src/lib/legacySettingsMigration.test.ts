@@ -140,7 +140,7 @@ describe("legacy settings migration", () => {
 
     f.acknowledgeAccount();
     await runLegacySettingsMigration(f.deps);
-    expect(f.calls.budget).toEqual([{ openaiModel: "gpt-5.6-sol", customProfiles: [], startWidgets: legacy.startWidgets }]);
+    expect(f.calls.budget).toEqual([{ openaiModel: "gpt-5.6-sol", startWidgets: legacy.startWidgets }]);
     expect(f.ack().budget).toBe("pending");
     expect(f.calls.credentialSave).toEqual([]);
   });

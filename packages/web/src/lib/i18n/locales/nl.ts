@@ -4,7 +4,6 @@ export const nl: Dict = {
   Date: "Datum",
   "+ Add envelope": "+ Envelop toevoegen",
   "+ Add item": "+ Regel toevoegen",
-  "+ Add profile": "+ Profiel toevoegen",
   "+ Add “{name}”": "+ ‘{name}’ toevoegen",
   "+ Group": "+ Groep",
   "1 mo": "1 mnd",
@@ -15,13 +14,8 @@ export const nl: Dict = {
   "= {amount}": "= {amount}",
   "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.":
     "Een eerdere upgradepoging is onderbroken voordat die kon worden afgerond. Hervat die om de upgrade af te ronden met het wachtwoord dat je toen koos — een nieuw wachtwoord kan pas worden ingesteld als deze poging is afgerond of verworpen.",
-  "A profile with this name already exists.": "Er bestaat al een profiel met deze naam.",
   AI: "AI",
-  "AI (corrected)": "AI (gecorrigeerd)",
-  "AI is off — suggestions run locally on rules; nothing leaves this device.":
-    "AI staat uit — suggesties worden lokaal met regels berekend; er verlaat niets dit apparaat.",
   "AI requests go to OpenAI through the app server (operator's key).": "AI-verzoeken gaan via de server van de app naar OpenAI (sleutel van de beheerder).",
-  "AI unavailable — rules were used instead.": "AI niet beschikbaar — er zijn regels gebruikt.",
   AVAILABLE: "BESCHIKBAAR",
   Account: "Rekening",
   "About {n}× the cost of the cheapest tier.": "Ongeveer {n}× de kosten van het goedkoopste niveau.",
@@ -91,7 +85,6 @@ export const nl: Dict = {
     "De budgetgegevens worden op je apparaat versleuteld voordat ze de server bereiken. Functies aan de serverkant zijn dan niet beschikbaar.",
   Budgets: "Budgetten",
   "By envelope": "Op envelop",
-  "By history": "Op basis van historie",
   "By place": "Op locatie",
   "CARRIED OVER": "OVERGEDRAGEN",
   Cancel: "Annuleren",
@@ -136,17 +129,14 @@ export const nl: Dict = {
   "Create your first envelopes": "Maak je eerste enveloppen",
   Currency: "Valuta",
   "Current password": "Huidig wachtwoord",
-  Custom: "Eigen",
   "Custom color": "Eigen kleur",
   "Custom envelope…": "Eigen envelop…",
-  "Custom profiles are stored only on this device.": "Eigen profielen worden alleen op dit apparaat bewaard.",
   "DISABLE-E2EE": "E2EE-UIT",
   Dark: "Donker",
   Delete: "Verwijderen",
   "Delete everything and start fresh": "Alles wissen en met een schone lei beginnen",
   "Delete everything and start over": "Alles verwijderen en opnieuw beginnen",
   "Delete group": "Groep verwijderen",
-  "Delete profile “{name}”?": "Profiel ‘{name}’ verwijderen?",
   "Delete the empty group “{name}”?": "Lege groep ‘{name}’ verwijderen?",
   "Delete the envelope “{name}”? Its transactions will be left without an envelope.":
     "Envelop ‘{name}’ verwijderen? De transacties blijven achter zonder envelop.",
@@ -156,8 +146,6 @@ export const nl: Dict = {
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Verwijdert ALLE budgetgegevens van de server en van dit apparaat — onomkeerbaar. Exporteer eerst een back-up. De app opent daarna weer met de installatiewizard.",
   "Deleting…": "Bezig met verwijderen…",
-  "Describe how to distribute (e.g. prioritize savings, less on entertainment)":
-    "Beschrijf hoe er verdeeld moet worden (bijv. sparen voorop, minder voor uitgaan)",
   "Destination account": "Rekening van bestemming",
   "Difference: {sign}{amount} → this will create a correcting {kind}": "Verschil: {sign}{amount} → dit maakt een corrigerende {kind} aan",
   "Disable encryption": "Versleuteling uitschakelen",
@@ -219,7 +207,6 @@ export const nl: Dict = {
   "From account": "Van rekening",
   Fun: "Vrije tijd",
   "Generate suggestion": "Suggestie genereren",
-  "Generating…": "Bezig met genereren…",
   Goals: "Doelen",
   "Goes to": "Gaat naar",
   Good: "Goed",
@@ -264,9 +251,6 @@ export const nl: Dict = {
   "Lowest cost — a typical screenshot import costs a fraction of a cent.":
     "Laagste kosten — een gemiddelde schermafbeelding-import kost een fractie van een cent.",
   "Manage envelopes": "Enveloppen beheren",
-  "Manage…": "Beheren…",
-  "Median of historical monthly spending — resistant to one-off spikes; the free remainder is spread proportionally.":
-    "Mediaan van de historische maanduitgaven — ongevoelig voor eenmalige pieken; het vrije restant wordt naar rato verdeeld.",
   Menu: "Menu",
   Mode: "Modus",
   Model: "Model",
@@ -275,7 +259,6 @@ export const nl: Dict = {
   More: "Meer",
   "More colors": "Meer kleuren",
   "Move the money between envelopes too": "Verplaats het geld ook tussen enveloppen",
-  "NO AI": "GEEN AI",
   Name: "Naam",
   Net: "Netto",
   "Net worth": "Vermogen",
@@ -336,11 +319,9 @@ export const nl: Dict = {
   Place: "Locatie",
   "Place change": "Plekwijziging",
   "Place deletion": "Plek verwijderen",
-  Predefined: "Vooraf ingesteld",
   "Previous month": "Vorige maand",
   Privacy: "Privacy",
   "Previously selected model — it stays available until you pick a tier.": "Eerder gekozen model — het blijft beschikbaar totdat je een niveau kiest.",
-  Prompt: "Instructie",
   RESET: "RESET",
   "Rainy day": "Onvoorzien",
   "Re-encrypt and upgrade": "Opnieuw versleutelen en upgraden",
@@ -358,7 +339,6 @@ export const nl: Dict = {
   "Replaces all current data with the data from the selected file.": "Vervangt alle huidige gegevens door de gegevens uit het gekozen bestand.",
   "Report a fix": "Een correctie melden",
   Reports: "Rapporten",
-  "Requires AI (server mode or your own key).": "Vereist AI (servermodus of een eigen sleutel).",
   Restore: "Herstellen",
   "Restore “{name}” · hidden": "‘{name}’ herstellen · verborgen",
   "Resume upgrade": "Upgrade hervatten",
@@ -383,10 +363,7 @@ export const nl: Dict = {
   "Sign out": "Afmelden",
   "Sign out and use another account": "Afmelden en een ander account gebruiken",
   "Skip for now": "Nu overslaan",
-  "Some funds stayed in To be budgeted — envelopes are at their target caps.":
-    "Een deel van het geld bleef in ‘Te budgetteren’ staan — de enveloppen zitten aan het plafond van hun doel.",
   Sort: "Sorteren",
-  "Source: {src}": "Bron: {src}",
   Spending: "Uitgaven",
   "Split across envelopes": "Splitsen over enveloppen",
   "Split transaction": "Transactie splitsen",
@@ -394,7 +371,6 @@ export const nl: Dict = {
   "Start with an empty budget": "Beginnen met een leeg budget",
   "Starting balance": "Beginsaldo",
   "Starting balance (0)": "Beginsaldo (0)",
-  "Stick with rules": "Bij de regels blijven",
   Strategy: "Strategie",
   Strong: "Sterk",
   Subscriptions: "Abonnementen",
@@ -407,15 +383,12 @@ export const nl: Dict = {
   "Tap {action} to continue": "Tik op {action} om verder te gaan",
   "That does not look like a valid email address.": "Dit lijkt geen geldig e-mailadres.",
   "That password is too long.": "Dat wachtwoord is te lang.",
-  "The AI model (OpenAI) will receive: the amount to distribute, envelope names and aggregated spending stats from recent months.":
-    "Het AI-model (OpenAI) ontvangt: het te verdelen bedrag, de namen van de enveloppen en geaggregeerde uitgavenstatistieken van de afgelopen maanden.",
   "The AI model (OpenAI) will receive: the screenshots and the names of your envelopes and categories.":
     "Het AI-model (OpenAI) ontvangt: de schermafbeeldingen en de namen van je enveloppen en categorieën.",
   "The AI service took too long to answer — nothing was changed. Try again in a moment.":
     "De AI-dienst deed er te lang over om te antwoorden — er is niets gewijzigd. Probeer het zo opnieuw.",
   "The account “{name}” will disappear from the Start screen and lists (you will find it under “Closed” on the Accounts screen). Its transactions and balance still count in the budget and reports.\n\nArchive it?":
     "De rekening ‘{name}’ verdwijnt van het startscherm en uit de lijsten (je vindt hem onder ‘Gesloten’ op het scherm Rekeningen). De transacties en het saldo tellen nog steeds mee in het budget en de rapporten.\n\nArchiveren?",
-  "The agent proposed no distribution — refine your prompt.": "De agent heeft geen verdeling voorgesteld — maak je instructie scherper.",
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "De app praat met je eigen sleutel rechtstreeks vanuit deze browser met OpenAI — buiten de server om.",
   "The backup is corrupted and was not loaded: {detail}": "De back-up is beschadigd en is niet geladen: {detail}",
@@ -450,7 +423,6 @@ export const nl: Dict = {
     "De lokale kopie — inclusief niet-verstuurde wijzigingen — wordt definitief van dit apparaat verwijderd. De gegevens van je account op de server blijven ongewijzigd.",
   "The local replica is not ready.": "De lokale replica is niet gereed.",
   "The password must be at least 8 characters.": "Het wachtwoord moet minstens 8 tekens lang zijn.",
-  "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Het voorstel overschrijdt ‘Te budgetteren’ — vink regels uit of verlaag ze.",
   "The server hit an unexpected error. Nothing was changed — try again.":
     "Op de server is een onverwachte fout opgetreden. Er is niets gewijzigd — probeer het opnieuw.",
   "The server refuses to sync this budget until its encryption is upgraded to the new format.":
@@ -509,7 +481,6 @@ export const nl: Dict = {
   "This will replace all current data. Continue?": "Hiermee worden alle huidige gegevens vervangen. Doorgaan?",
   "To account": "Naar rekening",
   "To be budgeted": "Te budgetteren",
-  "To be budgeted is ≤ 0 — there is nothing to distribute.": "‘Te budgetteren’ is ≤ 0 — er valt niets te verdelen.",
   "To be budgeted:": "Te budgetteren:",
   Today: "Vandaag",
   "Toggle refund": "Terugbetaling aan/uit",

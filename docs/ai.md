@@ -6,8 +6,9 @@ across devices.
 
 ## What works without AI
 
-With AI off, the **budget assistant** still distributes "To Be Budgeted"
-**rule-based, with zero dependencies** — no key, no network. **Screenshot
+Everything except import works without AI. Budget → **Suggest** (top up
+negative envelopes, fill by goals, your own allocation presets) is local math
+with no AI path at all — no key, no network. **Screenshot
 import** is LLM-only: it needs a real model to read the picture, so there is no
 rule-based fallback for it. With AI off, import asks you to enable AI first —
 manual entry (pad + calculator) is untouched.
@@ -16,7 +17,7 @@ manual entry (pad + calculator) is untouched.
 
 | Provider | Where requests go | Whose key |
 |---|---|---|
-| **Without AI** (default) | nowhere — deterministic rules on the device | — |
+| **Without AI** (default) | nowhere — AI features are off | — |
 | **Own OpenAI** | plain: browser → Enveo → OpenAI; E2EE: unlocked browser → OpenAI directly | the user's; server-vaulted for plain or zero-knowledge ciphertext for E2EE |
 | **Enveo AI** | browser → Enveo → OpenAI | the operator's (`OPENAI_API_KEY` in `.env`) |
 
@@ -57,10 +58,9 @@ enforced against the operator's key:
   design. User comfort wins over strict accounting.
 - When the allowance is used up, operator-key AI routes answer
   `429 {"error":"ai_budget_exhausted","retryAfterSeconds":<int>}` with a
-  matching `Retry-After` header (seconds until the next UTC month). Budget
-  suggestions fall back to local rules; an import already past its first cycle
-  returns the raw extracted items. Own OpenAI is user-funded and never charged
-  to this allowance.
+  matching `Retry-After` header (seconds until the next UTC month). An import
+  already past its first cycle returns the raw extracted items. Own OpenAI is
+  user-funded and never charged to this allowance.
 - Accounting is **fail-open**: a counter failure never blocks or degrades an
   AI answer. Failed/timed-out calls, malformed usage and unknown models are
   never charged. Recorded spend is never revealed to the client.

@@ -5,29 +5,12 @@ import { createPlainByokProvider } from "../lib/aiProvider/plainByok";
 import { api } from "../lib/api";
 import { useBudgetPreferences } from "../lib/contexts";
 import * as e2ee from "../lib/e2ee";
-import { type Message, msg, useT } from "../lib/i18n";
+import { useT } from "../lib/i18n";
 import { store } from "../lib/store";
 import { TEAL } from "../lib/theme";
 import { Surface } from "./chrome";
 
-export type AiFeature = "suggest" | "import";
-
-const PAYLOAD_KEY: Record<AiFeature, Message> = {
-  suggest: msg("The AI model (OpenAI) will receive: the amount to distribute, envelope names and aggregated spending stats from recent months."),
-  import: msg("The AI model (OpenAI) will receive: the screenshots and the names of your envelopes and categories."),
-};
-
-export function AiConsentSheet({
-  show,
-  feature,
-  onClose,
-  onDecided,
-}: {
-  show: boolean;
-  feature: AiFeature;
-  onClose: () => void;
-  onDecided: (mode: "server" | "byok" | "rules") => void;
-}) {
+export function AiConsentSheet({ show, onClose, onDecided }: { show: boolean; onClose: () => void; onDecided: (mode: "server" | "byok" | "rules") => void }) {
   const { t } = useT();
   const { preferences, update } = useBudgetPreferences();
   const budgetId = store.getBudgetId() || store.getLedger()?.budgets[0]?.id || "";
@@ -77,7 +60,9 @@ export function AiConsentSheet({
         return (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 6 }}>{t("Enable AI assistance?")}</div>
-            <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.5, marginBottom: 14 }}>{t(PAYLOAD_KEY[feature])}</div>
+            <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.5, marginBottom: 14 }}>
+              {t("The AI model (OpenAI) will receive: the screenshots and the names of your envelopes and categories.")}
+            </div>
 
             {aiInfo?.serverAi && (
               <button
@@ -112,7 +97,7 @@ export function AiConsentSheet({
             )}
 
             <button onClick={() => onDecided("rules")} style={{ ...secondary, marginBottom: 0 }}>
-              {feature === "import" ? t("Cancel") : t("Stick with rules")}
+              {t("Cancel")}
             </button>
           </>
         );

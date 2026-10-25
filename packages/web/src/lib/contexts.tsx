@@ -2,6 +2,7 @@ import {
   type AccentTheme,
   type AccountAccentTheme,
   type AccountPreferencesPatch,
+  type AllocationPreset,
   type BudgetPreferencesPatch,
   createDefaultBudgetPreferences,
   OPENAI_MODELS,
@@ -41,7 +42,7 @@ export interface Settings {
   aiMode: AiMode;
   openaiModel: OpenAiModel;
 
-  customProfiles: Array<{ id: string; name: string; prompt: string }>;
+  allocationPresets: AllocationPreset[];
 
   startWidgets: WidgetConfig[];
 }
@@ -82,7 +83,7 @@ export function splitSettingsPatch(
   const budget: BudgetPreferencesPatch = {};
   if (next.aiMode !== previous.aiMode) budget.aiProvider = next.aiMode === "server" ? "enveo" : next.aiMode === "byok" ? "openai" : "rules";
   if (next.openaiModel !== previous.openaiModel) budget.openaiModel = next.openaiModel;
-  if (next.customProfiles !== previous.customProfiles) budget.customProfiles = next.customProfiles;
+  if (next.allocationPresets !== previous.allocationPresets) budget.allocationPresets = next.allocationPresets;
   if (next.startWidgets !== previous.startWidgets) budget.startWidgets = next.startWidgets;
 
   if (next.discreet !== previous.discreet) device.discreet = next.discreet;
@@ -115,7 +116,7 @@ const DEFAULT_SETTINGS: Settings = {
   lang: detectLang(),
   aiMode: "off",
   openaiModel: DEFAULT_OPENAI_MODEL,
-  customProfiles: [],
+  allocationPresets: [],
   startWidgets: defaultStartWidgets(),
 };
 
@@ -197,7 +198,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       discreet: device.discreet,
       aiMode: budget.aiProvider === "enveo" ? "server" : budget.aiProvider === "openai" ? "byok" : "off",
       openaiModel: budget.openaiModel,
-      customProfiles: budget.customProfiles,
+      allocationPresets: budget.allocationPresets,
       startWidgets: budget.startWidgets,
     }),
     [account, budget, device, phone],

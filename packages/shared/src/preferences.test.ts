@@ -30,8 +30,31 @@ describe("reconcileBudgetPreferences", () => {
 
     expect(preferences.aiProvider).toBe("openai");
     expect(preferences.openaiModel).toBe("gpt-5.6-sol");
-    expect(preferences.customProfiles).toHaveLength(1);
+    expect(preferences.allocationPresets).toEqual([]);
+    expect("customProfiles" in preferences).toBe(false);
     expect(preferences.startWidgets).toEqual(createDefaultBudgetPreferences().startWidgets);
+  });
+
+  test("allocation presets: missing or non-array → [], invalid entries and duplicate ids/names dropped individually", () => {
+    const BILLS = "22222222-2222-4222-8222-222222222222";
+    const payday = { id: "33333333-3333-4333-8333-333333333333", name: " Payday ", mode: "add", amounts: [{ envelopeId: BILLS, amount: 120000 }] };
+    expect(reconcileBudgetPreferences({}).allocationPresets).toEqual([]);
+    expect(reconcileBudgetPreferences({ allocationPresets: "x" }).allocationPresets).toEqual([]);
+
+    const out = reconcileBudgetPreferences({
+      allocationPresets: [
+        payday,
+        { ...payday, id: "44444444-4444-4444-8444-444444444444", name: "payday" },
+        { ...payday, id: "55555555-5555-4555-8555-555555555555", name: "Zero", amounts: [{ envelopeId: BILLS, amount: 0 }] },
+        { ...payday, id: "66666666-6666-4666-8666-666666666666", name: "Empty", amounts: [] },
+        { ...payday, id: "77777777-7777-4777-8777-777777777777", name: "Twice", amounts: [payday.amounts[0], payday.amounts[0]] },
+        { ...payday, id: "88888888-8888-4888-8888-888888888888", name: "Odd mode", mode: "goal" },
+        { ...payday, name: "Same id" },
+        { ...payday, id: "99999999-9999-4999-8999-999999999999", name: "Top up", mode: "topUp" },
+      ],
+    });
+    expect(out.allocationPresets.map((preset) => preset.name)).toEqual(["Payday", "Top up"]);
+    expect(budgetPreferencesSchema.safeParse(out).success).toBe(true);
   });
 
   test("falls back field by field when scalar values are corrupt", () => {
@@ -169,7 +192,7 @@ describe("schemaVersion 2 — wideWidgets migration", () => {
       schemaVersion: 1,
       aiProvider: "rules",
       openaiModel: "gpt-5.6-luna",
-      customProfiles: [],
+      allocationPresets: [],
       startWidgets: createDefaultBudgetPreferences().startWidgets,
     };
     expect(budgetPreferencesSchema.safeParse(v1).success).toBe(false);
@@ -197,10 +220,18 @@ describe("preference patch schemas", () => {
     const defaults = createDefaultBudgetPreferences();
     expect(budgetPreferencesPatchSchema.safeParse({ aiProvider: "enveo" }).success).toBe(true);
     expect(budgetPreferencesPatchSchema.safeParse({ openaiModel: "gpt-5.6-terra" }).success).toBe(true);
-    expect(budgetPreferencesPatchSchema.safeParse({ customProfiles: defaults.customProfiles }).success).toBe(true);
+    expect(budgetPreferencesPatchSchema.safeParse({ allocationPresets: defaults.allocationPresets }).success).toBe(true);
     expect(budgetPreferencesPatchSchema.safeParse({ startWidgets: defaults.startWidgets }).success).toBe(true);
     expect(budgetPreferencesPatchSchema.safeParse({ wideWidgets: defaults.wideWidgets }).success).toBe(true);
     expect(budgetPreferencesPatchSchema.safeParse({}).success).toBe(false);
+  });
+
+  test("a stale client's queued customProfiles patch is still accepted, and never stored", () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    const patch = { customProfiles: [{ id, name: "Careful", prompt: "Keep a buffer" }] };
+    expect(opSchemas["budget.preferences.update"].safeParse({ id, patch }).success).toBe(true);
+    const applied = reconcileBudgetPreferences({ ...createDefaultBudgetPreferences(), ...patch });
+    expect(applied).toEqual(createDefaultBudgetPreferences());
   });
 
   test("the sync operation validates a known non-empty patch", () => {

@@ -78,10 +78,14 @@ export interface WideWidgetConfig {
   opts?: WidgetOpts;
 }
 
-export interface CustomAiProfile {
+/** "add" puts each amount on top of this month's allocation; "topUp" fills the allocation up to it. */
+export type AllocationPresetMode = "add" | "topUp";
+
+export interface AllocationPreset {
   id: string;
   name: string;
-  prompt: string;
+  mode: AllocationPresetMode;
+  amounts: Array<{ envelopeId: string; amount: number }>;
 }
 
 export interface AccountPreferences {
@@ -98,12 +102,12 @@ export interface BudgetPreferences {
   schemaVersion: 2;
   aiProvider: "rules" | "enveo" | "openai";
   openaiModel: OpenAiModel;
-  customProfiles: CustomAiProfile[];
+  allocationPresets: AllocationPreset[];
   startWidgets: WidgetConfig[];
   wideWidgets: WideWidgetConfig[];
 }
 
-export type BudgetPreferenceField = "aiProvider" | "openaiModel" | "customProfiles" | "startWidgets" | "wideWidgets";
+export type BudgetPreferenceField = "aiProvider" | "openaiModel" | "allocationPresets" | "startWidgets" | "wideWidgets";
 export type BudgetPreferencesPatch = Partial<Pick<BudgetPreferences, BudgetPreferenceField>>;
 
 const langSchema = z.enum(LANGS);
@@ -121,9 +125,26 @@ export const accountPreferencesPatchSchema = z
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, { message: "preference patch must not be empty" });
 
-const customAiProfileSchema = z.object({ id: uuidSchema, name: z.string().trim().min(1), prompt: z.string().trim().min(1) }).strict();
-
 const unique = <T>(values: T[]): boolean => new Set(values).size === values.length;
+
+export const allocationPresetSchema = z
+  .object({
+    id: uuidSchema,
+    name: z.string().trim().min(1).max(80),
+    mode: z.enum(["add", "topUp"]),
+    amounts: z
+      .array(z.object({ envelopeId: uuidSchema, amount: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict())
+      .min(1)
+      .refine((amounts) => unique(amounts.map((a) => a.envelopeId)), { message: "preset envelopes must be unique" }),
+  })
+  .strict();
+
+const presetNameKey = (name: string): string => name.trim().toLowerCase();
+
+const allocationPresetsSchema = z
+  .array(allocationPresetSchema)
+  .refine((presets) => unique(presets.map((p) => p.id)), { message: "preset ids must be unique" })
+  .refine((presets) => unique(presets.map((p) => presetNameKey(p.name))), { message: "preset names must be unique" });
 
 const quickActionsWidgetSchema = z
   .object({
@@ -227,9 +248,7 @@ export const budgetPreferencesSchema = z
     schemaVersion: z.literal(2),
     aiProvider: z.enum(["rules", "enveo", "openai"]),
     openaiModel: openAiModelSchema,
-    customProfiles: z
-      .array(customAiProfileSchema)
-      .refine((profiles) => unique(profiles.map((profile) => profile.id)), { message: "profile ids must be unique" }),
+    allocationPresets: allocationPresetsSchema,
     startWidgets: widgetStackSchema,
     wideWidgets: wideWidgetStackSchema,
   })
@@ -239,10 +258,11 @@ export const budgetPreferencesPatchSchema = z
   .object({
     aiProvider: z.enum(["rules", "enveo", "openai"]).optional(),
     openaiModel: openAiModelSchema.optional(),
-    customProfiles: z
-      .array(customAiProfileSchema)
-      .refine((profiles) => unique(profiles.map((profile) => profile.id)), { message: "profile ids must be unique" })
-      .optional(),
+    allocationPresets: allocationPresetsSchema.optional(),
+    // Deprecated (removed AI suggestion profiles): a stale PWA may still hold queued
+    // `budget.preferences.update` ops carrying it, and this strict schema would reject the whole op.
+    // Accepted and ignored — reconcileBudgetPreferences never stores or reads it.
+    customProfiles: z.array(z.unknown()).optional(),
     startWidgets: widgetStackSchema.optional(),
     wideWidgets: wideWidgetStackSchema.optional(),
   })
@@ -294,7 +314,7 @@ export function createDefaultBudgetPreferences(): BudgetPreferences {
     schemaVersion: 2,
     aiProvider: "rules",
     openaiModel: "gpt-6-luna",
-    customProfiles: [],
+    allocationPresets: [],
     startWidgets: createDefaultStartWidgets(),
     wideWidgets: createDefaultWideWidgets(),
   };
@@ -316,6 +336,21 @@ function reconcileWidgets(raw: unknown): WidgetConfig[] {
     if (!seen.has(widget.id)) widgets.push(widget);
   }
   return widgets;
+}
+
+function reconcileAllocationPresets(raw: unknown): AllocationPreset[] {
+  if (!Array.isArray(raw)) return [];
+  const presets: AllocationPreset[] = [];
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  for (const candidate of raw) {
+    const parsed = allocationPresetSchema.safeParse(candidate);
+    if (!parsed.success || ids.has(parsed.data.id) || names.has(presetNameKey(parsed.data.name))) continue;
+    ids.add(parsed.data.id);
+    names.add(presetNameKey(parsed.data.name));
+    presets.push(parsed.data);
+  }
+  return presets;
 }
 
 function reconcileWideWidgets(raw: unknown): WideWidgetConfig[] {
@@ -350,15 +385,11 @@ export function reconcileBudgetPreferences(raw: unknown): BudgetPreferences {
   const source = raw as Record<string, unknown>;
   const aiProvider = z.enum(["rules", "enveo", "openai"]).safeParse(source.aiProvider);
   const openaiModel = openAiModelSchema.safeParse(source.openaiModel);
-  const customProfiles = z
-    .array(customAiProfileSchema)
-    .refine((profiles) => unique(profiles.map((profile) => profile.id)))
-    .safeParse(source.customProfiles);
   return {
     schemaVersion: 2,
     aiProvider: aiProvider.success ? aiProvider.data : defaults.aiProvider,
     openaiModel: openaiModel.success ? openaiModel.data : defaults.openaiModel,
-    customProfiles: customProfiles.success ? customProfiles.data : defaults.customProfiles,
+    allocationPresets: reconcileAllocationPresets(source.allocationPresets),
     startWidgets: reconcileWidgets(source.startWidgets),
     wideWidgets: reconcileWideWidgets(source.wideWidgets),
   };

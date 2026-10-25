@@ -20,7 +20,7 @@ import { createImportJobRepository } from "./importJobs/repository";
 import { startImportJobWorker } from "./importJobs/worker";
 import { isSameHostOrigin, staticAllowedOrigins } from "./origins";
 import { createAiCredentialRoutes } from "./routes/aiCredentials";
-import { budgetSuggestRoutes } from "./routes/budgetSuggest";
+import { aiProxyRoutes } from "./routes/aiProxy";
 import { crudRoutes } from "./routes/crud";
 import { demoRoutes } from "./routes/demo";
 import { extraRoutes } from "./routes/extras";
@@ -198,7 +198,7 @@ api.route("/", createImportJobRoutes({ repository: importJobRepository, wake: ()
 api.route("/", preferencesRoutes);
 api.route("/", syncRoutes);
 api.route("/", createSync2Routes({ masterKeys: vaultMasterKeyProvider }));
-api.route("/", budgetSuggestRoutes);
+api.route("/", aiProxyRoutes);
 api.route("/", createAiCredentialRoutes({ masterKeys: vaultMasterKeyProvider }));
 api.route("/", demoRoutes);
 app.route("/api", api);
