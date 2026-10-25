@@ -4,7 +4,6 @@ import type { StateResponse } from "../../lib/api";
 import { useLedgerVersion } from "../../lib/api";
 import { useMask, useTheme } from "../../lib/contexts";
 import { currentMonth } from "../../lib/dates";
-import { canFillGoals } from "../../lib/goals";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
 import { font } from "../../lib/theme";
@@ -17,13 +16,11 @@ export function FoldTbbStrip({
   state,
   screen,
   onQuickAdd,
-  onFillGoals,
   onNav,
 }: {
   state: StateResponse;
   screen: ScreenId;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
-  onFillGoals: () => void;
   onNav: (s: ScreenId) => void;
 }) {
   const C = useTheme();
@@ -44,22 +41,20 @@ export function FoldTbbStrip({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
 
-  const fillPossible = canFillGoals(state);
-  const pill = (primary: boolean, disabled = false): React.CSSProperties => ({
+  const pill: React.CSSProperties = {
     minHeight: 30,
     padding: "0 13px",
     textAlign: "center",
     borderRadius: 999,
-    border: primary ? `1.5px solid ${C.text}` : `1px solid ${C.line}`,
-    background: primary ? C.text : "transparent",
-    color: primary ? C.card : C.soft,
+    border: `1.5px solid ${C.text}`,
+    background: C.text,
+    color: C.card,
     fontSize: 11.5,
-    fontWeight: primary ? 700 : 650,
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.6 : 1,
+    fontWeight: 700,
+    cursor: "pointer",
     whiteSpace: "nowrap",
     fontFamily: font,
-  });
+  };
 
   return (
     <div
@@ -96,10 +91,7 @@ export function FoldTbbStrip({
           )}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <button onClick={onFillGoals} disabled={!fillPossible} style={pill(false, !fillPossible)}>
-            {t("Fill by goals")}
-          </button>
-          <button onClick={() => onQuickAdd("suggest")} aria-label={t("Suggest a distribution")} style={pill(true)}>
+          <button onClick={() => onQuickAdd("suggest")} aria-label={t("Suggest a distribution")} style={pill}>
             {"✨ "}
             {t("Suggest")}
           </button>

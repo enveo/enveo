@@ -1,11 +1,4 @@
-import {
-  buildBudgetSuggestionBasis,
-  buildPrevMonthSuggestion,
-  buildTopUpNegativesSuggestion,
-  type ClientLedger,
-  computeStateResponse,
-  type NormalizedBudgetSuggestion,
-} from "@enveo/shared";
+import { buildBudgetSuggestionBasis, buildTopUpNegativesSuggestion, computeStateResponse, type NormalizedBudgetSuggestion } from "@enveo/shared";
 import { useQuery } from "@tanstack/react-query";
 import { type CSSProperties, useEffect, useState } from "react";
 import { runSuggest } from "../lib/ai";
@@ -14,6 +7,7 @@ import { useAiProvider } from "../lib/aiProvider/useAiProvider";
 import { apiErrorMessage, type BudgetSuggestProfile, type BudgetSuggestResponse, type StateResponse } from "../lib/api";
 import { type Settings, useCurrency, useSettings } from "../lib/contexts";
 import { currencySymbol, fmtTrim, formatMoney, isLight, localizePadExpression, parseAmount } from "../lib/format";
+import { canFillGoals } from "../lib/goals";
 import { type Message, msg, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
@@ -29,7 +23,6 @@ const PROFILES: Array<{ id: BudgetSuggestProfile; labelKey: Message; descKey: Me
     labelKey: msg("By history"),
     descKey: msg("Median of historical monthly spending — resistant to one-off spikes; the free remainder is spread proportionally."),
   },
-  { id: "investor", labelKey: msg("Investor"), descKey: msg("Savings envelopes first — the free remainder goes to them.") },
 ];
 
 const LOCK_D = "M8 11V7a4 4 0 018 0v4M6 11h12v9H6z";
@@ -40,12 +33,7 @@ type CustomProfile = Settings["customProfiles"][number];
 
 type Phase = "setup" | "loading" | "review";
 
-type DetStrategy = "topUp" | "prevMonth";
-
-const prevMonthOf = (month: string): string => {
-  const [y, m] = month.split("-").map(Number) as [number, number];
-  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
-};
+type DetStrategy = "topUp" | "goals";
 
 /**
  * Engine warning CODE → the sentence a user reads. The suggestion engines (shared/aiBudget.ts and
@@ -63,7 +51,20 @@ const WARNINGS: Record<string, Message> = {
 };
 const warnMessage = (w: string): Message | undefined => WARNINGS[w];
 
-export function BudgetSuggestSheet({ show, state, month, onClose }: { show: boolean; state: StateResponse; month: string; onClose: () => void }) {
+/** `onFillGoals` hands over to the dedicated "Fill by goals" preview sheet instead of reviewing here. */
+export function BudgetSuggestSheet({
+  show,
+  state,
+  month,
+  onClose,
+  onFillGoals,
+}: {
+  show: boolean;
+  state: StateResponse;
+  month: string;
+  onClose: () => void;
+  onFillGoals: () => void;
+}) {
   const { t, lang } = useT();
   const currency = useCurrency();
   const { settings } = useSettings();
@@ -141,7 +142,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
     }
   };
 
-  const doDetGenerate = (kind: DetStrategy) => {
+  const doDetGenerate = (kind: "topUp") => {
     const ledger = store.getLedger();
     if (!ledger) {
       setError(t("The local replica is not ready."));
@@ -149,8 +150,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
     }
     setError(null);
     const basis = buildBudgetSuggestionBasis({ ledger, month, profile: "historical" });
-    const norm: NormalizedBudgetSuggestion =
-      kind === "topUp" ? buildTopUpNegativesSuggestion(basis) : buildPrevMonthSuggestion(basis, prevAllocations(ledger, month));
+    const norm: NormalizedBudgetSuggestion = buildTopUpNegativesSuggestion(basis);
     startReview({
       month,
       profile: "historical",
@@ -170,6 +170,11 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   }, [pendingGen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generate = () => {
+    if (det === "goals") {
+      reset();
+      onFillGoals();
+      return;
+    }
     if (det) {
       doDetGenerate(det);
       return;
@@ -304,17 +309,19 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                       setSelCustom(null);
                     }}
                   />
-                  <StrategyOption
-                    C={C}
-                    name={t("Like last month")}
-                    desc={t("Tops envelopes up to last month's allocations. Uncheck what you don't want.")}
-                    badge="noai"
-                    active={det === "prevMonth"}
-                    onSelect={() => {
-                      setDet("prevMonth");
-                      setSelCustom(null);
-                    }}
-                  />
+                  {canFillGoals(state) && (
+                    <StrategyOption
+                      C={C}
+                      name={t("Fill by goals")}
+                      desc={t("Funds envelopes with a monthly goal in budget order — each one fully or not at all.")}
+                      badge="noai"
+                      active={det === "goals"}
+                      onSelect={() => {
+                        setDet("goals");
+                        setSelCustom(null);
+                      }}
+                    />
+                  )}
                   {PROFILES.map((p) => (
                     <StrategyOption
                       key={p.id}
@@ -622,15 +629,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
       />
     </>
   );
-}
-
-function prevAllocations(ledger: ClientLedger, month: string): Map<string, number> {
-  const prev = prevMonthOf(month);
-  const map = new Map<string, number>();
-  for (const a of ledger.allocations) {
-    if (a.month === prev) map.set(a.envelopeId, (map.get(a.envelopeId) ?? 0) + a.amount);
-  }
-  return map;
 }
 
 function CheckBox({ on, C }: { on: boolean; C: Theme }) {

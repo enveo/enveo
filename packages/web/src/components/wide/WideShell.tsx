@@ -557,7 +557,6 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
         onNav={nav}
         state={state}
         onQuickAdd={onQuickAdd}
-        onFillGoals={onFillGoals}
         onInstall={onInstall}
         onSelectAccount={onSelectAccount}
         selectedAccountId={!panelClosed && view.kind === "account" ? view.accountId : null}
@@ -586,9 +585,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           onTogglePanel={() => (surfaceStack.length > 0 || view.kind === "add" ? closePanel() : setPanelClosed(!panelClosed))}
           compact={mode === "fold" && !panelClosed}
         />
-        {mode === "fold" && primaryScreen !== "settings" && (
-          <FoldTbbStrip state={state} screen={primaryScreen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
-        )}
+        {mode === "fold" && primaryScreen !== "settings" && <FoldTbbStrip state={state} screen={primaryScreen} onQuickAdd={onQuickAdd} onNav={nav} />}
         {}
         <InWideShell.Provider value={{ host: "primary", mode, rects, surfaces: surfaceHost }}>
           {}

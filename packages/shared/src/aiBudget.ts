@@ -1,7 +1,7 @@
 import { computeBudgetState, monthOf, prevMonth } from "./budget";
 import type { ClientLedger, Money, Transaction } from "./types";
 
-export type BudgetSuggestProfile = "cautious" | "historical" | "investor" | "custom";
+export type BudgetSuggestProfile = "cautious" | "historical" | "custom";
 export type BudgetSuggestSource = "ai" | "ai_repaired" | "rules";
 
 export interface EnvelopeBudgetStats {
@@ -86,7 +86,7 @@ export function byPriorityDesc(a: BudgetSuggestionCandidate, b: BudgetSuggestion
 
 function pickRemainder(cands: BudgetSuggestionCandidate[], profile: BudgetSuggestProfile): string | null {
   if (cands.length === 0) return null;
-  if (profile === "investor" || profile === "cautious") {
+  if (profile === "cautious") {
     const sav = [...cands].filter((c) => c.savingsLike && c.stats.targetGap == null).sort(byPriorityDesc)[0];
     if (sav) return sav.envelopeId;
   } else {
@@ -118,17 +118,9 @@ export function buildBudgetSuggestionBasis(input: {
     const hints: string[] = [];
     if (negNeed > 0) hints.push("hint.coverNegative");
 
-    let baseDelta: number;
-    let priority: number;
-    if (profile === "investor") {
-      baseDelta = negNeed;
-      priority = savingsLike ? 100 : negNeed > 0 ? 90 : stats.recurringLike ? 60 : 30;
-      if (savingsLike) hints.push("hint.savingsEnvelope");
-    } else {
-      baseDelta = negNeed + fundToTypical;
-      if (fundToTypical > 0) hints.push(profile === "cautious" ? "hint.toMedian" : "hint.toAverage");
-      priority = negNeed > 0 ? 100 : stats.recurringLike ? 80 : fundToTypical > 0 ? 60 : savingsLike ? 40 : 20;
-    }
+    let baseDelta = negNeed + fundToTypical;
+    if (fundToTypical > 0) hints.push(profile === "cautious" ? "hint.toMedian" : "hint.toAverage");
+    let priority = negNeed > 0 ? 100 : stats.recurringLike ? 80 : fundToTypical > 0 ? 60 : savingsLike ? 40 : 20;
     let maxDelta = amountToDistribute;
     if (stats.targetGap != null) {
       maxDelta = Math.min(stats.targetGap, amountToDistribute);
@@ -332,27 +324,6 @@ export function buildTopUpNegativesSuggestion(basis: BudgetSuggestionBasis): Nor
     for (const [id, v] of largestRemainderScale(deficits, amount)) deltas.set(id, v);
   }
   return buildResult(basis, deltas, false, undistributed, warnings, undefined, undefined, { rationaleCodes: ["hint.topUp"] });
-}
-
-/**
- * "Like last month": delta_i = max(0, prevAllocated_i − currentAllocated_i)
- * for active envelopes (existing allocations are not taken away). Σdeltas MAY
- * exceed TBB — then an "over_tbb" warning (the user trims/unchecks in the editor).
- */
-export function buildPrevMonthSuggestion(basis: BudgetSuggestionBasis, prevAllocations: Map<string, number>): NormalizedBudgetSuggestion {
-  const deltas = new Map<string, number>();
-  let sum = 0;
-  for (const c of basis.candidates) {
-    const prev = prevAllocations.get(c.envelopeId) ?? 0;
-    const d = Math.max(0, prev - c.stats.allocatedThisMonth);
-    if (d > 0) {
-      deltas.set(c.envelopeId, d);
-      sum += d;
-    }
-  }
-  const warnings = sum > basis.amountToDistribute ? ["over_tbb"] : [];
-  const undistributed = Math.max(0, basis.amountToDistribute - sum);
-  return buildResult(basis, deltas, false, undistributed, warnings, undefined, undefined, { rationaleCodes: ["hint.prevMonth"] });
 }
 
 /**

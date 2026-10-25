@@ -144,7 +144,7 @@ describe("previewSuggestPrompt", () => {
 
   it("IDENTITY (predefined profiles): the preview === the message contents from buildSuggestPrompt", () => {
     const ledger = fixtureLedger();
-    for (const profile of ["cautious", "historical", "investor"] as const) {
+    for (const profile of ["cautious", "historical"] as const) {
       const preview = previewSuggestPrompt(ledger, MONTH, profile, undefined, "pl");
       const basis = buildBudgetSuggestionBasis({ ledger, month: MONTH, profile });
       const req = buildSuggestPrompt({ basis, ledger, month: MONTH, profile, locale: "pl" });

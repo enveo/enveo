@@ -486,6 +486,8 @@ export const pl: Dict = {
   "Fill all goals ›": "Wypełnij wszystkie cele ›",
 
   "Fill by goals": "Zasil cele",
+  "Funds envelopes with a monthly goal in budget order — each one fully or not at all.":
+    "Zasila koperty z miesięcznym celem w kolejności budżetu — każdą w całości albo wcale.",
   Filter: "Filtruj",
   "Filter:": "Filtr:",
   Filters: "Filtry",
@@ -522,7 +524,6 @@ export const pl: Dict = {
   Install: "Zainstaluj",
   "Install app": "Zainstaluj aplikację",
   "Invalid pairing code.": "Nieprawidłowy kod parowania.",
-  Investor: "Inwestorski",
   "Item total: {sum} / {total}": "Suma pozycji: {sum} / {total}",
   "Keep me signed in and save a local copy so Enveo works without internet. Anyone who can access this browser profile may be able to read that copy.":
     "Nie wylogowuj mnie i zapisz lokalną kopię, aby Enveo działało bez internetu. Każda osoba mająca dostęp do tego profilu przeglądarki może ją odczytać.",
@@ -536,7 +537,6 @@ export const pl: Dict = {
   "Leisure & learning": "Rozrywka i edukacja",
   Light: "Jasny",
   "Light / Dark": "Jasny/Ciemny",
-  "Like last month": "Jak w poprzednim miesiącu",
   Living: "Życie",
   "Load backup (JSON)": "Wczytaj kopię (JSON)",
   "Loading sample data…": "Wczytywanie danych przykładowych…",
@@ -685,7 +685,6 @@ export const pl: Dict = {
   "Save changes": "Zapisz zmiany",
   "Save item": "Zapisz pozycję",
   Savings: "Oszczędności",
-  "Savings envelopes first — the free remainder goes to them.": "Priorytet kopert oszczędnościowych — wolna reszta trafia do nich.",
   "Savings only": "Tylko oszczędnościowe",
   "Screenshot {n}": "Zrzut {n}",
   "Screenshots ({n}/{max})": "Zrzuty ekranu ({n}/{max})",
@@ -869,8 +868,6 @@ export const pl: Dict = {
   "Toggle refund": "Przełącz zwrot",
   "Too short (min. 10 characters)": "Za krótkie (min. 10 znaków)",
   "Top up negatives": "Uzupełnij minusy",
-  "Tops envelopes up to last month's allocations. Uncheck what you don't want.":
-    "Uzupełnia koperty do alokacji z poprzedniego miesiąca. Odznacz, czego nie chcesz.",
   Total: "Razem",
   Transaction: "Transakcja",
   "Transaction change": "Zmiana transakcji",

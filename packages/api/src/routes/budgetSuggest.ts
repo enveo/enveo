@@ -31,7 +31,7 @@ import { loadClientLedger } from "../repo";
 
 const requestSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
-  profile: z.enum(["cautious", "historical", "investor", "custom"]),
+  profile: z.enum(["cautious", "historical", "custom"]),
   customPrompt: z.string().max(2000).optional(),
 
   locale: aiLocaleSchema.optional(),

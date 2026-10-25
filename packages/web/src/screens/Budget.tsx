@@ -13,7 +13,7 @@ import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
 import { activeAllocationDecoration } from "../lib/focusPresentation";
 import { currencySymbol, evalExpression, evalExpressionLive, fmtTrim, isLight, localizePadExpression, parseAmount } from "../lib/format";
-import { canFillGoals, goalProgress } from "../lib/goals";
+import { goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
@@ -72,8 +72,6 @@ export function BudgetScreen({
 
   const { suggest, fillGoals, suggestOpened, fillGoalsOpened } = useBudgetSheets(sheet);
   const closeSheet = () => onSheet({ kind: "close" });
-
-  const fillGoalsPossible = canFillGoals(state);
 
   const [editing, setEditing] = useState<{ envelopeId: string; pad: PadState; err?: boolean; input?: string } | null>(null);
 
@@ -190,24 +188,6 @@ export function BudgetScreen({
               >
                 {M(tbbLive)}
               </div>
-            )}
-            {fillGoalsPossible && (
-              <button
-                onClick={() => onSheet({ kind: "open", sheet: "fillGoals" })}
-                style={{
-                  marginTop: 2,
-                  padding: 0,
-                  background: "none",
-                  border: "none",
-                  color: hc("var(--cta)", TEAL),
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: font,
-                }}
-              >
-                {t("Fill by goals")}
-              </button>
             )}
           </div>
           <button
@@ -444,7 +424,13 @@ export function BudgetScreen({
       <EnvManageSheet show={manageOpen} state={state} onClose={() => onManageOpen(false)} />
       {suggestOpened && (
         <LazyChunk variant="overlay" onDismiss={closeSheet}>
-          <BudgetSuggestSheet show={suggest} state={state} month={month} onClose={closeSheet} />
+          <BudgetSuggestSheet
+            show={suggest}
+            state={state}
+            month={month}
+            onClose={closeSheet}
+            onFillGoals={() => onSheet({ kind: "open", sheet: "fillGoals" })}
+          />
         </LazyChunk>
       )}
       {fillGoalsOpened && (

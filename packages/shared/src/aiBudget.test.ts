@@ -86,12 +86,12 @@ describe("buildBudgetSuggestionBasis", () => {
     expect(neg.baseDelta).toBeGreaterThanOrEqual(150_00);
   });
 
-  it("investor gives savings-like envelopes top priority and picks one as remainder sink", () => {
+  it("cautious ranks a savings envelope above an envelope without history and picks it as remainder sink", () => {
     const g = grp();
     const eSav = env(g.id, { id: "SAV", name: "Bonds", isSavings: true });
     const eSpend = env(g.id, { id: "SPEND", name: "Jedzenie" });
     const l = asClientLedger({ accounts: [onAcc(500_00)], groups: [g], envelopes: [eSav, eSpend], allocations: [], transactions: [] });
-    const basis = buildBudgetSuggestionBasis({ ledger: l, month: "2026-07", profile: "investor" });
+    const basis = buildBudgetSuggestionBasis({ ledger: l, month: "2026-07", profile: "cautious" });
     const sav = basis.candidates.find((c) => c.envelopeId === "SAV")!;
     const spend = basis.candidates.find((c) => c.envelopeId === "SPEND")!;
     expect(sav.savingsLike).toBe(true);
@@ -104,7 +104,7 @@ describe("buildBudgetSuggestionBasis", () => {
     const eFlag = env(g.id, { id: "SAV", name: "Someday fund", isSavings: true });
     const eName = env(g.id, { id: "NAME", name: "Oszczędności" });
     const l = asClientLedger({ accounts: [onAcc(500_00)], groups: [g], envelopes: [eFlag, eName], allocations: [], transactions: [] });
-    const basis = buildBudgetSuggestionBasis({ ledger: l, month: "2026-07", profile: "investor" });
+    const basis = buildBudgetSuggestionBasis({ ledger: l, month: "2026-07", profile: "cautious" });
     expect(basis.candidates.find((c) => c.envelopeId === "SAV")!.savingsLike).toBe(true);
     expect(basis.candidates.find((c) => c.envelopeId === "NAME")!.savingsLike).toBe(false);
     expect(basis.remainderEnvelopeId).toBe("SAV");
@@ -154,7 +154,7 @@ describe("normalizeBudgetSuggestion", () => {
   });
 
   it("repairs an under-sum proposal by adding remainder to the sink (repaired=true)", () => {
-    const basis = buildBudgetSuggestionBasis({ ledger: bigLedger(), month: "2026-07", profile: "investor" });
+    const basis = buildBudgetSuggestionBasis({ ledger: bigLedger(), month: "2026-07", profile: "cautious" });
     const r = normalizeBudgetSuggestion(basis, [{ envelopeId: "E1", proposedDelta: 100_00 }]);
     expect(r.repaired).toBe(true);
     expect(r.distributed).toBe(basis.amountToDistribute);
@@ -175,7 +175,7 @@ describe("normalizeBudgetSuggestion", () => {
   });
 
   it("property: rules-only always distributes exactly, no negatives (all profiles)", () => {
-    const profiles: BudgetSuggestProfile[] = ["cautious", "historical", "investor", "custom"];
+    const profiles: BudgetSuggestProfile[] = ["cautious", "historical", "custom"];
     fc.assert(
       fc.property(ledgerArb(), fc.constantFrom(...profiles), (ledger, profile) => {
         const basis = buildBudgetSuggestionBasis({ ledger: asClientLedger(ledger), month: "2026-07", profile });
@@ -247,7 +247,7 @@ describe("monthlyTarget field", () => {
 });
 
 import type { BudgetSuggestionBasis, BudgetSuggestionCandidate } from "./aiBudget";
-import { buildPrevMonthSuggestion, buildTopUpNegativesSuggestion, normalizeAgentSuggestion } from "./aiBudget";
+import { buildTopUpNegativesSuggestion, normalizeAgentSuggestion } from "./aiBudget";
 
 const mkCand = (id: string, available: number, allocated = 0): BudgetSuggestionCandidate => ({
   envelopeId: id,
@@ -338,60 +338,6 @@ describe("buildTopUpNegativesSuggestion", () => {
             expect(it.proposedDelta).toBeLessThanOrEqual(-c.stats.available);
             expect(Number.isInteger(it.proposedDelta) && it.proposedDelta > 0).toBe(true);
           }
-        },
-      ),
-      { numRuns: 300 },
-    );
-  });
-});
-
-describe("buildPrevMonthSuggestion", () => {
-  it("delta = max(0, prevAllocated − currentAllocated); never takes allocations away", () => {
-    const basis = mkBasis([mkCand("A", 0, 100_00), mkCand("B", 0, 80_00), mkCand("C", 0, 0)], 1000_00);
-    const prev = new Map([
-      ["A", 300_00],
-      ["B", 50_00],
-    ]);
-    const r = buildPrevMonthSuggestion(basis, prev);
-    expect(r.items.map((i) => i.envelopeId)).toEqual(["A"]);
-    expect(r.items[0]!.proposedDelta).toBe(200_00);
-    expect(r.items[0]!.rationaleCodes).toEqual(["hint.prevMonth"]);
-    expect(r.warnings).toEqual([]);
-    expect(r.undistributedRemainder).toBe(800_00);
-  });
-
-  it("Σdeltas > TBB: warning over_tbb, deltas NOT clamped (user trims in the editor)", () => {
-    const basis = mkBasis([mkCand("A", 0, 0), mkCand("B", 0, 0)], 100_00);
-    const prev = new Map([
-      ["A", 300_00],
-      ["B", 200_00],
-    ]);
-    const r = buildPrevMonthSuggestion(basis, prev);
-    expect(r.distributed).toBe(500_00);
-    expect(r.warnings).toEqual(["over_tbb"]);
-    expect(r.undistributedRemainder).toBe(0);
-  });
-
-  it("property: delta_i == max(0, prev_i − curr_i) exactly; over_tbb iff Σ > amount", () => {
-    fc.assert(
-      fc.property(
-        fc.array(fc.record({ curr: fc.integer({ min: 0, max: 100_000 }), prev: fc.option(fc.integer({ min: 0, max: 100_000 }), { nil: undefined }) }), {
-          maxLength: 8,
-        }),
-        fc.integer({ min: 0, max: 200_000 }),
-        (envs, amount) => {
-          const cands = envs.map((e, i) => mkCand(`E${i}`, 0, e.curr));
-          const prev = new Map(envs.flatMap((e, i) => (e.prev == null ? [] : [[`E${i}`, e.prev] as [string, number]])));
-          const r = buildPrevMonthSuggestion(mkBasis(cands, amount), prev);
-          let expectedSum = 0;
-          for (const [i, e] of envs.entries()) {
-            const want = Math.max(0, (e.prev ?? 0) - e.curr);
-            expectedSum += want;
-            const got = r.items.find((it) => it.envelopeId === `E${i}`)?.proposedDelta ?? 0;
-            expect(got).toBe(want);
-          }
-          expect(r.distributed).toBe(expectedSum);
-          expect(r.warnings.includes("over_tbb")).toBe(expectedSum > amount);
         },
       ),
       { numRuns: 300 },
@@ -559,7 +505,7 @@ describe("monthlyTarget in the engine", () => {
     const basis = buildBudgetSuggestionBasis({
       ledger: asClientLedger({ accounts: [a], groups: [g], envelopes: [e1], allocations: [], transactions: [] }),
       month: "2026-07",
-      profile: "investor",
+      profile: "cautious",
     });
     const r = buildRulesBudgetSuggestion(basis);
     expect(r.distributed).toBe(100_00);

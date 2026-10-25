@@ -12,7 +12,7 @@ const status = (over: Partial<AiStatus> = {}): AiStatus => ({
 });
 
 describe("AI capability decisions", () => {
-  for (const profile of ["cautious", "investor"] satisfies BudgetSuggestProfile[]) {
+  for (const profile of ["cautious", "historical"] satisfies BudgetSuggestProfile[]) {
     it(`${profile} stays on local rules under Without AI`, () => {
       expect(suggestionExecution(status(), profile)).toBe("local-rules");
     });

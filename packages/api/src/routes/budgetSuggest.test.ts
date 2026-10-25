@@ -62,7 +62,7 @@ describe("generateSuggestion — rules path", () => {
   });
 
   it("repairs an under-sum AI proposal (source ai_repaired)", async () => {
-    const r = await generateSuggestion(req({ profile: "investor" }), async () => [{ envelopeId: "E1", proposedDelta: 100_00 }]);
+    const r = await generateSuggestion(req({ profile: "cautious" }), async () => [{ envelopeId: "E1", proposedDelta: 100_00 }]);
     expect(r.source).toBe("ai_repaired");
     expect(r.items.reduce((s, i) => s + i.proposedDelta, 0)).toBe(1000_00);
   });
