@@ -570,7 +570,6 @@ export const sv: Dict = {
   "you'll split it into envelopes in the budget": "du fördelar det på kuvert i budgeten",
   "{amount} from the previous month": "{amount} från föregående månad",
   "{amount} left": "{amount} kvar",
-  "{amount} stays in “To be budgeted”.": "{amount} blir kvar i ”Att budgetera”.",
   "{amount} to go": "{amount} kvar",
   "{n} OK": "{n} OK",
   "{n} change is waiting to be sent | {n} changes are waiting to be sent": {

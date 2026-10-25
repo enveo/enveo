@@ -579,7 +579,6 @@ export const cs: Dict = {
   "you'll split it into envelopes in the budget": "rozdělíš do obálek v rozpočtu",
   "{amount} from the previous month": "{amount} z předchozího měsíce",
   "{amount} left": "zbývá {amount}",
-  "{amount} stays in “To be budgeted”.": "{amount} zůstává v „K rozdělení“.",
   "{amount} to go": "chybí {amount}",
   "{n} OK": "{n} OK",
   "{n} change is waiting to be sent | {n} changes are waiting to be sent": {

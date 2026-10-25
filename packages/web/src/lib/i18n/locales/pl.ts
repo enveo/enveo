@@ -969,7 +969,6 @@ export const pl: Dict = {
   "{amount} from the previous month": "{amount} z poprzedniego miesiąca",
   "{amount} left": "zostało {amount}",
   "{amount} over budget": "{amount} ponad budżet",
-  "{amount} stays in “To be budgeted”.": "W „Do rozdysponowania” zostaje {amount}.",
   "{amount} to go": "brakuje {amount}",
   "{count}× · {amount}": "{count}× · {amount}",
   "{date} · {pct}% of month": "{date} · {pct}% miesiąca",

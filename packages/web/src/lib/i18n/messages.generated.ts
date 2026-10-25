@@ -1085,7 +1085,6 @@ export const MESSAGES = [
   "{amount} is missing from “To be budgeted” — uncheck or lower some rows to apply.",
   "{amount} left",
   "{amount} over budget",
-  "{amount} stays in “To be budgeted”.",
   "{amount} to cover · {pool} in To be budgeted",
   "{amount} to go",
   "{available} available",

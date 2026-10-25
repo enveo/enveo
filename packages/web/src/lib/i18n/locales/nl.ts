@@ -577,7 +577,6 @@ export const nl: Dict = {
   "you'll split it into envelopes in the budget": "je verdeelt het in het budget over enveloppen",
   "{amount} from the previous month": "{amount} uit de vorige maand",
   "{amount} left": "{amount} over",
-  "{amount} stays in “To be budgeted”.": "{amount} blijft in ‘Te budgetteren’ staan.",
   "{amount} to go": "nog {amount}",
   "{n} OK": "{n} OK",
   "{n} change is waiting to be sent | {n} changes are waiting to be sent": {

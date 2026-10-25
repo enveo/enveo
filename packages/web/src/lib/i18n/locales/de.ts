@@ -580,7 +580,6 @@ export const de: Dict = {
   "you'll split it into envelopes in the budget": "im Budget verteilst du es auf Umschläge",
   "{amount} from the previous month": "{amount} aus dem Vormonat",
   "{amount} left": "{amount} übrig",
-  "{amount} stays in “To be budgeted”.": "{amount} bleiben in „Zu budgetieren“.",
   "{amount} to go": "{amount} fehlen",
   "{n} OK": "{n} OK",
   "{n} change is waiting to be sent | {n} changes are waiting to be sent": {

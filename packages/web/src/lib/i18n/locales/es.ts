@@ -578,7 +578,6 @@ export const es: Dict = {
   "you'll split it into envelopes in the budget": "lo repartirás en sobres en el presupuesto",
   "{amount} from the previous month": "{amount} del mes anterior",
   "{amount} left": "quedan {amount}",
-  "{amount} stays in “To be budgeted”.": "{amount} se quedan en «Por presupuestar».",
   "{amount} to go": "faltan {amount}",
   "{n} OK": "{n} OK",
   "{n} change is waiting to be sent | {n} changes are waiting to be sent": {

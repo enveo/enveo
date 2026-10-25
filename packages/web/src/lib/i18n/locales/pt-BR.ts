@@ -578,7 +578,6 @@ export const ptBR: Dict = {
   "you'll split it into envelopes in the budget": "você vai distribuir em envelopes no orçamento",
   "{amount} from the previous month": "{amount} do mês anterior",
   "{amount} left": "sobram {amount}",
-  "{amount} stays in “To be budgeted”.": "{amount} ficam em “A orçar”.",
   "{amount} to go": "faltam {amount}",
   "{n} OK": "{n} OK",
   "{n} change is waiting to be sent | {n} changes are waiting to be sent": {

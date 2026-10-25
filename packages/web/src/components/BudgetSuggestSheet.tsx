@@ -18,7 +18,7 @@ import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { CORAL, CTA, font, TEAL, type Theme } from "../lib/theme";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
-import { Sheet, Surface } from "./chrome";
+import { Surface } from "./chrome";
 
 const GEAR_D =
   "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 00-2.1-1.2L14.4 3h-4l-.4 2.6a7.5 7.5 0 00-2.1 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 000 2.4l-2 1.6 2 3.4 2.4-1c.6.5 1.4.9 2.1 1.2l.4 2.6h4l.4-2.6a7.5 7.5 0 002.1-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z";
@@ -186,288 +186,288 @@ export function BudgetSuggestSheet({
   return (
     <>
       <Surface show={show} onClose={close}>
-        {(C) => (
-          <>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Suggest a distribution")}</div>
-            <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 14 }}>
-              {t("To be budgeted this month:")}{" "}
-              <b style={{ color: state.toBeBudgeted < 0 ? CORAL : C.text, fontVariantNumeric: "tabular-nums" }}>{money(Math.max(0, state.toBeBudgeted))}</b>
-            </div>
+        {(C) =>
+          manage ? (
+            <PresetManager key={manage} C={C} start={manage} state={state} onClose={() => setManage(null)} onPad={setPad} />
+          ) : (
+            <>
+              <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Suggest a distribution")}</div>
+              <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 14 }}>
+                {t("To be budgeted this month:")}{" "}
+                <b style={{ color: state.toBeBudgeted < 0 ? CORAL : C.text, fontVariantNumeric: "tabular-nums" }}>{money(Math.max(0, state.toBeBudgeted))}</b>
+              </div>
 
-            {!resp && (
-              <>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "2px 0 8px" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.5, textTransform: "uppercase" }}>{t("Strategy")}</span>
+              {!resp && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "2px 0 8px" }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.5, textTransform: "uppercase" }}>{t("Strategy")}</span>
+                    <button
+                      onClick={() => setManage("list")}
+                      aria-label={t("Manage presets")}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 9,
+                        border: "none",
+                        background: C.inset,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Ico d={GEAR_D} size={15} color={C.soft} sw={1.4} />
+                    </button>
+                  </div>
+                  <div role="radiogroup" aria-label={t("Strategy")} style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 14 }}>
+                    <StrategyOption
+                      C={C}
+                      name={t("Top up negatives")}
+                      desc={t("Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.")}
+                      active={choice === "topUp"}
+                      onSelect={() => setChoice("topUp")}
+                    />
+                    {canFillGoals(state) && (
+                      <StrategyOption
+                        C={C}
+                        name={t("Fill by goals")}
+                        desc={t("Funds envelopes with a monthly goal in budget order — each one fully or not at all.")}
+                        active={choice === "goals"}
+                        onSelect={() => setChoice("goals")}
+                      />
+                    )}
+                    {presets.map((p) => (
+                      <StrategyOption
+                        key={p.id}
+                        C={C}
+                        name={p.name}
+                        desc={presetSummary(p, tp, money)}
+                        active={selectedPreset?.id === p.id}
+                        onSelect={() => setChoice({ presetId: p.id })}
+                      />
+                    ))}
+                    {presets.length === 0 && (
+                      <button onClick={() => setManage("new")} style={dashedButton(C)}>
+                        {t("+ New preset")}
+                      </button>
+                    )}
+                  </div>
+                  {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
                   <button
-                    onClick={() => setManage("list")}
-                    aria-label={t("Manage presets")}
+                    onClick={generate}
+                    disabled={state.toBeBudgeted <= 0}
                     style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 9,
+                      width: "100%",
+                      padding: "12px 0",
+                      borderRadius: 12,
                       border: "none",
-                      background: C.inset,
+                      background: CTA,
+                      color: "#fff",
+                      fontSize: 13.5,
+                      fontWeight: 600,
                       cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      opacity: state.toBeBudgeted <= 0 ? 0.5 : 1,
                     }}
                   >
-                    <Ico d={GEAR_D} size={15} color={C.soft} sw={1.4} />
+                    {state.toBeBudgeted <= 0 ? t("No funds to distribute") : t("Generate suggestion")}
                   </button>
-                </div>
-                <div role="radiogroup" aria-label={t("Strategy")} style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 14 }}>
-                  <StrategyOption
-                    C={C}
-                    name={t("Top up negatives")}
-                    desc={t("Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.")}
-                    active={choice === "topUp"}
-                    onSelect={() => setChoice("topUp")}
-                  />
-                  {canFillGoals(state) && (
-                    <StrategyOption
-                      C={C}
-                      name={t("Fill by goals")}
-                      desc={t("Funds envelopes with a monthly goal in budget order — each one fully or not at all.")}
-                      active={choice === "goals"}
-                      onSelect={() => setChoice("goals")}
-                    />
-                  )}
-                  {presets.map((p) => (
-                    <StrategyOption
-                      key={p.id}
-                      C={C}
-                      name={p.name}
-                      desc={presetSummary(p, tp, money)}
-                      active={selectedPreset?.id === p.id}
-                      onSelect={() => setChoice({ presetId: p.id })}
-                    />
-                  ))}
-                  {presets.length === 0 && (
-                    <button onClick={() => setManage("new")} style={dashedButton(C)}>
-                      {t("+ New preset")}
-                    </button>
-                  )}
-                </div>
-                {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
-                <button
-                  onClick={generate}
-                  disabled={state.toBeBudgeted <= 0}
-                  style={{
-                    width: "100%",
-                    padding: "12px 0",
-                    borderRadius: 12,
-                    border: "none",
-                    background: CTA,
-                    color: "#fff",
-                    fontSize: 13.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    opacity: state.toBeBudgeted <= 0 ? 0.5 : 1,
-                  }}
-                >
-                  {state.toBeBudgeted <= 0 ? t("No funds to distribute") : t("Generate suggestion")}
-                </button>
-              </>
-            )}
+                </>
+              )}
 
-            {resp && (
-              <>
-                <div style={{ fontSize: 11, color: C.mute, marginBottom: 6 }}>
-                  <div style={{ fontWeight: 700, color: C.soft }}>{resp.label}</div>
-                  {resp.items.length === 0 && (
-                    <div style={{ marginTop: 3 }}>
-                      {resp.preset
-                        ? resp.preset.mode === "topUp" && resp.skipped < resp.preset.amounts.length
-                          ? t("Every envelope in this preset already has its amount this month.")
-                          : null
-                        : t("No envelope is in the red.")}
-                    </div>
-                  )}
-                  {resp.skipped > 0 && (
-                    <div style={{ marginTop: 3 }}>
-                      {tp(
-                        "{n} envelope from this preset is archived or deleted and was skipped. | {n} envelopes from this preset are archived or deleted and were skipped.",
-                        resp.skipped,
-                      )}
-                    </div>
-                  )}
-                  {!resp.preset && resp.items.length > 0 && resp.undistributed > 0 && (
-                    <div style={{ color: CORAL, marginTop: 3 }}>{t("{amount} stays in “To be budgeted”.", { amount: money(resp.undistributed) })}</div>
-                  )}
-                  {remaining < 0 && (
-                    <div role="alert" style={{ color: CORAL, marginTop: 3 }}>
-                      {t("{amount} is missing from “To be budgeted” — uncheck or lower some rows to apply.", { amount: money(-remaining) })}
-                    </div>
-                  )}
-                </div>
+              {resp && (
+                <>
+                  <div style={{ fontSize: 11, color: C.mute, marginBottom: 6 }}>
+                    <div style={{ fontWeight: 700, color: C.soft }}>{resp.label}</div>
+                    {resp.items.length === 0 && (
+                      <div style={{ marginTop: 3 }}>
+                        {resp.preset
+                          ? resp.preset.mode === "topUp" && resp.skipped < resp.preset.amounts.length
+                            ? t("Every envelope in this preset already has its amount this month.")
+                            : null
+                          : t("No envelope is in the red.")}
+                      </div>
+                    )}
+                    {resp.skipped > 0 && (
+                      <div style={{ marginTop: 3 }}>
+                        {tp(
+                          "{n} envelope from this preset is archived or deleted and was skipped. | {n} envelopes from this preset are archived or deleted and were skipped.",
+                          resp.skipped,
+                        )}
+                      </div>
+                    )}
+                    {remaining < 0 && (
+                      <div role="alert" style={{ color: CORAL, marginTop: 3 }}>
+                        {t("{amount} is missing from “To be budgeted” — uncheck or lower some rows to apply.", { amount: money(-remaining) })}
+                      </div>
+                    )}
+                  </div>
 
-                {sections.map((s) => {
-                  const anyOn = s.rows.some((it) => checked[it.envelopeId]);
-                  const allOn = s.rows.every((it) => checked[it.envelopeId]);
+                  {sections.map((s) => {
+                    const anyOn = s.rows.some((it) => checked[it.envelopeId]);
+                    const allOn = s.rows.every((it) => checked[it.envelopeId]);
 
-                  const groupSum = s.rows.reduce((x, it) => x + (!anyOn || checked[it.envelopeId] ? deltaOf(it) : 0), 0);
-                  return (
-                    <div key={s.key}>
-                      {s.name !== "" && (
-                        <button
-                          onClick={() => toggleGroup(s.rows)}
-                          role="checkbox"
-                          aria-checked={allOn}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            width: "100%",
-                            border: "none",
-                            background: "none",
-                            padding: "10px 0 6px",
-                            cursor: "pointer",
-                            textAlign: "left",
-                          }}
-                        >
-                          <CheckBox on={allOn} C={C} />
-                          <span
-                            style={{
-                              flex: 1,
-                              minWidth: 0,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              fontSize: 11,
-                              fontWeight: 700,
-                              letterSpacing: 0.7,
-                              textTransform: "uppercase",
-                              color: C.soft,
-                              opacity: anyOn ? 1 : 0.5,
-                            }}
-                          >
-                            {s.name}
-                            {anyOn ? "" : ` — ${t("skipped")}`}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              color: C.mute,
-                              fontWeight: 600,
-                              fontVariantNumeric: "tabular-nums",
-                              textDecoration: anyOn ? "none" : "line-through",
-                            }}
-                          >
-                            {money(groupSum)}
-                          </span>
-                        </button>
-                      )}
-                      {s.rows.map((it, ri) => {
-                        const on = !!checked[it.envelopeId];
-                        const env = envById.get(it.envelopeId);
-                        const delta = deltaOf(it);
-                        const isEdited = delta !== it.proposedDelta;
-                        return (
-                          <div
-                            key={it.envelopeId}
+                    const groupSum = s.rows.reduce((x, it) => x + (!anyOn || checked[it.envelopeId] ? deltaOf(it) : 0), 0);
+                    return (
+                      <div key={s.key}>
+                        {s.name !== "" && (
+                          <button
+                            onClick={() => toggleGroup(s.rows)}
+                            role="checkbox"
+                            aria-checked={allOn}
                             style={{
                               display: "flex",
                               alignItems: "center",
                               gap: 10,
-                              padding: "8px 0",
-                              borderBottom: ri < s.rows.length - 1 ? `1px solid ${C.line}` : "none",
+                              width: "100%",
+                              border: "none",
+                              background: "none",
+                              padding: "10px 0 6px",
+                              cursor: "pointer",
+                              textAlign: "left",
                             }}
                           >
-                            <button
-                              onClick={() => toggleRow(it.envelopeId)}
-                              role="checkbox"
-                              aria-checked={on}
-                              aria-label={env?.name ?? it.envelopeId}
-                              style={{ border: "none", background: "none", padding: 0, cursor: "pointer", display: "flex" }}
+                            <CheckBox on={allOn} C={C} />
+                            <span
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                letterSpacing: 0.7,
+                                textTransform: "uppercase",
+                                color: C.soft,
+                                opacity: anyOn ? 1 : 0.5,
+                              }}
                             >
-                              <CheckBox on={on} C={C} />
-                            </button>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, opacity: on ? 1 : 0.4 }}>
-                              <EnvelopeChip C={C} env={env} />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div
-                                  style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                                >
-                                  {env?.name ?? it.envelopeId}
+                              {s.name}
+                              {anyOn ? "" : ` — ${t("skipped")}`}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: C.mute,
+                                fontWeight: 600,
+                                fontVariantNumeric: "tabular-nums",
+                                textDecoration: anyOn ? "none" : "line-through",
+                              }}
+                            >
+                              {money(groupSum)}
+                            </span>
+                          </button>
+                        )}
+                        {s.rows.map((it, ri) => {
+                          const on = !!checked[it.envelopeId];
+                          const env = envById.get(it.envelopeId);
+                          const delta = deltaOf(it);
+                          const isEdited = delta !== it.proposedDelta;
+                          return (
+                            <div
+                              key={it.envelopeId}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                padding: "8px 0",
+                                borderBottom: ri < s.rows.length - 1 ? `1px solid ${C.line}` : "none",
+                              }}
+                            >
+                              <button
+                                onClick={() => toggleRow(it.envelopeId)}
+                                role="checkbox"
+                                aria-checked={on}
+                                aria-label={env?.name ?? it.envelopeId}
+                                style={{ border: "none", background: "none", padding: 0, cursor: "pointer", display: "flex" }}
+                              >
+                                <CheckBox on={on} C={C} />
+                              </button>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, opacity: on ? 1 : 0.4 }}>
+                                <EnvelopeChip C={C} env={env} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div
+                                    style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                  >
+                                    {env?.name ?? it.envelopeId}
+                                  </div>
+                                  <div style={{ fontSize: 10.5, color: C.mute }}>
+                                    {on ? t("available after: {amount}", { amount: money(it.currentAvailable + delta) }) : t("skipped")}
+                                  </div>
                                 </div>
-                                <div style={{ fontSize: 10.5, color: C.mute }}>
-                                  {on ? t("available after: {amount}", { amount: money(it.currentAvailable + delta) }) : t("skipped")}
-                                </div>
+                                <AmountBox
+                                  C={C}
+                                  prefix="+"
+                                  value={localizePadExpression(edited[it.envelopeId] ?? "", lang)}
+                                  highlight={on && isEdited}
+                                  struck={!on}
+                                  onOpen={on ? () => openPadFor(it) : undefined}
+                                  symbol={currencySymbol(currency, lang)}
+                                />
                               </div>
-                              <AmountBox
-                                C={C}
-                                prefix="+"
-                                value={localizePadExpression(edited[it.envelopeId] ?? "", lang)}
-                                highlight={on && isEdited}
-                                struck={!on}
-                                onOpen={on ? () => openPadFor(it) : undefined}
-                                symbol={currencySymbol(currency, lang)}
-                              />
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
 
-                {error && <div style={{ fontSize: 12.5, color: CORAL, margin: "10px 0 0" }}>{error}</div>}
+                  {error && <div style={{ fontSize: 12.5, color: CORAL, margin: "10px 0 0" }}>{error}</div>}
 
-                {/* STICKY bar — position:sticky within the sheet's scroll (NOT fixed: the Sheet has a transform).
+                  {/* STICKY bar — position:sticky within the sheet's scroll (NOT fixed: the Sheet has a transform).
                   NOTE: NO negative bottom margin — it ate 28px+safe-area of content height
                   (scrollHeight==clientHeight → dead scroll, last row permanently under the
                   bar; on iOS a whole row disappeared). Side -20px (full-bleed) stays. */}
-                <div
-                  style={{
-                    position: "sticky",
-                    bottom: 0,
-                    zIndex: 3,
-                    background: C.sheet,
-                    borderTop: `1px solid ${C.line}`,
-                    margin: "10px -20px 0",
-                    padding: "10px 20px 4px",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: remaining >= 0 ? C.pos : C.neg }}>
-                      {remaining >= 0 ? t("Left after changes") : t("Short after changes")}
-                    </span>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: remaining >= 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
-                      {(remaining >= 0 ? "+" : "−") + money(Math.abs(remaining))}
-                    </span>
+                  <div
+                    style={{
+                      position: "sticky",
+                      bottom: 0,
+                      zIndex: 3,
+                      background: C.sheet,
+                      borderTop: `1px solid ${C.line}`,
+                      margin: "10px -20px 0",
+                      padding: "10px 20px 4px",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: remaining >= 0 ? C.pos : C.neg }}>
+                        {remaining >= 0 ? t("Left after changes") : t("Short after changes")}
+                      </span>
+                      <span style={{ fontSize: 16, fontWeight: 700, color: remaining >= 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
+                        {(remaining >= 0 ? "+" : "−") + money(Math.abs(remaining))}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button onClick={reset} style={{ ...secondaryButton(C), flex: 1, padding: "11px 0", borderRadius: 12 }}>
+                        {t("Back")}
+                      </button>
+                      <button
+                        onClick={apply}
+                        disabled={!canApply}
+                        style={{
+                          flex: 2,
+                          padding: "11px 0",
+                          borderRadius: 12,
+                          border: "none",
+                          background: CTA,
+                          color: "#fff",
+                          fontSize: 13.5,
+                          fontWeight: 600,
+                          cursor: canApply ? "pointer" : "default",
+                          opacity: canApply ? 1 : 0.5,
+                        }}
+                      >
+                        {t("Apply ({n})", { n: nSel })}
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <button onClick={reset} style={{ ...secondaryButton(C), flex: 1, padding: "11px 0", borderRadius: 12 }}>
-                      {t("Back")}
-                    </button>
-                    <button
-                      onClick={apply}
-                      disabled={!canApply}
-                      style={{
-                        flex: 2,
-                        padding: "11px 0",
-                        borderRadius: 12,
-                        border: "none",
-                        background: CTA,
-                        color: "#fff",
-                        fontSize: 13.5,
-                        fontWeight: 600,
-                        cursor: canApply ? "pointer" : "default",
-                        opacity: canApply ? 1 : 0.5,
-                      }}
-                    >
-                      {t("Apply ({n})", { n: nSel })}
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </>
-        )}
+                </>
+              )}
+            </>
+          )
+        }
       </Surface>
-      {/* Siblings of the Surface (not children) — the panel's transform would break position:fixed. */}
-      <PresetManageSheet open={manage} state={state} onClose={() => setManage(null)} />
+      {/* Sibling of the Surface (not a child) — the panel's transform would break position:fixed. */}
       <AmountPadHost target={pad} onClose={() => setPad(null)} />
     </>
   );
@@ -648,30 +648,35 @@ const secondaryButton = (C: Theme): CSSProperties => ({
 
 type PresetForm = { id: string | null; name: string; mode: AllocationPresetMode; amounts: Record<string, number> };
 
-/** Allocation presets: list, create, edit, delete. Presets are budget preferences — they sync. */
-function PresetManageSheet({ open, state, onClose }: { open: "list" | "new" | null; state: StateResponse; onClose: () => void }) {
+const emptyForm = (): PresetForm => ({ id: null, name: "", mode: "add", amounts: {} });
+
+/**
+ * Allocation presets: list, create, edit, delete — views inside the Suggest Surface (the side panel
+ * on wide layouts, never a popup over it). Presets are budget preferences — they sync. `start="new"`
+ * opens the editor directly, and leaving it returns to Suggest rather than to the list.
+ */
+function PresetManager({
+  C,
+  start,
+  state,
+  onClose,
+  onPad,
+}: {
+  C: Theme;
+  start: "list" | "new";
+  state: StateResponse;
+  onClose: () => void;
+  onPad: (target: AmountPadTarget) => void;
+}) {
   const { t, tp, lang } = useT();
   const currency = useCurrency();
   const { preferences, update } = useBudgetPreferences();
   const presets = preferences.allocationPresets;
-  const [form, setForm] = useState<PresetForm | null>(null);
+  const [form, setForm] = useState<PresetForm | null>(() => (start === "new" ? emptyForm() : null));
   const [formError, setFormError] = useState<string | null>(null);
-  const [pad, setPad] = useState<AmountPadTarget | null>(null);
 
-  const emptyForm = (): PresetForm => ({ id: null, name: "", mode: "add", amounts: {} });
-
-  useEffect(() => {
-    setForm(open === "new" ? emptyForm() : null);
-    setFormError(null);
-  }, [open]);
-
-  const close = () => {
-    setForm(null);
-    setFormError(null);
-    onClose();
-  };
   const closeForm = () => {
-    if (open === "new") close();
+    if (start === "new") onClose();
     else {
       setForm(null);
       setFormError(null);
@@ -717,7 +722,7 @@ function PresetManageSheet({ open, state, onClose }: { open: "list" | "new" | nu
 
   const formTotal = form ? Object.values(form.amounts).reduce((s, a) => s + (a > 0 ? a : 0), 0) : 0;
 
-  const smallBtn = (C: Theme, danger = false): CSSProperties => ({
+  const smallBtn = (danger = false): CSSProperties => ({
     padding: "5px 10px",
     borderRadius: 8,
     border: `1px solid ${danger ? CORAL : C.line}`,
@@ -728,204 +733,198 @@ function PresetManageSheet({ open, state, onClose }: { open: "list" | "new" | nu
     cursor: "pointer",
   });
 
-  return (
+  return form ? (
     <>
-      <Sheet show={open !== null} onClose={close}>
-        {(C) =>
-          form ? (
-            <>
-              <div style={{ fontSize: 16.5, fontWeight: 700, color: C.text, marginBottom: 12 }}>{form.id ? t("Edit preset") : t("New preset")}</div>
-              <label style={{ display: "block", fontSize: 12, color: C.soft, marginBottom: 4 }}>
-                {t("Name")}
-                <input
-                  value={form.name}
-                  maxLength={80}
-                  placeholder={t("e.g. Payday")}
-                  onChange={(e) => {
-                    setForm({ ...form, name: e.target.value });
-                    setFormError(null);
-                  }}
+      <div style={{ fontSize: 16.5, fontWeight: 700, color: C.text, marginBottom: 12 }}>{form.id ? t("Edit preset") : t("New preset")}</div>
+      <label style={{ display: "block", fontSize: 12, color: C.soft, marginBottom: 4 }}>
+        {t("Name")}
+        <input
+          value={form.name}
+          maxLength={80}
+          placeholder={t("e.g. Payday")}
+          onChange={(e) => {
+            setForm({ ...form, name: e.target.value });
+            setFormError(null);
+          }}
+          style={{
+            display: "block",
+            width: "100%",
+            boxSizing: "border-box",
+            marginTop: 4,
+            padding: "9px 11px",
+            borderRadius: 9,
+            border: `1px solid ${C.line}`,
+            background: C.bg,
+            color: C.text,
+            fontSize: 16,
+            fontFamily: font,
+          }}
+        />
+      </label>
+
+      <div role="radiogroup" aria-label={t("How amounts are applied")} style={{ display: "flex", flexDirection: "column", gap: 7, margin: "12px 0" }}>
+        <StrategyOption
+          C={C}
+          name={t("Add amounts")}
+          desc={t("Each amount is added on top of what the envelope already has this month.")}
+          active={form.mode === "add"}
+          onSelect={() => setForm({ ...form, mode: "add" })}
+        />
+        <StrategyOption
+          C={C}
+          name={t("Top up to amounts")}
+          desc={t("Each envelope is filled up to its amount for the month; one that already has it gets nothing more.")}
+          active={form.mode === "topUp"}
+          onSelect={() => setForm({ ...form, mode: "topUp" })}
+        />
+      </div>
+
+      <button onClick={fillFromMonth} style={{ ...dashedButton(C), marginBottom: 6 }}>
+        {t("Fill from this month's allocations")}
+      </button>
+
+      {groups.map((g) => (
+        <div key={g.key}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: 0.7,
+              textTransform: "uppercase",
+              color: C.soft,
+              padding: "10px 0 4px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {g.name}
+          </div>
+          {g.envelopes.map((e, i) => {
+            const amount = form.amounts[e.id] ?? 0;
+            return (
+              <div
+                key={e.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "7px 0",
+                  borderBottom: i < g.envelopes.length - 1 ? `1px solid ${C.line}` : "none",
+                }}
+              >
+                <EnvelopeChip C={C} env={e} />
+                <span
                   style={{
-                    display: "block",
-                    width: "100%",
-                    boxSizing: "border-box",
-                    marginTop: 4,
-                    padding: "9px 11px",
-                    borderRadius: 9,
-                    border: `1px solid ${C.line}`,
-                    background: C.bg,
-                    color: C.text,
-                    fontSize: 16,
-                    fontFamily: font,
-                  }}
-                />
-              </label>
-
-              <div role="radiogroup" aria-label={t("How amounts are applied")} style={{ display: "flex", flexDirection: "column", gap: 7, margin: "12px 0" }}>
-                <StrategyOption
-                  C={C}
-                  name={t("Add amounts")}
-                  desc={t("Each amount is added on top of what the envelope already has this month.")}
-                  active={form.mode === "add"}
-                  onSelect={() => setForm({ ...form, mode: "add" })}
-                />
-                <StrategyOption
-                  C={C}
-                  name={t("Top up to amounts")}
-                  desc={t("Each envelope is filled up to its amount for the month; one that already has it gets nothing more.")}
-                  active={form.mode === "topUp"}
-                  onSelect={() => setForm({ ...form, mode: "topUp" })}
-                />
-              </div>
-
-              <button onClick={fillFromMonth} style={{ ...dashedButton(C), marginBottom: 6 }}>
-                {t("Fill from this month's allocations")}
-              </button>
-
-              {groups.map((g) => (
-                <div key={g.key}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      letterSpacing: 0.7,
-                      textTransform: "uppercase",
-                      color: C.soft,
-                      padding: "10px 0 4px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {g.name}
-                  </div>
-                  {g.envelopes.map((e, i) => {
-                    const amount = form.amounts[e.id] ?? 0;
-                    return (
-                      <div
-                        key={e.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          padding: "7px 0",
-                          borderBottom: i < g.envelopes.length - 1 ? `1px solid ${C.line}` : "none",
-                        }}
-                      >
-                        <EnvelopeChip C={C} env={e} />
-                        <span
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: amount > 0 ? C.text : C.soft,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {e.name}
-                        </span>
-                        <AmountBox
-                          C={C}
-                          label={e.name}
-                          value={amount > 0 ? localizePadExpression(fmtTrim(amount), lang) : ""}
-                          highlight={amount > 0}
-                          symbol={currencySymbol(currency, lang)}
-                          onOpen={() =>
-                            setPad({
-                              label: e.name,
-                              initial: amount,
-                              onCommit: (minor) => {
-                                setForm((f) => (f ? { ...f, amounts: { ...f.amounts, [e.id]: minor } } : f));
-                                setFormError(null);
-                              },
-                            })
-                          }
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.soft, margin: "12px 0 10px" }}>
-                <span>{t("Total")}</span>
-                <b style={{ color: C.text, fontVariantNumeric: "tabular-nums" }}>{money(formTotal)}</b>
-              </div>
-              {formError && (
-                <div role="alert" style={{ fontSize: 12.5, color: CORAL, marginBottom: 8 }}>
-                  {formError}
-                </div>
-              )}
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={closeForm} style={{ ...secondaryButton(C), flex: 1 }}>
-                  {t("Cancel")}
-                </button>
-                <button
-                  onClick={save}
-                  disabled={!form.name.trim()}
-                  style={{
-                    flex: 2,
-                    padding: "10px 0",
-                    borderRadius: 10,
-                    border: "none",
-                    background: CTA,
-                    color: "#fff",
+                    flex: 1,
+                    minWidth: 0,
                     fontSize: 13,
                     fontWeight: 600,
-                    cursor: "pointer",
-                    opacity: form.name.trim() ? 1 : 0.5,
+                    color: amount > 0 ? C.text : C.soft,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {t("Save")}
-                </button>
+                  {e.name}
+                </span>
+                <AmountBox
+                  C={C}
+                  label={e.name}
+                  value={amount > 0 ? localizePadExpression(fmtTrim(amount), lang) : ""}
+                  highlight={amount > 0}
+                  symbol={currencySymbol(currency, lang)}
+                  onOpen={() =>
+                    onPad({
+                      label: e.name,
+                      initial: amount,
+                      onCommit: (minor) => {
+                        setForm((f) => (f ? { ...f, amounts: { ...f.amounts, [e.id]: minor } } : f));
+                        setFormError(null);
+                      },
+                    })
+                  }
+                />
               </div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontSize: 16.5, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Presets")}</div>
-              <div style={{ fontSize: 12, color: C.soft, lineHeight: 1.5, marginBottom: 8 }}>
-                {t("A preset is a named set of amounts per envelope — for example, what you set aside every payday.")}
-              </div>
-              {presets.map((p) => (
-                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.line}` }}>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {p.name}
-                    </span>
-                    <span style={{ display: "block", fontSize: 11, color: C.mute, marginTop: 1 }}>{presetSummary(p, tp, money)}</span>
-                  </span>
-                  <button
-                    onClick={() => {
-                      setForm({ id: p.id, name: p.name, mode: p.mode, amounts: Object.fromEntries(p.amounts.map((a) => [a.envelopeId, a.amount])) });
-                      setFormError(null);
-                    }}
-                    style={smallBtn(C)}
-                  >
-                    {t("Edit")}
-                  </button>
-                  <button onClick={() => remove(p)} style={smallBtn(C, true)}>
-                    {t("Delete")}
-                  </button>
-                </div>
-              ))}
-              <button
-                onClick={() => {
-                  setForm(emptyForm());
-                  setFormError(null);
-                }}
-                style={{ ...dashedButton(C), marginTop: 12 }}
-              >
-                {t("+ New preset")}
-              </button>
-              <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.5, marginTop: 12 }}>{t("Presets follow this budget on every device.")}</div>
-            </>
-          )
-        }
-      </Sheet>
-      <AmountPadHost target={pad} onClose={() => setPad(null)} />
+            );
+          })}
+        </div>
+      ))}
+
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.soft, margin: "12px 0 10px" }}>
+        <span>{t("Total")}</span>
+        <b style={{ color: C.text, fontVariantNumeric: "tabular-nums" }}>{money(formTotal)}</b>
+      </div>
+      {formError && (
+        <div role="alert" style={{ fontSize: 12.5, color: CORAL, marginBottom: 8 }}>
+          {formError}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={closeForm} style={{ ...secondaryButton(C), flex: 1 }}>
+          {t("Cancel")}
+        </button>
+        <button
+          onClick={save}
+          disabled={!form.name.trim()}
+          style={{
+            flex: 2,
+            padding: "10px 0",
+            borderRadius: 10,
+            border: "none",
+            background: CTA,
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            opacity: form.name.trim() ? 1 : 0.5,
+          }}
+        >
+          {t("Save")}
+        </button>
+      </div>
+    </>
+  ) : (
+    <>
+      <div style={{ fontSize: 16.5, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Presets")}</div>
+      <div style={{ fontSize: 12, color: C.soft, lineHeight: 1.5, marginBottom: 8 }}>
+        {t("A preset is a named set of amounts per envelope — for example, what you set aside every payday.")}
+      </div>
+      {presets.map((p) => (
+        <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.line}` }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {p.name}
+            </span>
+            <span style={{ display: "block", fontSize: 11, color: C.mute, marginTop: 1 }}>{presetSummary(p, tp, money)}</span>
+          </span>
+          <button
+            onClick={() => {
+              setForm({ id: p.id, name: p.name, mode: p.mode, amounts: Object.fromEntries(p.amounts.map((a) => [a.envelopeId, a.amount])) });
+              setFormError(null);
+            }}
+            style={smallBtn()}
+          >
+            {t("Edit")}
+          </button>
+          <button onClick={() => remove(p)} style={smallBtn(true)}>
+            {t("Delete")}
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() => {
+          setForm(emptyForm());
+          setFormError(null);
+        }}
+        style={{ ...dashedButton(C), marginTop: 12 }}
+      >
+        {t("+ New preset")}
+      </button>
+      <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.5, marginTop: 12 }}>{t("Presets follow this budget on every device.")}</div>
+      <button onClick={onClose} style={{ ...secondaryButton(C), width: "100%", marginTop: 14 }}>
+        {t("Back")}
+      </button>
     </>
   );
 }
