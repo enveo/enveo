@@ -90,6 +90,8 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
       close();
       return;
     }
+    // The pool may have shrunk since the sheet opened; never assign more than is left now.
+    if (sum > live.readyToAssign) return;
     for (const p of proposals) {
       const add = editedMinor(p.envelopeId, p.add);
       if (add <= 0) continue;
@@ -198,7 +200,7 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
               </div>
               <button
                 onClick={confirm}
-                disabled={sum === 0}
+                disabled={sum === 0 || over}
                 style={{
                   width: "100%",
                   padding: "12px 0",
@@ -209,7 +211,7 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
                   fontSize: 13.5,
                   fontWeight: 600,
                   cursor: "pointer",
-                  opacity: sum === 0 ? 0.5 : 1,
+                  opacity: sum === 0 || over ? 0.5 : 1,
                 }}
               >
                 {t("Assign {sum}", { sum: M(sum) })}

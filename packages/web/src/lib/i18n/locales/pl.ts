@@ -475,8 +475,8 @@ export const pl: Dict = {
   "Fill all goals ›": "Wypełnij wszystkie cele ›",
 
   "Fill by goals": "Zasil cele",
-  "Funds envelopes with a monthly goal in budget order — each one fully or not at all.":
-    "Zasila koperty z miesięcznym celem w kolejności budżetu — każdą w całości albo wcale.",
+  "Funds envelopes with a monthly goal in budget order, each one in full; when none fits, the first one gets what is left.":
+    "Zasila koperty z miesięcznym celem w kolejności budżetu, każdą w całości; gdy żadna się nie mieści, pierwsza dostaje to, co zostało.",
   Filter: "Filtruj",
   "Filter:": "Filtr:",
   Filters: "Filtry",

@@ -387,7 +387,7 @@ export const MESSAGES = [
   "From",
   "From account",
   "Fun",
-  "Funds envelopes with a monthly goal in budget order — each one fully or not at all.",
+  "Funds envelopes with a monthly goal in budget order, each one in full; when none fits, the first one gets what is left.",
   "Generate suggestion",
   "Goals",
   "Goes to",

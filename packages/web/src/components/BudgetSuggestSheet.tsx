@@ -231,7 +231,7 @@ export function BudgetSuggestSheet({
                       <StrategyOption
                         C={C}
                         name={t("Fill by goals")}
-                        desc={t("Funds envelopes with a monthly goal in budget order — each one fully or not at all.")}
+                        desc={t("Funds envelopes with a monthly goal in budget order, each one in full; when none fits, the first one gets what is left.")}
                         active={choice === "goals"}
                         onSelect={() => setChoice("goals")}
                       />
@@ -674,6 +674,7 @@ function PresetManager({
   const presets = preferences.allocationPresets;
   const [form, setForm] = useState<PresetForm | null>(() => (start === "new" ? emptyForm() : null));
   const [formError, setFormError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const closeForm = () => {
     if (start === "new") onClose();
@@ -716,8 +717,8 @@ function PresetManager({
   };
 
   const remove = (p: AllocationPreset) => {
-    if (!window.confirm(t("Delete preset “{name}”?", { name: p.name }))) return;
     update({ allocationPresets: presets.filter((x) => x.id !== p.id) });
+    setDeletingId(null);
   };
 
   const formTotal = form ? Object.values(form.amounts).reduce((s, a) => s + (a > 0 ? a : 0), 0) : 0;
@@ -890,28 +891,40 @@ function PresetManager({
       <div style={{ fontSize: 12, color: C.soft, lineHeight: 1.5, marginBottom: 8 }}>
         {t("A preset is a named set of amounts per envelope — for example, what you set aside every payday.")}
       </div>
-      {presets.map((p) => (
-        <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.line}` }}>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: "block", fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {p.name}
+      {presets.map((p) =>
+        deletingId === p.id ? (
+          <div key={p.id} role="alert" style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.line}` }}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.text }}>{t("Delete preset “{name}”?", { name: p.name })}</span>
+            <button onClick={() => setDeletingId(null)} style={smallBtn()}>
+              {t("Cancel")}
+            </button>
+            <button onClick={() => remove(p)} style={smallBtn(true)}>
+              {t("Delete")}
+            </button>
+          </div>
+        ) : (
+          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.line}` }}>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "block", fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {p.name}
+              </span>
+              <span style={{ display: "block", fontSize: 11, color: C.mute, marginTop: 1 }}>{presetSummary(p, tp, money)}</span>
             </span>
-            <span style={{ display: "block", fontSize: 11, color: C.mute, marginTop: 1 }}>{presetSummary(p, tp, money)}</span>
-          </span>
-          <button
-            onClick={() => {
-              setForm({ id: p.id, name: p.name, mode: p.mode, amounts: Object.fromEntries(p.amounts.map((a) => [a.envelopeId, a.amount])) });
-              setFormError(null);
-            }}
-            style={smallBtn()}
-          >
-            {t("Edit")}
-          </button>
-          <button onClick={() => remove(p)} style={smallBtn(true)}>
-            {t("Delete")}
-          </button>
-        </div>
-      ))}
+            <button
+              onClick={() => {
+                setForm({ id: p.id, name: p.name, mode: p.mode, amounts: Object.fromEntries(p.amounts.map((a) => [a.envelopeId, a.amount])) });
+                setFormError(null);
+              }}
+              style={smallBtn()}
+            >
+              {t("Edit")}
+            </button>
+            <button onClick={() => setDeletingId(p.id)} style={smallBtn(true)}>
+              {t("Delete")}
+            </button>
+          </div>
+        ),
+      )}
       <button
         onClick={() => {
           setForm(emptyForm());

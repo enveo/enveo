@@ -1,6 +1,6 @@
 /**
- * The ONE fetch layer for every operator-key OpenAI call (budget suggest, the
- * /ai proxy, screenshot import). Attaches the bearer key and a hard timeout —
+ * The ONE fetch layer for every operator-key OpenAI call (the /ai proxy and
+ * screenshot import). Attaches the bearer key and a hard timeout —
  * a hung upstream must abort instead of pinning the incoming HTTP request (and
  * the client's spinner) forever.
  *
