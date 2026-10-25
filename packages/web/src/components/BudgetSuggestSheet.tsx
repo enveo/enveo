@@ -401,6 +401,7 @@ export function BudgetSuggestSheet({
                                 </div>
                                 <AmountBox
                                   C={C}
+                                  label={env?.name ?? it.envelopeId}
                                   prefix="+"
                                   value={localizePadExpression(edited[it.envelopeId] ?? "", lang)}
                                   highlight={on && isEdited}
