@@ -42,10 +42,6 @@ describe.skipIf(!TEST_URL)("spend budget route contracts (DB-backed, child proce
     expect(out.deprecatedChatOk).toEqual({ status: 200, content: "plain answer", charged: true });
   });
 
-  it("suggest denial: 200 with the LOCAL RULES fallback (warn.aiUnavailable), model never fetched", () => {
-    expect(out.suggestDenied).toEqual({ status: 200, source: "rules", warnsAiUnavailable: true, upstreamNotCalled: true });
-  });
-
   it("a STALLED counter fails OPEN: with the spend table exclusively locked, the answer still arrives inside the bounded deadlines", () => {
     expect(out.stalledCounter.status).toBe(200);
     expect(out.stalledCounter.contentOk).toBe(true);

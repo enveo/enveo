@@ -182,7 +182,7 @@ async function main() {
     current.budgets[0]!.preferences = {
       ...current.budgets[0]!.preferences,
       aiProvider: "openai",
-      customProfiles: [{ id: crypto.randomUUID(), name: "Buffer", prompt: "Keep one month" }],
+      allocationPresets: [{ id: crypto.randomUUID(), name: "Payday", mode: "add", amounts: [{ envelopeId: crypto.randomUUID(), amount: 450_00 }] }],
     };
     await db.transaction((tx) => restoreLedger(tx, budgetId, clientLedgerSchema.parse(current)));
     const restored = await loadClientLedger(db, budgetId);

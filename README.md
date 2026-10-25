@@ -22,8 +22,7 @@ It installs from the browser, works offline, syncs in the background
 - **AI where it helps, off by default** — screenshot import: add screenshots
   of your banking app or a PDF statement, Enveo recognizes the transactions,
   skips duplicates and proposes envelopes; you review every row, and a
-  correction is proposed again for that merchant on the next import. Plus a
-  budget assistant that works rule-based with no key at all. Bring your own
+  correction is proposed again for that merchant on the next import. Bring your own
   OpenAI key or configure an operator key on the server. A normal budget uses
   the optional server vault; an E2EE budget encrypts the key with its budget
   key and calls OpenAI directly from the unlocked browser.

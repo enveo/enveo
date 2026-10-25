@@ -87,7 +87,6 @@ function budgetPatch(legacy: LegacySettings, hasCredential: boolean): BudgetPref
   const patch: BudgetPreferencesPatch = {};
   if (legacy.aiMode && !hasCredential) patch.aiProvider = legacy.aiMode === "server" ? "enveo" : legacy.aiMode === "byok" ? "openai" : "rules";
   if (legacy.openaiModel) patch.openaiModel = legacy.openaiModel;
-  if (legacy.customProfiles) patch.customProfiles = legacy.customProfiles;
   if (legacy.startWidgets) patch.startWidgets = legacy.startWidgets;
   return patch;
 }

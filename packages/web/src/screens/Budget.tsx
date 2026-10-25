@@ -13,18 +13,17 @@ import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
 import { activeAllocationDecoration } from "../lib/focusPresentation";
 import { currencySymbol, evalExpression, evalExpressionLive, fmtTrim, isLight, localizePadExpression, parseAmount } from "../lib/format";
-import { canFillGoals, goalProgress } from "../lib/goals";
+import { goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
 import { useWideHost } from "../lib/shellContext";
 import { CORAL, ENV_PALETTE, font, P, TEAL, tint } from "../lib/theme";
 
-// The budget assistant is the second AI surface (§3f). It is the only thing on this screen that
-// needs the AI dispatch and the response parsers, and it opens on a deliberate tap — so it loads
-// then. Allocation, the docked numpad and "Fill by goals" (pure local math) stay eager.
+// "Suggest" (top-up, presets and their editor) opens on a deliberate tap — so it loads then.
+// Allocation and the docked numpad stay eager.
 const BudgetSuggestSheet = lazy(() => import("../components/BudgetSuggestSheet").then((m) => ({ default: m.BudgetSuggestSheet })));
-// "Fill by goals" is the assistant's twin: same deliberate-tap lifecycle, same one-shot deep link
+// "Fill by goals" is Suggest's twin: same deliberate-tap lifecycle, same one-shot deep link
 // from the Goals report. Leaving one of the pair eager and the other lazy would draw an arbitrary
 // line through one feature.
 const FillGoalsSheet = lazy(() => import("../components/FillGoalsSheet").then((m) => ({ default: m.FillGoalsSheet })));
@@ -72,8 +71,6 @@ export function BudgetScreen({
 
   const { suggest, fillGoals, suggestOpened, fillGoalsOpened } = useBudgetSheets(sheet);
   const closeSheet = () => onSheet({ kind: "close" });
-
-  const fillGoalsPossible = canFillGoals(state);
 
   const [editing, setEditing] = useState<{ envelopeId: string; pad: PadState; err?: boolean; input?: string } | null>(null);
 
@@ -190,24 +187,6 @@ export function BudgetScreen({
               >
                 {M(tbbLive)}
               </div>
-            )}
-            {fillGoalsPossible && (
-              <button
-                onClick={() => onSheet({ kind: "open", sheet: "fillGoals" })}
-                style={{
-                  marginTop: 2,
-                  padding: 0,
-                  background: "none",
-                  border: "none",
-                  color: hc("var(--cta)", TEAL),
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: font,
-                }}
-              >
-                {t("Fill by goals")}
-              </button>
             )}
           </div>
           <button
@@ -444,7 +423,13 @@ export function BudgetScreen({
       <EnvManageSheet show={manageOpen} state={state} onClose={() => onManageOpen(false)} />
       {suggestOpened && (
         <LazyChunk variant="overlay" onDismiss={closeSheet}>
-          <BudgetSuggestSheet show={suggest} state={state} month={month} onClose={closeSheet} />
+          <BudgetSuggestSheet
+            show={suggest}
+            state={state}
+            month={month}
+            onClose={closeSheet}
+            onFillGoals={() => onSheet({ kind: "open", sheet: "fillGoals" })}
+          />
         </LazyChunk>
       )}
       {fillGoalsOpened && (

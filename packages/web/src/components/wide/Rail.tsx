@@ -6,7 +6,6 @@ import { authClient } from "../../lib/auth";
 import { useMask, useSettings, useTheme } from "../../lib/contexts";
 import { currentMonth, relSync, todayISO } from "../../lib/dates";
 import { LOCALE_OF } from "../../lib/format";
-import { canFillGoals } from "../../lib/goals";
 import { useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { importJobManager } from "../../lib/importJobs/manager";
@@ -173,7 +172,6 @@ function TbbCard({
   state,
   screen,
   onQuickAdd,
-  onFillGoals,
   onNav,
   onSelectAccount,
   selectedAccountId,
@@ -181,7 +179,6 @@ function TbbCard({
   state: StateResponse;
   screen: ScreenId;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
-  onFillGoals: () => void;
   onNav: (s: ScreenId) => void;
 
   onSelectAccount: (id: string) => void;
@@ -213,25 +210,22 @@ function TbbCard({
 
   const showAccounts = screen !== "accounts";
 
-  const fillPossible = canFillGoals(state);
-  const pill = (primary: boolean, disabled = false): React.CSSProperties => ({
+  const pill: React.CSSProperties = {
     flex: 1,
     minHeight: 30,
-
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     textAlign: "center",
     borderRadius: 999,
-    border: primary ? `1.5px solid ${C.headerInk}` : `1px solid ${C.railRuler}`,
-    background: primary ? C.headerInk : "transparent",
-    color: primary ? C.railBg : C.railOn,
+    border: `1.5px solid ${C.headerInk}`,
+    background: C.headerInk,
+    color: C.railBg,
     fontSize: 11.5,
-    fontWeight: primary ? 700 : 650,
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.6 : 1,
+    fontWeight: 700,
+    cursor: "pointer",
     fontFamily: font,
-  });
+  };
 
   return (
     <div
@@ -264,12 +258,9 @@ function TbbCard({
       </span>
       <span style={{ fontSize: 10, color: C.railMute, marginTop: 5 }}>{t("{date} · {pct}% of month", { date: shortDay, pct: String(ruler.pct) })}</span>
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-        <button onClick={() => onQuickAdd("suggest")} aria-label={t("Suggest a distribution")} style={pill(true)}>
+        <button onClick={() => onQuickAdd("suggest")} aria-label={t("Suggest a distribution")} style={pill}>
           {"✨ "}
           {t("Suggest")}
-        </button>
-        <button onClick={onFillGoals} disabled={!fillPossible} style={pill(false, !fillPossible)}>
-          {t("Fill by goals")}
         </button>
       </div>
       {showAccounts && (
@@ -1005,7 +996,6 @@ export function Rail({
   onNav,
   state,
   onQuickAdd,
-  onFillGoals,
   onInstall,
   onSelectAccount,
   selectedAccountId,
@@ -1015,7 +1005,6 @@ export function Rail({
   onNav: (s: ScreenId) => void;
   state: StateResponse;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
-  onFillGoals: () => void;
   onInstall: () => void;
 
   onSelectAccount: (id: string) => void;
@@ -1104,15 +1093,7 @@ export function Rail({
       </div>
       <div style={{ flex: 1, minHeight: 8 }} />
       {mode === "desktop" && (
-        <TbbCard
-          state={state}
-          screen={screen}
-          onQuickAdd={onQuickAdd}
-          onFillGoals={onFillGoals}
-          onNav={onNav}
-          onSelectAccount={onSelectAccount}
-          selectedAccountId={selectedAccountId}
-        />
+        <TbbCard state={state} screen={screen} onQuickAdd={onQuickAdd} onNav={onNav} onSelectAccount={onSelectAccount} selectedAccountId={selectedAccountId} />
       )}
       {mode === "desktop" && needRefresh && <RailUpdateCard incomingVersion={incomingVersion} onRefresh={() => refresh(true)} onDismiss={dismiss} />}
       <UserBlock mode={mode} screen={screen} onNav={onNav} onInstall={onInstall} />

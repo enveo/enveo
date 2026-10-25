@@ -10,8 +10,6 @@ import {
   AI_IMPORT_EXTRACT_TIMEOUT_MS,
   AI_PROXY_CHAT_TIMEOUT_MS,
   type AiLocale,
-  type BudgetSuggestProfile,
-  type BudgetSuggestResponse,
   type ChatRequest,
   type ClientLedger,
   type OpenAiModel,
@@ -20,8 +18,6 @@ import {
 import { getAccountPreferencesRemote, patchAccountPreferencesRemote } from "./accountPreferencesRemote";
 import { runServerWriteOperation } from "./serverWriteOperations";
 import { timeoutSignal } from "./timeoutSignal";
-
-export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
 
 /* Complete ledger-candidate shape used only for duplicate dry-run/apply planning.
  * Recognition itself returns the reconciled result so evidence-only rows and explicit
@@ -267,9 +263,6 @@ export const api = {
     complete: (id: string, input: { budgetId: string; appliedCount: number; skippedCount: number }) =>
       import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.complete(id, input)),
   },
-
-  budgetSuggest: (b: { month: string; profile: BudgetSuggestProfile; customPrompt?: string; ledger?: ClientLedger; locale: AiLocale; useAi?: boolean }) =>
-    http<BudgetSuggestResponse>("POST", "/budget/suggest", b),
 
   demoSeed: (locale: "pl" | "en", userId: string) => http<{ seeded: boolean }>("POST", "/demo/seed", { locale, userId }),
   budgetReset: (userId: string) => http<{ reset: boolean }>("POST", "/budget/reset", { confirm: "RESET", userId }),

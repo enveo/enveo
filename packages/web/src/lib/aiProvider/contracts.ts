@@ -1,7 +1,7 @@
 import type { AiLocale, ChatRequest, ClientLedger, ReconciledImportRecognitionResult } from "@enveo/shared";
 
 export type AiProviderKind = "rules" | "enveo" | "openai";
-export type AiCapability = "budget-suggestion" | "custom-prompt" | "screenshot-import";
+export type AiCapability = "custom-prompt" | "screenshot-import";
 
 export type AiStatusCode = "ready" | "not-configured" | "operator-unavailable" | "tier-unavailable" | "locked" | "vault-unavailable";
 
@@ -30,8 +30,8 @@ export interface AiProvider {
   extractImport(input: ImportExtractInput): Promise<ImportExtractResult>;
 }
 
-const RULES_CAPABILITIES: ReadonlySet<AiCapability> = new Set(["budget-suggestion"]);
-const MODEL_CAPABILITIES: ReadonlySet<AiCapability> = new Set(["budget-suggestion", "custom-prompt", "screenshot-import"]);
+const RULES_CAPABILITIES: ReadonlySet<AiCapability> = new Set();
+const MODEL_CAPABILITIES: ReadonlySet<AiCapability> = new Set(["custom-prompt", "screenshot-import"]);
 
 export function capabilitiesForProvider(provider: AiProviderKind): ReadonlySet<AiCapability> {
   return provider === "rules" ? RULES_CAPABILITIES : MODEL_CAPABILITIES;

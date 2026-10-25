@@ -25,7 +25,7 @@ const settings = (): Settings => ({
   lang: "en",
   aiMode: "off",
   openaiModel: DEFAULT_OPENAI_MODEL,
-  customProfiles: [],
+  allocationPresets: [],
   startWidgets: createDefaultBudgetPreferences().startWidgets,
 });
 

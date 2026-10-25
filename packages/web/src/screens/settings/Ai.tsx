@@ -118,7 +118,7 @@ export function AiSection() {
 
   const flow =
     preferences.aiProvider === "rules"
-      ? t("Suggestions are calculated on this device. No data is sent to an AI service.")
+      ? t("AI features are off. No data is sent to an AI service.")
       : preferences.aiProvider === "enveo"
         ? t("Enveo sends the required prompt or screenshots to OpenAI using the server operator's key.")
         : tier === "plain"
@@ -132,7 +132,7 @@ export function AiSection() {
   return (
     <div style={{ marginTop: 4 }}>
       <Eyebrow>{t("Budget preferences")}</Eyebrow>
-      <Helper>{t("The AI provider, model and custom profiles follow this budget on every device.")}</Helper>
+      <Helper>{t("The AI provider and model follow this budget on every device.")}</Helper>
       <Row label={t("Provider")}>
         <Seg
           value={preferences.aiProvider}
@@ -232,8 +232,6 @@ export function AiSection() {
           </div>
         </div>
       )}
-
-      <Helper>{t("Custom suggestion profiles configured for this budget: {n}.", { n: preferences.customProfiles.length })}</Helper>
     </div>
   );
 }

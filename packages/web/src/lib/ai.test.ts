@@ -1,21 +1,6 @@
-/**
- * previewSuggestPrompt — the budget suggestion prompt preview MUST be
- * EXACTLY the prompt that runSuggest will send (one shared
- * basis→ctx→builder step; string identity test below). The custom profile
- * goes via the AGENT prompt (buildAgentSuggestPrompt), predefined ones —
- * via the rules-engine prompt (buildSuggestPrompt).
- */
 import { describe, expect, it } from "bun:test";
-import {
-  buildAgentSuggestContext,
-  buildAgentSuggestPrompt,
-  buildBudgetSuggestionBasis,
-  buildSuggestPrompt,
-  type ClientLedger,
-  createDefaultBudgetPreferences,
-  type Transaction,
-} from "@enveo/shared";
-import { previewSuggestPrompt, runImportExtract, runSuggest } from "./ai";
+import { type ClientLedger, createDefaultBudgetPreferences, type Transaction } from "@enveo/shared";
+import { runImportExtract } from "./ai";
 import type { AiCapability, AiProvider, AiProviderKind } from "./aiProvider/contracts";
 import { RulesProvider } from "./aiProvider/rules";
 import { apiErrorMessage } from "./api";
@@ -122,53 +107,6 @@ const fixtureLedger = (): ClientLedger => ({
   budgets: [{ id: "b1", name: "Budżet", currency: "PLN", preferences: createDefaultBudgetPreferences() }],
 });
 
-describe("previewSuggestPrompt", () => {
-  it("returns {system, user}: language directive + Profile + fixture envelope names", () => {
-    const preview = previewSuggestPrompt(fixtureLedger(), MONTH, "cautious", undefined, "pl");
-    expect(typeof preview.system).toBe("string");
-    expect(typeof preview.user).toBe("string");
-    expect(preview.system).toContain("Write all text you GENERATE (names, notes, rationales) in Polish.");
-
-    expect(`${preview.system}\n${preview.user}`).toContain("Profile: cautious");
-    expect(preview.user).toContain("Jedzenie");
-    expect(preview.user).toContain("Transport");
-  });
-
-  it("customPrompt variant: the user directive reaches the preview (agent prompt)", () => {
-    const custom = "wszystko na Jedzenie";
-    const preview = previewSuggestPrompt(fixtureLedger(), MONTH, "custom", custom, "pl");
-    expect(`${preview.system}\n${preview.user}`).toContain(custom);
-    // custom profile = agent, not the rules engine
-    expect(preview.system).toContain("envelope-budgeting agent");
-  });
-
-  it("IDENTITY (predefined profiles): the preview === the message contents from buildSuggestPrompt", () => {
-    const ledger = fixtureLedger();
-    for (const profile of ["cautious", "historical", "investor"] as const) {
-      const preview = previewSuggestPrompt(ledger, MONTH, profile, undefined, "pl");
-      const basis = buildBudgetSuggestionBasis({ ledger, month: MONTH, profile });
-      const req = buildSuggestPrompt({ basis, ledger, month: MONTH, profile, locale: "pl" });
-      expect(preview.system).toBe(req.messages[0]!.content as string);
-      expect(preview.user).toBe(req.messages[1]!.content as string);
-    }
-  });
-
-  it("IDENTITY (custom): the preview === buildAgentSuggestPrompt with the same ctx (single prompt, zero drift)", () => {
-    const ledger = fixtureLedger();
-    const customPrompt = "wszystko na Jedzenie";
-    const preview = previewSuggestPrompt(ledger, MONTH, "custom", customPrompt, "pl");
-    const basis = buildBudgetSuggestionBasis({ ledger, month: MONTH, profile: "custom", customPrompt });
-    const ctx = buildAgentSuggestContext({ ledger, month: MONTH, basis, directive: customPrompt, locale: "pl" });
-    const req = buildAgentSuggestPrompt(ctx);
-    expect(preview.system).toBe(req.messages[0]!.content as string);
-    expect(preview.user).toBe(req.messages[1]!.content as string);
-
-    const user = JSON.parse(preview.user) as Record<string, any>;
-    expect(user.currentMonth.month).toBe(MONTH);
-    expect(user.previousMonth.note).toContain("reference");
-  });
-});
-
 function providerStub(kind: AiProviderKind, capabilities: readonly AiCapability[], overrides: Partial<AiProvider> = {}): AiProvider {
   return {
     status: async () => ({ provider: kind, code: "ready", configured: true, capabilities: new Set(capabilities) }),
@@ -182,32 +120,6 @@ function providerStub(kind: AiProviderKind, capabilities: readonly AiCapability[
 }
 
 describe("provider-neutral AI workflows", () => {
-  it("rules suggestions never call a model transport", async () => {
-    let calls = 0;
-    const provider = providerStub("rules", ["budget-suggestion"], {
-      complete: async () => {
-        calls += 1;
-        throw new Error("must_not_fetch");
-      },
-    });
-    const result = await runSuggest({ ledger: fixtureLedger(), month: MONTH, profile: "cautious", locale: "pl", provider });
-    expect(result.source).toBe("rules");
-    expect(calls).toBe(0);
-  });
-
-  it("custom prompts require the explicit model capability and do not silently execute rules", async () => {
-    const result = await runSuggest({
-      ledger: fixtureLedger(),
-      month: MONTH,
-      profile: "custom",
-      customPrompt: "all to food",
-      locale: "pl",
-      provider: new RulesProvider(),
-    });
-    expect(result.items).toEqual([]);
-    expect(result.warnings).toContain("agent_requires_ai");
-  });
-
   it("screenshot import delegates the selected account and preserves the full recognition result", async () => {
     const seenLedgers: ClientLedger[] = [];
     const seenAccounts: string[] = [];
@@ -244,11 +156,8 @@ describe("provider-neutral AI workflows", () => {
 });
 
 /**
- * chatJson({kind:"server"}) — the /api/ai/v1/chat/completions mirror transport. LIVE even after
- * quick-add's removal: runSuggest's server mode still goes through it (budgetSuggest.ts POSTs the
- * very same {error:"ai_unavailable"}/{error:"upstream",status} shapes tested here) — runSuggest
- * just SWALLOWS the failure into a rules fallback instead of rendering it, so nothing above
- * exercises responseError's server branch. Regression this guards: server-kind must NOT get the
+ * chatJson({kind:"server"}) — the /api/ai/v1/chat/completions mirror transport (aiProxy.ts answers
+ * with the {error:"ai_unavailable"}/{error:"upstream",status} shapes tested here). Regression this guards: server-kind must NOT get the
  * byok-only 401/403→ai_key_invalid treatment (the mirror uses the OPERATOR's key, not the user's —
  * a wrong operator key is an ai_upstream_error, not "your key was rejected").
  */

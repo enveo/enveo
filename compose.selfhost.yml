@@ -105,10 +105,10 @@ services:
       # Requires BETTER_AUTH_URL — the OAuth redirect URI is derived from it.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      # Optional AI (screenshot import of statements, budget suggestions). A key here
-      # enables SERVER-side AI: each device still has to opt in, and the requests are
-      # paid by this key. Empty = no server AI — budget suggestions fall back to local
-      # rules and screenshot import is unavailable in server mode (it is AI-only).
+      # Optional AI (screenshot and statement import). A key here enables SERVER-side
+      # AI: each device still has to opt in, and the requests are paid by this key.
+      # Empty = no server AI — import is unavailable in server mode (it is AI-only).
+      # Budget suggestions never use AI.
       # Own OpenAI (BYOK) is separate: the browser calls Enveo, which opens the user's
       # protected key only for that request and calls OpenAI. Enable its server vault with
       # the opt-in compose.ai-vault.yml override; the base stack needs no key-ring file and

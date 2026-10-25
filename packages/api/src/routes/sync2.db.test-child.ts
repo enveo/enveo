@@ -554,7 +554,7 @@ async function main(): Promise<void> {
             schemaVersion: 1,
             aiProvider: "openai",
             openaiModel: "gpt-5.6-sol",
-            customProfiles: [],
+            allocationPresets: [],
             startWidgets: [],
           },
         },

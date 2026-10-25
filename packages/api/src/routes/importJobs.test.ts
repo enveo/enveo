@@ -138,7 +138,6 @@ function harness(
         ...createDefaultBudgetPreferences(),
         aiProvider: overrides.provider ?? "enveo",
         openaiModel: "gpt-5.6-sol",
-        customProfiles: [],
         startWidgets: [],
       }),
       accountBelongsToBudget: async () => overrides.accountAllowed ?? true,
