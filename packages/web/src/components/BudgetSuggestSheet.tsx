@@ -76,11 +76,15 @@ export function BudgetSuggestSheet({
 
   const envById = new Map(state.envelopes.map((e) => [e.id, e]));
   const selectedPreset = typeof choice === "object" ? presets.find((p) => p.id === choice.presetId) : undefined;
+  const goalsPossible = canFillGoals(state);
+  // Fill by goals spends the month-independent ready-to-assign pool; the other strategies spend this month's.
+  const noFunds = choice === "goals" ? !goalsPossible : state.toBeBudgeted <= 0;
 
-  // A preset deleted (here or on another device) while selected falls back to the default strategy.
+  // A preset deleted (here or on another device), or goals that no longer have anything to fill, while
+  // selected fall back to the default strategy.
   useEffect(() => {
-    if (typeof choice === "object" && !selectedPreset) setChoice("topUp");
-  }, [choice, selectedPreset]);
+    if ((typeof choice === "object" && !selectedPreset) || (choice === "goals" && !goalsPossible)) setChoice("topUp");
+  }, [choice, selectedPreset, goalsPossible]);
 
   const money = (minor: number) => formatMoney(minor, currency, lang, { trim: true });
 
@@ -227,7 +231,7 @@ export function BudgetSuggestSheet({
                       active={choice === "topUp"}
                       onSelect={() => setChoice("topUp")}
                     />
-                    {canFillGoals(state) && (
+                    {goalsPossible && (
                       <StrategyOption
                         C={C}
                         name={t("Fill by goals")}
@@ -255,7 +259,7 @@ export function BudgetSuggestSheet({
                   {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
                   <button
                     onClick={generate}
-                    disabled={state.toBeBudgeted <= 0}
+                    disabled={noFunds}
                     style={{
                       width: "100%",
                       padding: "12px 0",
@@ -266,10 +270,10 @@ export function BudgetSuggestSheet({
                       fontSize: 13.5,
                       fontWeight: 600,
                       cursor: "pointer",
-                      opacity: state.toBeBudgeted <= 0 ? 0.5 : 1,
+                      opacity: noFunds ? 0.5 : 1,
                     }}
                   >
-                    {state.toBeBudgeted <= 0 ? t("No funds to distribute") : t("Generate suggestion")}
+                    {noFunds ? t("No funds to distribute") : t("Generate suggestion")}
                   </button>
                 </>
               )}
