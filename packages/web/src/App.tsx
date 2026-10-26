@@ -299,6 +299,7 @@ function AppContent() {
 
   const openTxns = (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string; date?: string }) => {
     setTxQuery("");
+    setTxAllHistory(false);
     setTxFilters({
       ...initialTransactionFilters(),
       envelopeIds: f?.envIds ? new Set(f.envIds) : f?.envId ? new Set([f.envId]) : new Set(),

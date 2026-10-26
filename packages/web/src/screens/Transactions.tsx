@@ -673,6 +673,7 @@ export function TransactionsScreen({
           filters={filters}
           onApply={setFilters}
           transactions={transactions}
+          monthTransactions={state.transactions}
           query={query}
           searchIndex={searchIndex}
           accounts={accounts}
