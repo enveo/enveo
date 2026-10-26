@@ -1516,4 +1516,17 @@ export const pl: Dict = {
     many: "{n} kopert z tego zestawu jest zarchiwizowanych lub usuniętych i zostało pominiętych.",
     other: "{n} koperty z tego zestawu są zarchiwizowane lub usunięte i zostały pominięte.",
   },
+  "All history": "Cała historia",
+  "All history, search only {month}": "Cała historia, szukaj tylko w miesiącu: {month}",
+  "{month}, choose where to search": "{month}, wybierz, gdzie szukać",
+  "Where to search": "Gdzie szukać",
+  "Only this month": "Tylko ten miesiąc",
+  "Every month in this budget": "Wszystkie miesiące tego budżetu",
+  "Show {month}": "Pokaż miesiąc: {month}",
+  "{n} result in all history | {n} results in all history": {
+    one: "{n} wynik w całej historii",
+    few: "{n} wyniki w całej historii",
+    many: "{n} wyników w całej historii",
+    other: "{n} wyniku w całej historii",
+  },
 };

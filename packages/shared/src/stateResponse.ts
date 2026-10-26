@@ -27,12 +27,14 @@ export interface StateResponse {
   places: Place[];
 }
 
+/** Newest first, the order every transaction list shows. */
+export const newestTransactionFirst = (a: Transaction, b: Transaction): number =>
+  a.date < b.date ? 1 : a.date > b.date ? -1 : a.createdAt < b.createdAt ? 1 : -1;
+
 export function computeStateResponse(ledger: ClientLedger, month: string): StateResponse {
   const state = computeBudgetState(ledger, month);
 
-  const txns = ledger.transactions
-    .filter((t) => monthOf(t.date) === month)
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.createdAt < b.createdAt ? 1 : -1));
+  const txns = ledger.transactions.filter((t) => monthOf(t.date) === month).sort(newestTransactionFirst);
 
   return {
     month,

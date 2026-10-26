@@ -1,11 +1,11 @@
 import type { Transaction } from "@enveo/shared";
 import { lazy, useMemo, useState } from "react";
-import { Header } from "../components/chrome";
+import { Header, type SearchScope, Surface } from "../components/chrome";
 import { CardBox, SectionEyebrow, useBand } from "../components/kit";
 import { LazyChunk } from "../components/lazy";
 import type { StateResponse } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
-import { dayHeading, shortDate } from "../lib/dates";
+import { dayHeading, monthLabel, shortDate } from "../lib/dates";
 import { INPUT_FOCUS_CLASS } from "../lib/focusPresentation";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
@@ -30,6 +30,12 @@ export function TransactionsScreen({
   onPrev,
   onNext,
   onEditTxn,
+  transactions,
+  searchScope,
+  scopePickOpen,
+  onCloseScopePick,
+  onSearchAllHistory,
+  onShowMonth,
   query,
   setQuery,
   filters,
@@ -43,6 +49,13 @@ export function TransactionsScreen({
   onPrev: () => void;
   onNext: () => void;
   onEditTxn: (t: Transaction) => void;
+  /** The viewed month's transactions, or the whole replica while searching all history. */
+  transactions: readonly Transaction[];
+  searchScope?: SearchScope;
+  scopePickOpen: boolean;
+  onCloseScopePick: () => void;
+  onSearchAllHistory: (all: boolean) => void;
+  onShowMonth: (month: string) => void;
 
   query: string;
   setQuery: (q: string) => void;
@@ -63,7 +76,7 @@ export function TransactionsScreen({
   const accById = useMemo(() => new Map(state.accounts.map((a) => [a.id, a])), [state.accounts]);
   const catById = useMemo(() => new Map(state.categories.map((c) => [c.id, c])), [state.categories]);
   const placeById = useMemo(() => new Map(state.places.map((p) => [p.id, p])), [state.places]);
-  const filterReferences = useMemo(() => transactionFilterReferences(state.transactions), [state.transactions]);
+  const filterReferences = useMemo(() => transactionFilterReferences(transactions), [transactions]);
   const envelopes = [
     { id: MISSING_TRANSACTION_FIELD, name: t("No envelope") },
     ...state.envelopes.filter((e) => !e.archived || filters.envelopeIds.has(e.id) || filterReferences.envelopeIds.has(e.id)).sort((a, b) => a.sort - b.sort),
@@ -110,17 +123,18 @@ export function TransactionsScreen({
     return parts.join(" · ");
   };
 
-  const txns = state.transactions.filter(
+  const allHistory = !!searchScope?.allHistory;
+  const txns = transactions.filter(
     (transaction) => matchesTransactionQuery(transaction, query, searchIndex) && matchesTransactionFilters(transaction, filters),
   );
 
   const effectiveSelectedId = inWide && selectedTxnId !== null ? (selectedTxnId ?? txns[0]?.id ?? null) : null;
 
-  const groups: Array<{ date: string; items: Transaction[] }> = [];
+  const groups: Array<{ date: string; items: Transaction[]; firstOfMonth: boolean }> = [];
   for (const t of txns) {
     const last = groups[groups.length - 1];
     if (last && last.date === t.date) last.items.push(t);
-    else groups.push({ date: t.date, items: [t] });
+    else groups.push({ date: t.date, items: [t], firstOfMonth: last?.date.slice(0, 7) !== t.date.slice(0, 7) });
   }
 
   const balance = txns.reduce((s, t) => (t.type === "transfer" ? s : s + (t.type === "income" || t.isRefund ? t.amount : -t.amount)), 0);
@@ -186,7 +200,7 @@ export function TransactionsScreen({
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
         <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 4 } : undefined}>
-          {!inWide && <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />}
+          {!inWide && <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} searchScope={searchScope} />}
           {!inWide && (
             <div
               className={INPUT_FOCUS_CLASS}
@@ -265,18 +279,24 @@ export function TransactionsScreen({
                 color: hc(C.headerMute, C.soft),
               }}
             >
-              {t("Balance:")}
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  fontVariantNumeric: "tabular-nums",
-                  color: balance < 0 ? hc(C.headerNeg, C.neg) : balance > 0 ? hc(C.headerPos, C.pos) : hc(C.headerInk, C.text),
-                }}
-              >
-                {balance < 0 ? "-" : balance > 0 ? "+" : ""}
-                {M(Math.abs(balance))}
-              </span>
+              {allHistory ? (
+                tp("{n} result in all history | {n} results in all history", txns.length)
+              ) : (
+                <>
+                  {t("Balance:")}
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      fontVariantNumeric: "tabular-nums",
+                      color: balance < 0 ? hc(C.headerNeg, C.neg) : balance > 0 ? hc(C.headerPos, C.pos) : hc(C.headerInk, C.text),
+                    }}
+                  >
+                    {balance < 0 ? "-" : balance > 0 ? "+" : ""}
+                    {M(Math.abs(balance))}
+                  </span>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -386,10 +406,10 @@ export function TransactionsScreen({
               <span>
                 {tp("{shown} of {total} transactions | {shown} of {total} transactions", txns.length, {
                   shown: txns.length,
-                  total: state.transactions.length,
+                  total: transactions.length,
                 })}
               </span>
-              <span>
+              <span style={allHistory ? { display: "none" } : undefined}>
                 {t("Balance:")}{" "}
                 <b style={{ fontSize: 12, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: balance < 0 ? C.neg : balance > 0 ? C.pos : C.text }}>
                   {balance < 0 ? "-" : balance > 0 ? "+" : ""}
@@ -446,6 +466,32 @@ export function TransactionsScreen({
           }
           return (
             <div key={group.date}>
+              {allHistory && group.firstOfMonth && (
+                <button
+                  onClick={() => onShowMonth(group.date.slice(0, 7))}
+                  aria-label={t("Show {month}", { month: monthLabel(group.date.slice(0, 7), lang) })}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    width: `calc(100% - ${2 * P}px)`,
+                    minHeight: 36,
+                    margin: `10px ${P}px 0`,
+                    padding: "0 4px",
+                    background: "none",
+                    border: "none",
+                    borderBottom: `1px solid ${C.line}`,
+                    cursor: "pointer",
+                    fontFamily: font,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: C.text,
+                  }}
+                >
+                  {monthLabel(group.date.slice(0, 7), lang)}
+                  <Ico d="M9 5l7 7-7 7" size={14} color="var(--accent)" sw={2} />
+                </button>
+              )}
               <SectionEyebrow
                 label={dayHeading(group.date, lang, t)}
                 right={
@@ -581,13 +627,52 @@ export function TransactionsScreen({
       </div>
 
       {}
+      {scopePickOpen && (
+        <Surface show onClose={onCloseScopePick}>
+          {(C) => (
+            <>
+              <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 10 }}>{t("Where to search")}</div>
+              {[
+                { all: false, label: monthLabel(month, lang), hint: t("Only this month") },
+                { all: true, label: t("All history"), hint: t("Every month in this budget") },
+              ].map((option) => (
+                <button
+                  key={String(option.all)}
+                  onClick={() => onSearchAllHistory(option.all)}
+                  aria-pressed={allHistory === option.all}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    width: "100%",
+                    minHeight: 52,
+                    padding: "8px 0",
+                    background: "none",
+                    border: "none",
+                    borderTop: `1px solid ${C.line}`,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    fontFamily: font,
+                  }}
+                >
+                  <span>
+                    <span style={{ display: "block", fontSize: 14.5, fontWeight: 650, color: C.text }}>{option.label}</span>
+                    <span style={{ display: "block", fontSize: 11.5, color: C.soft, marginTop: 2 }}>{option.hint}</span>
+                  </span>
+                  {allHistory === option.all && <Ico d="M5 12l5 5L20 7" size={17} color="var(--accent)" sw={2.2} />}
+                </button>
+              ))}
+            </>
+          )}
+        </Surface>
+      )}
       {!inWide && (
         <TransactionFilterSheet
           show={pickFilter}
           onClose={() => setPickFilter(false)}
           filters={filters}
           onApply={setFilters}
-          transactions={state.transactions}
+          transactions={transactions}
           query={query}
           searchIndex={searchIndex}
           accounts={accounts}
