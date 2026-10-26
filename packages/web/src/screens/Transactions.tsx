@@ -144,6 +144,20 @@ export function TransactionsScreen({
     else groups.push({ date: t.date, items: [t], firstOfMonth: last?.date.slice(0, 7) !== t.date.slice(0, 7) });
   }
 
+  // From every match, not the rendered page: the last day on a page may continue on the next one.
+  const dayTotals = useMemo(() => {
+    const totals = new Map<string, { inSum: number; outSum: number }>();
+    if (!inWide) return totals;
+    for (const tx of txns) {
+      if (tx.type === "transfer") continue;
+      const day = totals.get(tx.date) ?? { inSum: 0, outSum: 0 };
+      if (tx.type === "income" || tx.isRefund) day.inSum += tx.amount;
+      else day.outSum += tx.amount;
+      totals.set(tx.date, day);
+    }
+    return totals;
+  }, [txns, inWide]);
+
   const balance = txns.reduce((s, t) => (t.type === "transfer" ? s : s + (t.type === "income" || t.isRefund ? t.amount : -t.amount)), 0);
   const selectedSummary = (selected: ReadonlySet<string>, options: ReadonlyArray<{ id: string; name: string }>): string => {
     const picked = options.filter((option) => selected.has(option.id));
@@ -462,15 +476,7 @@ export function TransactionsScreen({
         {groups.length === 0 && <div style={{ textAlign: "center", color: C.mute, fontSize: 13.5, padding: "56px 0" }}>{t("No transactions.")}</div>}
 
         {groups.map((group) => {
-          let inSum = 0;
-          let outSum = 0;
-          if (inWide) {
-            for (const tx of group.items) {
-              if (tx.type === "transfer") continue;
-              if (tx.type === "income" || tx.isRefund) inSum += tx.amount;
-              else outSum += tx.amount;
-            }
-          }
+          const { inSum, outSum } = dayTotals.get(group.date) ?? { inSum: 0, outSum: 0 };
           return (
             <div key={group.date}>
               {allHistory && group.firstOfMonth && (
