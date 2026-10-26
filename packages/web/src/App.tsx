@@ -1,4 +1,4 @@
-import { computeStateResponse, type Transaction } from "@enveo/shared";
+import { computeStateResponse, newestTransactionFirst, type Transaction } from "@enveo/shared";
 import { lazy, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
 import { LazyChunk, useOpenedOnce } from "./components/lazy";
@@ -182,6 +182,40 @@ function AppContent() {
   // already uses, non-archived accounts only). Gated to the two screens that show it so phone
   // (and every other wide screen) never pays for the extra recompute.
   const ledgerVersion = useLedgerVersion();
+  // Search stays in the viewed month until the user picks "All history"; clearing the query and filters ends it.
+  const [txAllHistory, setTxAllHistory] = useState(false);
+  const [txScopePick, setTxScopePick] = useState(false);
+  // The date filter is one day of the viewed month, so it alone does not offer other months.
+  const txSearching =
+    txQuery.trim() !== "" ||
+    [txFilters.accountIds, txFilters.envelopeIds, txFilters.placeIds, txFilters.categoryIds, txFilters.kinds].some((ids) => ids.size > 0) ||
+    txFilters.amount !== null;
+  useEffect(() => {
+    if (!txSearching) {
+      setTxAllHistory(false);
+      setTxScopePick(false);
+    }
+  }, [txSearching]);
+  useEffect(() => {
+    if (primaryScreen !== "transactions") setTxScopePick(false);
+  }, [primaryScreen]);
+  const txHistory = txAllHistory && txSearching;
+  const historyTransactions = useMemo(
+    () => (txHistory ? [...(store.getLedger()?.transactions ?? [])].sort(newestTransactionFirst) : null),
+    [txHistory, ledgerVersion],
+  );
+  const txTransactions = historyTransactions ?? state?.transactions ?? [];
+  const searchAllHistory = (all: boolean) => {
+    setTxScopePick(false);
+    setTxFilters((f) => ({ ...f, date: null }));
+    setTxAllHistory(all);
+  };
+  const showTxMonth = (m: string) => {
+    setTxAllHistory(false);
+    setTxFilters((f) => ({ ...f, date: null }));
+    setMonth(m);
+  };
+  const txSearchScope = txSearching ? { allHistory: txHistory, onPick: () => setTxScopePick(true), onExit: () => setTxAllHistory(false) } : undefined;
   const globalNetTotal = useMemo(() => {
     if (!wide || (primaryScreen !== "accounts" && primaryScreen !== "reports")) return 0;
     const l = store.getLedger();
@@ -265,6 +299,7 @@ function AppContent() {
 
   const openTxns = (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string; date?: string }) => {
     setTxQuery("");
+    setTxAllHistory(false);
     setTxFilters({
       ...initialTransactionFilters(),
       envelopeIds: f?.envIds ? new Set(f.envIds) : f?.envId ? new Set([f.envId]) : new Set(),
@@ -519,6 +554,12 @@ function AppContent() {
             onPrev={prev}
             onNext={next}
             onEditTxn={editTxnFromList}
+            transactions={txTransactions}
+            searchScope={txSearchScope}
+            scopePickOpen={txScopePick}
+            onCloseScopePick={() => setTxScopePick(false)}
+            onSearchAllHistory={searchAllHistory}
+            onShowMonth={showTxMonth}
             query={txQuery}
             setQuery={setTxQuery}
             filters={txFilters}
@@ -718,6 +759,8 @@ function AppContent() {
 
               txQuery,
               txFilters,
+              txTransactions,
+              txSearchScope,
               onQuickAdd,
               onFillGoals: openBudgetFillGoals,
               onInstall: () => setInstallSheet(true),

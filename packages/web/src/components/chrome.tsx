@@ -11,7 +11,7 @@ import { D_INSTALL, Ico } from "../lib/icons";
 import { isInstallable, useInstall } from "../lib/installPrompt";
 import { useWideHost } from "../lib/shellContext";
 import { store } from "../lib/store";
-import { CORAL, CTA, font, P, type Theme } from "../lib/theme";
+import { CORAL, CTA, font, P, type Theme, tint } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
 import { PHONE_COL } from "../lib/viewMode";
 import { HeaderImportBadge, ImportBadge } from "./HeaderImportBadge";
@@ -77,6 +77,28 @@ export function StyleInjector() {
   return null;
 }
 
+export type SearchScope = { allHistory: boolean; onPick: () => void; onExit: () => void };
+
+const MONTH_ARROW = { background: "none", border: "none", cursor: "pointer", padding: 13.5, margin: -11.5, display: "flex" } as const;
+
+const scopeChip = (C: Theme, onBand: boolean) =>
+  ({
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "3px 10px",
+    margin: "-3px 0",
+    borderRadius: 10,
+    border: "none",
+    cursor: "pointer",
+    background: onBand ? tint(C.headerInk, 0.13) : C.card,
+    color: onBand ? C.headerInk : C.text,
+    fontSize: 18.5,
+    fontWeight: 600,
+    letterSpacing: 0.2,
+    fontFamily: font,
+  }) as const;
+
 export function Header({
   month,
   onMenu,
@@ -85,6 +107,7 @@ export function Header({
   onRight,
   rightIcon = "kebab",
   onBand = false,
+  searchScope,
 }: {
   month: string;
   onMenu: () => void;
@@ -93,6 +116,8 @@ export function Header({
   onRight?: () => void;
   rightIcon?: "kebab" | "pencil";
   onBand?: boolean;
+  /** Present while a search is typed: the month label picks where to search. */
+  searchScope?: SearchScope;
 }) {
   const C = useTheme();
   const { t, lang } = useT();
@@ -107,19 +132,41 @@ export function Header({
         </button>
         <HeaderImportBadge />
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      {searchScope?.allHistory ? (
         <button
-          onClick={onPrev}
-          aria-label={t("Previous month")}
-          style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+          onClick={searchScope.onExit}
+          aria-label={t("All history, search only {month}", { month: monthLabel(month, lang) })}
+          style={{ ...scopeChip(C, onBand), fontSize: 17 }}
         >
-          <Ico d="M15 19l-7-7 7-7" size={17} color={onBand ? C.headerInk : undefined} />
+          {t("All history")}
+          <Ico d="M6 6l12 12M18 6L6 18" size={13} color={inkSoft} sw={2} />
         </button>
-        <span style={{ color: ink, fontSize: 18.5, fontWeight: 600, minWidth: 128, textAlign: "center", letterSpacing: 0.2 }}>{monthLabel(month, lang)}</span>
-        <button onClick={onNext} aria-label={t("Next month")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
-          <Ico d="M9 5l7 7-7 7" size={17} color={onBand ? C.headerInk : undefined} />
-        </button>
-      </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* 44px hit area around the 17px icon; the negative margin keeps the visual layout. */}
+          <button onClick={onPrev} aria-label={t("Previous month")} style={MONTH_ARROW}>
+            <Ico d="M15 19l-7-7 7-7" size={17} color={onBand ? C.headerInk : undefined} />
+          </button>
+          <span style={{ minWidth: 128, display: "flex", justifyContent: "center" }}>
+            {searchScope ? (
+              <button
+                onClick={searchScope.onPick}
+                aria-haspopup="dialog"
+                aria-label={t("{month}, choose where to search", { month: monthLabel(month, lang) })}
+                style={scopeChip(C, onBand)}
+              >
+                {monthLabel(month, lang)}
+                <Ico d="M6 9l6 6 6-6" size={13} color={inkSoft} sw={2} />
+              </button>
+            ) : (
+              <span style={{ color: ink, fontSize: 18.5, fontWeight: 600, textAlign: "center", letterSpacing: 0.2 }}>{monthLabel(month, lang)}</span>
+            )}
+          </span>
+          <button onClick={onNext} aria-label={t("Next month")} style={MONTH_ARROW}>
+            <Ico d="M9 5l7 7-7 7" size={17} color={onBand ? C.headerInk : undefined} />
+          </button>
+        </div>
+      )}
       <button onClick={onRight} aria-label={t("More")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
         {rightIcon === "pencil" ? (
           <Ico

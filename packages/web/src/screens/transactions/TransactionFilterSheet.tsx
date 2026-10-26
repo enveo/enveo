@@ -26,6 +26,8 @@ interface TransactionFilterSheetProps {
   filters: TransactionFilters;
   onApply: (filters: TransactionFilters) => void;
   transactions: readonly Transaction[];
+  /** The viewed month alone: applying a draft without a query or criteria ends an all-history search. */
+  monthTransactions: readonly Transaction[];
   query: string;
   searchIndex: TransactionSearchIndex;
   accounts: readonly Named[];
@@ -74,6 +76,7 @@ export function TransactionFilterSheet({
   filters,
   onApply,
   transactions,
+  monthTransactions,
   query,
   searchIndex,
   accounts,
@@ -149,10 +152,14 @@ export function TransactionFilterSheet({
     setView("main");
   };
 
+  // Same rule as App's `txSearching`: the date filter alone does not keep all history.
+  const keepsScope = query.trim() !== "" || activeFilterCount({ ...draft, date: null }) > 0;
   const matchingCount = useMemo(
     () =>
-      transactions.filter((transaction) => matchesTransactionQuery(transaction, query, searchIndex) && matchesTransactionFilters(transaction, draft)).length,
-    [draft, query, searchIndex, transactions],
+      (keepsScope ? transactions : monthTransactions).filter(
+        (transaction) => matchesTransactionQuery(transaction, query, searchIndex) && matchesTransactionFilters(transaction, draft),
+      ).length,
+    [draft, query, searchIndex, transactions, monthTransactions, keepsScope],
   );
 
   const kinds: Array<{ id: TransactionKind; label: string }> = [

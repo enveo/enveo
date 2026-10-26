@@ -19,7 +19,7 @@ import type { Tab as AddTab } from "../../screens/Add";
 import { monthEnd, monthStart, type SpendingView } from "../../screens/reports/spendingView";
 import type { ReportTab, ReportView } from "../../screens/reports/types";
 import { WideHome } from "../../screens/WideHome";
-import type { ScreenId } from "../chrome";
+import type { ScreenId, SearchScope } from "../chrome";
 import { SyncBadge } from "../SyncBadge";
 import { UpdatePrompt } from "../UpdatePrompt";
 import { FoldTbbStrip } from "./FoldTbbStrip";
@@ -58,6 +58,24 @@ function PanelToggleGlyph({ color, closed }: { color: string; closed: boolean })
   );
 }
 
+const SCOPE_CHIP = (C: ReturnType<typeof useTheme>) =>
+  ({
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    minHeight: 30,
+    padding: "0 10px",
+    borderRadius: 8,
+    border: `1px solid ${C.line}`,
+    background: C.card,
+    color: C.text,
+    cursor: "pointer",
+    fontSize: 13.5,
+    fontWeight: 600,
+    fontFamily: font,
+    flexShrink: 0,
+  }) as const;
+
 function BandHeader({
   screen,
   month,
@@ -70,10 +88,12 @@ function BandHeader({
   onTogglePanel,
   compact,
   hideMonth,
+  searchScope,
 }: {
   screen: ScreenId;
   month: string;
   hideMonth: boolean;
+  searchScope?: SearchScope;
   onPrev: () => void;
   onNext: () => void;
   onAdd: () => void;
@@ -109,42 +129,64 @@ function BandHeader({
       }}
     >
       <span style={{ fontSize: 17, fontWeight: 600, color: C.text, flexShrink: 0 }}>{t(SCREEN_TITLE[screen])}</span>
-      {screen !== "settings" && !hideMonth && (
-        <div style={{ display: "flex", alignItems: "center", gap: 11, flexShrink: 0 }}>
-          <button
-            onClick={onPrev}
-            aria-label={t("Previous month")}
-            style={{
-              width: 30,
-              height: 30,
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Ico d="M15 19l-7-7 7-7" size={16} color={C.bandMute} />
-          </button>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: C.text, minWidth: 100, textAlign: "center" }}>{monthLabel(month, lang)}</span>
-          <button
-            onClick={onNext}
-            aria-label={t("Next month")}
-            style={{
-              width: 30,
-              height: 30,
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Ico d="M9 5l7 7-7 7" size={16} color={C.bandMute} />
-          </button>
-        </div>
+      {searchScope?.allHistory ? (
+        <button onClick={searchScope.onExit} aria-label={t("All history, search only {month}", { month: monthLabel(month, lang) })} style={SCOPE_CHIP(C)}>
+          {t("All history")}
+          <Ico d="M6 6l12 12M18 6L6 18" size={12} color={C.bandMute} sw={2} />
+        </button>
+      ) : (
+        screen !== "settings" &&
+        !hideMonth && (
+          <div style={{ display: "flex", alignItems: "center", gap: 11, flexShrink: 0 }}>
+            <button
+              onClick={onPrev}
+              aria-label={t("Previous month")}
+              style={{
+                width: 30,
+                height: 30,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ico d="M15 19l-7-7 7-7" size={16} color={C.bandMute} />
+            </button>
+            <span style={{ minWidth: 100, display: "flex", justifyContent: "center" }}>
+              {searchScope ? (
+                <button
+                  onClick={searchScope.onPick}
+                  aria-haspopup="dialog"
+                  aria-label={t("{month}, choose where to search", { month: monthLabel(month, lang) })}
+                  style={SCOPE_CHIP(C)}
+                >
+                  {monthLabel(month, lang)}
+                  <Ico d="M6 9l6 6 6-6" size={12} color={C.bandMute} sw={2} />
+                </button>
+              ) : (
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: C.text, textAlign: "center" }}>{monthLabel(month, lang)}</span>
+              )}
+            </span>
+            <button
+              onClick={onNext}
+              aria-label={t("Next month")}
+              style={{
+                width: 30,
+                height: 30,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ico d="M9 5l7 7-7 7" size={16} color={C.bandMute} />
+            </button>
+          </div>
+        )
       )}
       {/* One action CLUSTER, not loose siblings behind a flex:1 spacer: with flexWrap above, a
           spacer would strand whichever trailing buttons wrapped on a left-aligned second row —
@@ -300,6 +342,9 @@ type WideShellBag = {
 
   txQuery: string;
   txFilters: TransactionFilters;
+  /** The viewed month's transactions, or the whole replica while searching all history. */
+  txTransactions: StateResponse["transactions"];
+  txSearchScope?: SearchScope;
 
   txnView: { txnId: string } | null;
   /** Raw setter — the same `setEnvView`/`setAcctView`-decides-when pattern this bag already
@@ -358,6 +403,8 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     onEditEnvelopeTxn,
     txQuery,
     txFilters,
+    txTransactions,
+    txSearchScope,
     txnView,
     setTxnView,
     onEditTxnPanel,
@@ -374,8 +421,8 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   const filteredTransactions = useMemo<StateResponse["transactions"]>(() => {
     if (primaryScreen !== "transactions") return [];
     const index = createTransactionSearchIndex({ accounts: state.accounts, envelopes: state.envelopes, categories: state.categories, places: state.places });
-    return state.transactions.filter((tx) => matchesTransactionQuery(tx, txQuery, index) && matchesTransactionFilters(tx, txFilters));
-  }, [primaryScreen, state.accounts, state.envelopes, state.categories, state.places, state.transactions, txQuery, txFilters]);
+    return txTransactions.filter((tx) => matchesTransactionQuery(tx, txQuery, index) && matchesTransactionFilters(tx, txFilters));
+  }, [primaryScreen, state.accounts, state.envelopes, state.categories, state.places, txTransactions, txQuery, txFilters]);
 
   const [rootRef, rootW] = useElementWidth<HTMLDivElement>(mode === "desktop" ? 1440 : 1104);
   const paneW = paneWidthFor(mode, rootW);
@@ -572,6 +619,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           month={month}
           // The Spending report has its own period filter; the global month would contradict it.
           hideMonth={primaryScreen === "reports" && reportsView === "spending"}
+          searchScope={primaryScreen === "transactions" ? txSearchScope : undefined}
           onPrev={prev}
           onNext={next}
           onAdd={() => {
