@@ -745,6 +745,7 @@ export const MESSAGES = [
   "Show more",
   "Show the side panel",
   "Show {month}",
+  "Show {n} more | Show {n} more",
   "Show {n} older import | Show {n} older imports",
   "Show {n} transaction | Show {n} transactions",
   "Sign in",

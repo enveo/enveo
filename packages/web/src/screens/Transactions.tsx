@@ -1,5 +1,5 @@
 import type { Transaction } from "@enveo/shared";
-import { lazy, useMemo, useState } from "react";
+import { lazy, useEffect, useMemo, useState } from "react";
 import { Header, type SearchScope, Surface } from "../components/chrome";
 import { CardBox, SectionEyebrow, useBand } from "../components/kit";
 import { LazyChunk } from "../components/lazy";
@@ -20,6 +20,9 @@ import {
   transactionFilterReferences,
 } from "../lib/transactionSearch";
 import { activeFilterCount, TransactionFilterSheet } from "./transactions/TransactionFilterSheet";
+
+// Rows rendered per step: all history can match thousands, and rendering them at once freezes a phone.
+const PAGE = 100;
 
 const WideFilterPanel = lazy(() => import("./transactions/WideFilterPanel").then((m) => ({ default: m.WideFilterPanel })));
 
@@ -124,14 +127,18 @@ export function TransactionsScreen({
   };
 
   const allHistory = !!searchScope?.allHistory;
-  const txns = transactions.filter(
-    (transaction) => matchesTransactionQuery(transaction, query, searchIndex) && matchesTransactionFilters(transaction, filters),
+  const txns = useMemo(
+    () => transactions.filter((transaction) => matchesTransactionQuery(transaction, query, searchIndex) && matchesTransactionFilters(transaction, filters)),
+    [transactions, query, searchIndex, filters],
   );
+
+  const [shown, setShown] = useState(PAGE);
+  useEffect(() => setShown(PAGE), [query, filters, allHistory, month]);
 
   const effectiveSelectedId = inWide && selectedTxnId !== null ? (selectedTxnId ?? txns[0]?.id ?? null) : null;
 
   const groups: Array<{ date: string; items: Transaction[]; firstOfMonth: boolean }> = [];
-  for (const t of txns) {
+  for (const t of txns.slice(0, shown)) {
     const last = groups[groups.length - 1];
     if (last && last.date === t.date) last.items.push(t);
     else groups.push({ date: t.date, items: [t], firstOfMonth: last?.date.slice(0, 7) !== t.date.slice(0, 7) });
@@ -624,6 +631,27 @@ export function TransactionsScreen({
             </div>
           );
         })}
+        {txns.length > shown && (
+          <button
+            onClick={() => setShown((n) => n + PAGE)}
+            style={{
+              display: "block",
+              width: `calc(100% - ${2 * P}px)`,
+              minHeight: 44,
+              margin: `4px ${P}px 12px`,
+              borderRadius: 12,
+              border: `1px solid ${C.line}`,
+              background: C.card,
+              color: C.text,
+              cursor: "pointer",
+              fontFamily: font,
+              fontSize: 13.5,
+              fontWeight: 650,
+            }}
+          >
+            {tp("Show {n} more | Show {n} more", Math.min(PAGE, txns.length - shown))}
+          </button>
+        )}
       </div>
 
       {}

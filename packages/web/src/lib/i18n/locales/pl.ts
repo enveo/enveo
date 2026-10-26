@@ -1529,4 +1529,10 @@ export const pl: Dict = {
     many: "{n} wyników w całej historii",
     other: "{n} wyniku w całej historii",
   },
+  "Show {n} more | Show {n} more": {
+    one: "Pokaż jeszcze {n}",
+    few: "Pokaż jeszcze {n}",
+    many: "Pokaż jeszcze {n}",
+    other: "Pokaż jeszcze {n}",
+  },
 };
