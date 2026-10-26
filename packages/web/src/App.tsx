@@ -182,10 +182,14 @@ function AppContent() {
   // already uses, non-archived accounts only). Gated to the two screens that show it so phone
   // (and every other wide screen) never pays for the extra recompute.
   const ledgerVersion = useLedgerVersion();
-  // Search stays in the viewed month until the user picks "All history"; clearing the query ends it.
+  // Search stays in the viewed month until the user picks "All history"; clearing the query and filters ends it.
   const [txAllHistory, setTxAllHistory] = useState(false);
   const [txScopePick, setTxScopePick] = useState(false);
-  const txSearching = txQuery.trim() !== "";
+  // The date filter is one day of the viewed month, so it alone does not offer other months.
+  const txSearching =
+    txQuery.trim() !== "" ||
+    [txFilters.accountIds, txFilters.envelopeIds, txFilters.placeIds, txFilters.categoryIds, txFilters.kinds].some((ids) => ids.size > 0) ||
+    txFilters.amount !== null;
   useEffect(() => {
     if (!txSearching) {
       setTxAllHistory(false);
