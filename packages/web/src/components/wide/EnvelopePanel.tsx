@@ -1,5 +1,5 @@
 import { computeEnvelopeSummary, computeStateResponse, type Transaction } from "@enveo/shared";
-import { useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { type EnvelopeView, type StateResponse, useLedgerVersion } from "../../lib/api";
 import { useMask, useTheme } from "../../lib/contexts";
 import { monthLabel, shortDate } from "../../lib/dates";
@@ -12,6 +12,7 @@ import { font, TEAL, TRANSFER } from "../../lib/theme";
 import { emptyTransactionFilters, matchesTransactionFilters } from "../../lib/transactionSearch";
 import { EnvEdit } from "../../screens/Budget";
 import { PERIOD_KEY, PERIODS, type Period } from "../../screens/Envelope";
+import { MoveMoneySheet } from "../MoveMoneySheet";
 
 export function EnvelopePanel({
   envelopeId,
@@ -37,6 +38,10 @@ export function EnvelopePanel({
   const foldTwoCol = wideHost?.mode === "fold";
   const [period, setPeriod] = useState<Period>(1);
   const [edit, setEdit] = useState<EnvelopeView | null>(null);
+  // Captured at press, closed when the selection moves: an open sheet must never silently retarget
+  // another envelope or month. The sheet host itself stays mounted so a pending undo survives.
+  const [moving, setMoving] = useState<{ envelopeId: string; month: string } | null>(null);
+  useEffect(() => setMoving(null), [envelopeId, month]);
 
   const data = useMemo(() => {
     const ledger = store.getLedger();
@@ -100,6 +105,24 @@ export function EnvelopePanel({
     return catName ? `${shortDate(tx.date, lang)} · ${catName}` : shortDate(tx.date, lang);
   };
 
+  const headerButton: CSSProperties = {
+    flexShrink: 0,
+    cursor: "pointer",
+    fontSize: 11.5,
+    color: C.soft,
+    background: "transparent",
+    border: `1px solid ${C.line}`,
+    borderRadius: 8,
+    padding: "6px 11px",
+    fontFamily: font,
+    // House >=30x30 touch-target floor (measured, not asserted): the design's own box
+    // (padding 6px 11px around 11.5px text, v3:1016) renders ~28px tall — under 30px.
+    // box-sizing border-box + minHeight makes 30 the TOTAL box height without touching
+    // the design's visible padding/font-size/border.
+    boxSizing: "border-box",
+    minHeight: 30,
+  };
+
   const payeeOf = (tx: Transaction): string => tx.name || tx.note || env.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
 
   return (
@@ -135,26 +158,10 @@ export function EnvelopePanel({
           {env.name}
         </span>
         <div style={{ flex: 1 }} />
-        <button
-          onClick={() => setEdit(env)}
-          style={{
-            flexShrink: 0,
-            cursor: "pointer",
-            fontSize: 11.5,
-            color: C.soft,
-            background: "transparent",
-            border: `1px solid ${C.line}`,
-            borderRadius: 8,
-            padding: "6px 11px",
-            fontFamily: font,
-            // House >=30x30 touch-target floor (measured, not asserted): the design's own box
-            // (padding 6px 11px around 11.5px text, v3:1016) renders ~28px tall — under 30px.
-            // box-sizing border-box + minHeight makes 30 the TOTAL box height without touching
-            // the design's visible padding/font-size/border.
-            boxSizing: "border-box",
-            minHeight: 30,
-          }}
-        >
+        <button onClick={() => setMoving({ envelopeId, month })} style={headerButton}>
+          {t("Move")}
+        </button>
+        <button onClick={() => setEdit(env)} style={headerButton}>
           {t("Edit")}
         </button>
       </div>
@@ -304,6 +311,7 @@ export function EnvelopePanel({
       </div>
 
       <EnvEdit env={edit} groups={groups} accounts={accounts} onClose={() => setEdit(null)} />
+      <MoveMoneySheet target={moving} onClose={() => setMoving(null)} />
     </div>
   );
 }

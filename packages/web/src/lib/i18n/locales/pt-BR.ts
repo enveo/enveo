@@ -766,6 +766,11 @@ export const ptBR: Dict = {
   "A source is asked for more than it has": "Uma fonte precisaria dar mais do que tem",
   "Amount from {name}": "Valor de {name}",
   "Move {sum}": "Mover {sum}",
+  Move: "Mover",
+  "Move money to {name}": "Mover dinheiro para {name}",
+  "Pick where the money comes from": "Escolha de onde vem o dinheiro",
+  "Moving {sum}": "Movendo {sum}",
+  "Moved {amount} to {name}": "{amount} movido para {name}",
   "Moving {sum} of {amount}": "Movendo {sum} de {amount}",
   "Needs {amount} · pick where it comes from": "Faltam {amount} · escolha de onde vêm",
   "No envelope has money left this month.": "Nenhum envelope tem dinheiro sobrando neste mês.",
@@ -773,5 +778,6 @@ export const ptBR: Dict = {
   "Top up {name}": "Reforçar {name}",
   "{amount} to cover · {pool} in To be budgeted": "{amount} a cobrir · {pool} em A orçar",
   "{available} available": "{available} disponível",
+  "{available} available → {after} after the move": "{available} disponível → depois de mover {after}",
   "{available} available → {after} left": "{available} disponível → sobrarão {after}",
 };

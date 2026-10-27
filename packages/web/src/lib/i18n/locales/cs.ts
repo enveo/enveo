@@ -781,6 +781,11 @@ export const cs: Dict = {
   "A source is asked for more than it has": "Po jednom ze zdrojů chcete víc, než má",
   "Amount from {name}": "Částka z {name}",
   "Move {sum}": "Přesunout {sum}",
+  Move: "Přesunout",
+  "Move money to {name}": "Přesunout peníze do {name}",
+  "Pick where the money comes from": "Vyberte, odkud peníze vzít",
+  "Moving {sum}": "Přesouváte {sum}",
+  "Moved {amount} to {name}": "Přesunuto {amount} do {name}",
   "Moving {sum} of {amount}": "Přesouváte {sum} z {amount}",
   "Needs {amount} · pick where it comes from": "Chybí {amount} · vyberte, odkud je vzít",
   "No envelope has money left this month.": "Žádná obálka nemá tento měsíc volné peníze.",
@@ -788,5 +793,6 @@ export const cs: Dict = {
   "Top up {name}": "Dorovnat {name}",
   "{amount} to cover · {pool} in To be budgeted": "K pokrytí {amount} · v K rozdělení {pool}",
   "{available} available": "K dispozici {available}",
+  "{available} available → {after} after the move": "K dispozici {available} → po přesunu {after}",
   "{available} available → {after} left": "K dispozici {available} → zůstane {after}",
 };

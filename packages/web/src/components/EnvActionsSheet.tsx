@@ -11,12 +11,14 @@ export function EnvActionsSheet({
   onClose,
   onTxns,
   onSummary,
+  onMove,
   onEdit,
 }: {
   env: EnvelopeView | null;
   onClose: () => void;
   onTxns: () => void;
   onSummary: () => void;
+  onMove: () => void;
   onEdit: () => void;
 }) {
   const M = useMask();
@@ -98,6 +100,7 @@ export function EnvActionsSheet({
             </button>
             <div style={{ display: "flex", gap: 8, marginTop: 8, paddingBottom: 4 }}>
               {secondary(t("Transactions"), onTxns)}
+              {secondary(t("Move"), onMove)}
               {secondary(t("Edit"), onEdit)}
             </div>
           </>

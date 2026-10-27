@@ -769,6 +769,11 @@ export const fr: Dict = {
   "A source is asked for more than it has": "Une source doit donner plus qu'elle n'a",
   "Amount from {name}": "Montant depuis {name}",
   "Move {sum}": "Déplacer {sum}",
+  Move: "Déplacer",
+  "Move money to {name}": "Déplacer de l'argent vers {name}",
+  "Pick where the money comes from": "Choisis d'où vient l'argent",
+  "Moving {sum}": "Déplacement de {sum}",
+  "Moved {amount} to {name}": "{amount} déplacé vers {name}",
   "Moving {sum} of {amount}": "Déplacement de {sum} sur {amount}",
   "Needs {amount} · pick where it comes from": "Il manque {amount} · choisis d'où ils viennent",
   "No envelope has money left this month.": "Aucune enveloppe n'a d'argent disponible ce mois-ci.",
@@ -776,5 +781,6 @@ export const fr: Dict = {
   "Top up {name}": "Renflouer {name}",
   "{amount} to cover · {pool} in To be budgeted": "{amount} à couvrir · {pool} dans À budgétiser",
   "{available} available": "{available} disponible",
+  "{available} available → {after} after the move": "{available} disponible → après le transfert {after}",
   "{available} available → {after} left": "{available} disponible → il restera {after}",
 };

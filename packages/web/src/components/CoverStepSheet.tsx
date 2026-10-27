@@ -19,8 +19,27 @@ export interface CoverDelta {
   delta: number;
 }
 
+/** What the sheet fills: a Budgets-checklist step, or a plain "Move" into an envelope from its
+ *  own sheet/panel (`kind: "move"`), where `amount` is the overspend to propose (0 = no target —
+ *  the human types every amount). */
+export type CoverTarget = Pick<BudgetStep, "envelopeId" | "name" | "amount"> & { kind: BudgetStep["kind"] | "move" };
+
+/** Undo of an applied cover: each delta is subtracted from a FRESH read through the same
+ *  absolute-amount API (no inverse op), so it composes with a later cover that borrowed from the
+ *  same donor. An envelope archived or deleted since is skipped. */
+export function revertCover(month: string, deltas: readonly CoverDelta[]) {
+  const ledger = store.getLedger();
+  const live = ledger ? computeStateResponse(ledger, month) : null;
+  if (!live) return;
+  for (const d of deltas) {
+    const fresh = live.envelopes.find((e) => e.id === d.envelopeId);
+    if (!fresh || fresh.archived) continue;
+    local.setDisplayedAllocation({ envelopeId: d.envelopeId, month, amount: fresh.allocated - d.delta });
+  }
+}
+
 /**
- * "Cover from…" for one Budgets-checklist step: the pool ("To be budgeted") and every envelope
+ * "Cover from…" for one Budgets-checklist step — and the envelope's own "Move" (`CoverTarget`): the pool ("To be budgeted") and every envelope
  * with money left are listed as sources, each with an editable amount (shared amount-pad idiom,
  * FillGoalsSheet). The default plan is `proposeCoverSources` — pool first, then the loosest
  * envelopes — and the human may retarget any row, including taking from an envelope while the
@@ -48,11 +67,11 @@ export function CoverStepSheet({
   onApplied,
 }: {
   state: StateResponse;
-  step: BudgetStep;
+  step: CoverTarget;
   slack: ReadonlyMap<string, number>;
   currentMonth: string;
   onClose: () => void;
-  onApplied: (step: BudgetStep, result: { moved: number; deltas: CoverDelta[] }) => void;
+  onApplied: (step: CoverTarget, result: { moved: number; deltas: CoverDelta[] }) => void;
 }) {
   const C = useTheme();
   const M = useMask();
@@ -75,7 +94,7 @@ export function CoverStepSheet({
   );
   const poolAvailable = Math.max(0, state.readyToAssign);
   const [plan, setPlan] = useState<CoverPlan>(() => proposeCoverSources(step.amount, state.readyToAssign, donors));
-  const [pad, setPad] = useState<AmountPadTarget | null>(null);
+  const [pad, setPad] = useState<(AmountPadTarget & { id: string }) | null>(null);
 
   const status = coverPlanStatus(plan, [{ id: POOL_SOURCE_ID, available: poolAvailable }, ...donors]);
 
@@ -86,6 +105,7 @@ export function CoverStepSheet({
 
   const openPadFor = (id: string, label: string) =>
     setPad({
+      id,
       label,
       initial: plan[id] ?? 0,
       onCommit: (minor) => setPlan((p) => ({ ...p, [id]: minor })),
@@ -124,7 +144,12 @@ export function CoverStepSheet({
     close();
   };
 
-  const title = step.kind === "over" ? t("Cover the overspend in {name}", { name: step.name }) : t("Top up {name}", { name: step.name });
+  const title =
+    step.kind === "move"
+      ? t("Move money to {name}", { name: step.name })
+      : step.kind === "over"
+        ? t("Cover the overspend in {name}", { name: step.name })
+        : t("Top up {name}", { name: step.name });
 
   type Source = { id: string; name: string; available: number; glyph: ReactNode; note?: string };
   const poolGlyph = (
@@ -160,6 +185,7 @@ export function CoverStepSheet({
     // can drain under an open sheet); then the row must stay editable so the human can zero it.
     const inert = s.available === 0 && value === 0;
     const tone = bad ? C.neg : value > 0 ? TEAL : null;
+    const active = pad?.id === s.id;
     const open = () => !inert && openPadFor(s.id, s.name);
     return (
       <div
@@ -208,6 +234,8 @@ export function CoverStepSheet({
               borderRadius: 9,
               padding: "6px 9px",
               cursor: inert ? "default" : "pointer",
+              // The Budget screen's active-cell underline instead of the focus ring on a read-only input.
+              boxShadow: active ? "inset 0 -2px 0 var(--input-underline)" : undefined,
             }}
           >
             <span style={{ fontSize: 11, color: C.soft }}>−</span>
@@ -230,6 +258,9 @@ export function CoverStepSheet({
                 fontVariantNumeric: "tabular-nums",
                 cursor: inert ? "default" : "pointer",
                 padding: 0,
+                // Transparent, not none: invisible here, but forced-colors mode (which drops the
+                // box-shadow underline) paints it, so keyboard focus stays visible there.
+                outline: "2px solid transparent",
               }}
             />
             <span style={{ fontSize: 11, color: C.soft }}>{symbol}</span>
@@ -240,6 +271,9 @@ export function CoverStepSheet({
   };
 
   const short = status.sum < step.amount;
+  const hasTarget = step.amount > 0;
+  const targetAvailable = state.envelopes.find((e) => e.id === step.envelopeId)?.available ?? 0;
+  const targetAfter = targetAvailable + status.sum;
 
   return (
     <>
@@ -247,8 +281,20 @@ export function CoverStepSheet({
         {(C) => (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{title}</div>
-            <div style={{ fontSize: 12, color: C.mute, marginTop: 3, marginBottom: 12, fontVariantNumeric: "tabular-nums" }}>
-              {t("Needs {amount} · pick where it comes from", { amount: M(step.amount) })}
+            <div style={{ fontSize: 12, color: C.mute, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
+              {hasTarget ? t("Needs {amount} · pick where it comes from", { amount: M(step.amount) }) : t("Pick where the money comes from")}
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: targetAfter < 0 ? C.neg : C.text,
+                marginTop: 6,
+                marginBottom: 12,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {t("{available} available → {after} after the move", { available: M(targetAvailable), after: M(targetAfter) })}
             </div>
 
             {sources.map((s, i) => row(s, i === sources.length - 1))}
@@ -267,7 +313,9 @@ export function CoverStepSheet({
               >
                 {status.overdrawn.size > 0
                   ? t("A source is asked for more than it has")
-                  : t("Moving {sum} of {amount}", { sum: M(status.sum), amount: M(step.amount) })}
+                  : hasTarget
+                    ? t("Moving {sum} of {amount}", { sum: M(status.sum), amount: M(step.amount) })
+                    : t("Moving {sum}", { sum: M(status.sum) })}
               </div>
               <button
                 onClick={confirm}

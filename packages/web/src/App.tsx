@@ -61,6 +61,7 @@ const ForeignReplicaScreen = lazy(() => import("./screens/ForeignReplica").then(
 const LoginScreen = lazy(() => import("./screens/Login").then((m) => ({ default: m.LoginScreen })));
 const InstallSheet = lazy(() => import("./components/InstallSheet").then((m) => ({ default: m.InstallSheet })));
 const EnvActionsSheet = lazy(() => import("./components/EnvActionsSheet").then((m) => ({ default: m.EnvActionsSheet })));
+const MoveMoneySheet = lazy(() => import("./components/MoveMoneySheet").then((m) => ({ default: m.MoveMoneySheet })));
 const InstallBanner = lazy(() => import("./components/InstallBanner").then((m) => ({ default: m.InstallBanner })));
 const WideShell = lazy(() => import("./components/wide/WideShell").then((m) => ({ default: m.WideShell })));
 
@@ -140,6 +141,9 @@ function AppContent() {
   useEffect(() => setMonthDay(null), [month]);
 
   const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(r0.envelopeId ? { envelopeId: r0.envelopeId, month } : null);
+  // The wide panel shows (and its Move writes) `envView.month`: paging the header month must move
+  // it too, or the panel keeps describing — and editing — a month no longer on screen.
+  useEffect(() => setEnvView((v) => (v && v.month !== month ? { ...v, month } : v)), [month]);
 
   const [acctView, setAcctView] = useState<{ accountId: string } | null>(null);
 
@@ -317,6 +321,8 @@ function AppContent() {
   const [envActions, setEnvActions] = useState<{ envelopeId: string; month: string } | null>(null);
   const envActionsMounted = useOpenedOnce(envActions !== null);
   const [envEdit, setEnvEdit] = useState<string | null>(null);
+  const [envMove, setEnvMove] = useState<{ envelopeId: string; month: string } | null>(null);
+  const envMoveMounted = useOpenedOnce(envMove !== null);
 
   const openEnvelope = (envelopeId: string, m: string) => {
     if (mode !== "phone") {
@@ -421,6 +427,7 @@ function AppContent() {
     const onPop = () => {
       setEnvEdit(null);
       setEnvActions(null);
+      setEnvMove(null);
       justPopped.current = true;
       const r = parseUrl(location.pathname, location.search);
 
@@ -892,6 +899,12 @@ function AppContent() {
                     setEnvActions(null);
                   }
                 }}
+                onMove={() => {
+                  if (envActions) {
+                    setEnvMove(envActions);
+                    setEnvActions(null);
+                  }
+                }}
                 onEdit={() => {
                   if (envActions) {
                     setEnvEdit(envActions.envelopeId);
@@ -899,6 +912,11 @@ function AppContent() {
                   }
                 }}
               />
+            </LazyChunk>
+          )}
+          {envMoveMounted && (
+            <LazyChunk variant="overlay" onDismiss={() => setEnvMove(null)}>
+              <MoveMoneySheet target={envMove} onClose={() => setEnvMove(null)} />
             </LazyChunk>
           )}
           {envEdit && (
