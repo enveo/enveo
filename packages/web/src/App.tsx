@@ -141,6 +141,9 @@ function AppContent() {
   useEffect(() => setMonthDay(null), [month]);
 
   const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(r0.envelopeId ? { envelopeId: r0.envelopeId, month } : null);
+  // The wide panel shows (and its Move writes) `envView.month`: paging the header month must move
+  // it too, or the panel keeps describing — and editing — a month no longer on screen.
+  useEffect(() => setEnvView((v) => (v && v.month !== month ? { ...v, month } : v)), [month]);
 
   const [acctView, setAcctView] = useState<{ accountId: string } | null>(null);
 

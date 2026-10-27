@@ -1,5 +1,5 @@
 import { computeEnvelopeSummary, computeStateResponse, type Transaction } from "@enveo/shared";
-import { type CSSProperties, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { type EnvelopeView, type StateResponse, useLedgerVersion } from "../../lib/api";
 import { useMask, useTheme } from "../../lib/contexts";
 import { monthLabel, shortDate } from "../../lib/dates";
@@ -38,7 +38,10 @@ export function EnvelopePanel({
   const foldTwoCol = wideHost?.mode === "fold";
   const [period, setPeriod] = useState<Period>(1);
   const [edit, setEdit] = useState<EnvelopeView | null>(null);
-  const [moving, setMoving] = useState(false);
+  // Captured at press, closed when the selection moves: an open sheet must never silently retarget
+  // another envelope or month. The sheet host itself stays mounted so a pending undo survives.
+  const [moving, setMoving] = useState<{ envelopeId: string; month: string } | null>(null);
+  useEffect(() => setMoving(null), [envelopeId, month]);
 
   const data = useMemo(() => {
     const ledger = store.getLedger();
@@ -155,7 +158,7 @@ export function EnvelopePanel({
           {env.name}
         </span>
         <div style={{ flex: 1 }} />
-        <button onClick={() => setMoving(true)} style={headerButton}>
+        <button onClick={() => setMoving({ envelopeId, month })} style={headerButton}>
           {t("Move")}
         </button>
         <button onClick={() => setEdit(env)} style={headerButton}>
@@ -308,7 +311,7 @@ export function EnvelopePanel({
       </div>
 
       <EnvEdit env={edit} groups={groups} accounts={accounts} onClose={() => setEdit(null)} />
-      <MoveMoneySheet target={moving ? { envelopeId, month } : null} onClose={() => setMoving(false)} />
+      <MoveMoneySheet target={moving} onClose={() => setMoving(null)} />
     </div>
   );
 }
