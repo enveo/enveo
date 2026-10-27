@@ -1,6 +1,5 @@
-import { computeStateResponse } from "@enveo/shared";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { type CoverDelta, CoverStepSheet } from "../../components/CoverStepSheet";
+import { type CoverDelta, CoverStepSheet, type CoverTarget, revertCover } from "../../components/CoverStepSheet";
 import { Bar, ReportShell, UndoBar, useReportBand } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
@@ -8,7 +7,6 @@ import { coverDonors, donorSlack } from "../../lib/coverSources";
 import { currentMonth, todayISO } from "../../lib/dates";
 import { haptic } from "../../lib/haptics";
 import { useT } from "../../lib/i18n";
-import { local } from "../../lib/mutate";
 import { type BudgetStep, budgetPace, budgetRowPresentation, budgetSteps, budgetUsage, compareBudgetUsageRows, monthProgress } from "../../lib/reportSummary";
 import { useWideHost } from "../../lib/shellContext";
 import { store } from "../../lib/store";
@@ -28,7 +26,7 @@ import { type Mask, TITLES } from "./types";
  *  this state is handed to it. */
 interface PendingUndo {
   id: string;
-  kind: BudgetStep["kind"];
+  kind: CoverTarget["kind"];
   amount: number;
   name: string;
   /** The month the write targeted — always the VIEWED month at press time, never re-derived later. */
@@ -177,7 +175,7 @@ export function BudgetsReport({
     };
   }, [state.month]);
 
-  const onCovered = (step: BudgetStep, result: { moved: number; deltas: CoverDelta[] }) => {
+  const onCovered = (step: CoverTarget, result: { moved: number; deltas: CoverDelta[] }) => {
     const id = crypto.randomUUID();
     const timer = setTimeout(() => dismissUndo(id), UNDO_TIMEOUT_MS);
     undoTimers.current.set(id, timer);
@@ -185,15 +183,7 @@ export function BudgetsReport({
   };
 
   const undoStep = (u: PendingUndo) => {
-    const ledger = store.getLedger();
-    const live = ledger ? computeStateResponse(ledger, u.month) : null;
-    if (live) {
-      for (const d of u.deltas) {
-        const fresh = live.envelopes.find((e) => e.id === d.envelopeId);
-        if (!fresh || fresh.archived) continue;
-        local.setDisplayedAllocation({ envelopeId: d.envelopeId, month: u.month, amount: fresh.allocated - d.delta });
-      }
-    }
+    revertCover(u.month, u.deltas);
     haptic(8);
     dismissUndo(u.id);
   };

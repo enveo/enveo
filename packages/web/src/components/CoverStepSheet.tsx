@@ -19,8 +19,27 @@ export interface CoverDelta {
   delta: number;
 }
 
+/** What the sheet fills: a Budgets-checklist step, or a plain "Move" into an envelope from its
+ *  own sheet/panel (`kind: "move"`), where `amount` is the overspend to propose (0 = no target —
+ *  the human types every amount). */
+export type CoverTarget = Pick<BudgetStep, "envelopeId" | "name" | "amount"> & { kind: BudgetStep["kind"] | "move" };
+
+/** Undo of an applied cover: each delta is subtracted from a FRESH read through the same
+ *  absolute-amount API (no inverse op), so it composes with a later cover that borrowed from the
+ *  same donor. An envelope archived or deleted since is skipped. */
+export function revertCover(month: string, deltas: readonly CoverDelta[]) {
+  const ledger = store.getLedger();
+  const live = ledger ? computeStateResponse(ledger, month) : null;
+  if (!live) return;
+  for (const d of deltas) {
+    const fresh = live.envelopes.find((e) => e.id === d.envelopeId);
+    if (!fresh || fresh.archived) continue;
+    local.setDisplayedAllocation({ envelopeId: d.envelopeId, month, amount: fresh.allocated - d.delta });
+  }
+}
+
 /**
- * "Cover from…" for one Budgets-checklist step: the pool ("To be budgeted") and every envelope
+ * "Cover from…" for one Budgets-checklist step — and the envelope's own "Move" (`CoverTarget`): the pool ("To be budgeted") and every envelope
  * with money left are listed as sources, each with an editable amount (shared amount-pad idiom,
  * FillGoalsSheet). The default plan is `proposeCoverSources` — pool first, then the loosest
  * envelopes — and the human may retarget any row, including taking from an envelope while the
@@ -48,11 +67,11 @@ export function CoverStepSheet({
   onApplied,
 }: {
   state: StateResponse;
-  step: BudgetStep;
+  step: CoverTarget;
   slack: ReadonlyMap<string, number>;
   currentMonth: string;
   onClose: () => void;
-  onApplied: (step: BudgetStep, result: { moved: number; deltas: CoverDelta[] }) => void;
+  onApplied: (step: CoverTarget, result: { moved: number; deltas: CoverDelta[] }) => void;
 }) {
   const C = useTheme();
   const M = useMask();
@@ -124,7 +143,12 @@ export function CoverStepSheet({
     close();
   };
 
-  const title = step.kind === "over" ? t("Cover the overspend in {name}", { name: step.name }) : t("Top up {name}", { name: step.name });
+  const title =
+    step.kind === "move"
+      ? t("Move money to {name}", { name: step.name })
+      : step.kind === "over"
+        ? t("Cover the overspend in {name}", { name: step.name })
+        : t("Top up {name}", { name: step.name });
 
   type Source = { id: string; name: string; available: number; glyph: ReactNode; note?: string };
   const poolGlyph = (
@@ -240,6 +264,7 @@ export function CoverStepSheet({
   };
 
   const short = status.sum < step.amount;
+  const hasTarget = step.amount > 0;
 
   return (
     <>
@@ -248,7 +273,7 @@ export function CoverStepSheet({
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{title}</div>
             <div style={{ fontSize: 12, color: C.mute, marginTop: 3, marginBottom: 12, fontVariantNumeric: "tabular-nums" }}>
-              {t("Needs {amount} · pick where it comes from", { amount: M(step.amount) })}
+              {hasTarget ? t("Needs {amount} · pick where it comes from", { amount: M(step.amount) }) : t("Pick where the money comes from")}
             </div>
 
             {sources.map((s, i) => row(s, i === sources.length - 1))}
@@ -267,7 +292,9 @@ export function CoverStepSheet({
               >
                 {status.overdrawn.size > 0
                   ? t("A source is asked for more than it has")
-                  : t("Moving {sum} of {amount}", { sum: M(status.sum), amount: M(step.amount) })}
+                  : hasTarget
+                    ? t("Moving {sum} of {amount}", { sum: M(status.sum), amount: M(step.amount) })
+                    : t("Moving {sum}", { sum: M(status.sum) })}
               </div>
               <button
                 onClick={confirm}
