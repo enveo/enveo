@@ -2,7 +2,7 @@ import { computeStateResponse } from "@enveo/shared";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { StateResponse } from "../../lib/api";
 import { apiErrorMessage, useLedgerVersion, useSyncStatus } from "../../lib/api";
-import { authClient } from "../../lib/auth";
+import { loadAuthClient } from "../../lib/auth";
 import { useMask, useSettings, useTheme } from "../../lib/contexts";
 import { currentMonth, relSync, todayISO } from "../../lib/dates";
 import { LOCALE_OF } from "../../lib/format";
@@ -30,8 +30,8 @@ export function useSessionUser(): { name: string | null; email: string | null } 
   const [user, setUser] = useState<{ name: string | null; email: string | null }>({ name: null, email: null });
   useEffect(() => {
     let alive = true;
-    void authClient
-      .getSession()
+    void loadAuthClient()
+      .then((client) => client.getSession())
       .then((s) => {
         if (!alive) return;
         const u = (s as { data?: { user?: { name?: string; email?: string } } })?.data?.user;

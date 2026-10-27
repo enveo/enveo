@@ -1,8 +1,16 @@
-import { createAuthClient } from "better-auth/client";
+import type { createAuthClient } from "better-auth/client";
 import { runServerWriteOperation } from "./serverWriteOperations";
 import { type CoordinatedSignOutLease, runCoordinatedSessionEnd } from "./sync/multitab";
 
-export const authClient = createAuthClient();
+type AuthClient = ReturnType<typeof createAuthClient>;
+let client: Promise<AuthClient> | null = null;
+
+/** better-auth's client is only needed to sign in/out and read the session, so it loads on first
+ *  use instead of riding in the initial bundle (§3f budget). The PWA precaches the chunk. */
+export function loadAuthClient(): Promise<AuthClient> {
+  client ??= import("better-auth/client").then((m) => m.createAuthClient());
+  return client;
+}
 
 /** What the login screen must render — from the public GET /api/auth/meta. */
 export type AuthMeta = {
@@ -35,6 +43,7 @@ const AUTH_CODES = new Set(["invalid_email_or_password", "user_already_exists", 
 
 export async function signInEmail(email: string, password: string, persistent: boolean): Promise<void> {
   return runServerWriteOperation("auth-session", async () => {
+    const authClient = await loadAuthClient();
     const { error } = await authClient.signIn.email({ email, password, rememberMe: persistent });
     if (error) throw new Error(authErrorCode(error, "sign_in_failed"));
   });
@@ -48,12 +57,17 @@ export async function signUpEmail(email: string, password: string, persistent: b
   // the object literal without widening anything else — a TS quirk, not a behavior change.
   const body = { email, password, name: email.split("@")[0] ?? email, rememberMe: persistent };
   return runServerWriteOperation("auth-session", async () => {
+    const authClient = await loadAuthClient();
     const { error } = await authClient.signUp.email(body);
     if (error) throw new Error(authErrorCode(error, "sign_up_failed"));
   });
 }
 
-export const signInGoogle = () => runServerWriteOperation("auth-session", () => authClient.signIn.social({ provider: "google" }));
+export const signInGoogle = () =>
+  runServerWriteOperation("auth-session", async () => {
+    const authClient = await loadAuthClient();
+    return authClient.signIn.social({ provider: "google" });
+  });
 
 /**
  * Identity of the CURRENT session, straight from the server: the signed-in user's id,
@@ -89,6 +103,7 @@ export function normalizeServerSignOutFailure(_error: unknown): never {
 export async function endSession(): Promise<void> {
   return runServerWriteOperation("auth-session", async () => {
     try {
+      const authClient = await loadAuthClient();
       const { error } = await authClient.signOut(serverSignOutOptions());
       assertServerSignOutSucceeded(error);
     } catch (error) {
@@ -100,6 +115,7 @@ export async function endSession(): Promise<void> {
 export function endSessionForSignOut(lease: CoordinatedSignOutLease): Promise<void> {
   return runCoordinatedSessionEnd(lease, async () => {
     try {
+      const authClient = await loadAuthClient();
       const { error } = await authClient.signOut(serverSignOutOptions());
       assertServerSignOutSucceeded(error);
     } catch (error) {
@@ -110,6 +126,7 @@ export function endSessionForSignOut(lease: CoordinatedSignOutLease): Promise<vo
 
 export async function hasSession(): Promise<boolean> {
   try {
+    const authClient = await loadAuthClient();
     const s = await authClient.getSession();
     return !!(s as { data?: { user?: unknown } })?.data?.user;
   } catch {
