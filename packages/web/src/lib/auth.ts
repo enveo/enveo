@@ -8,7 +8,15 @@ let client: Promise<AuthClient> | null = null;
 /** better-auth's client is only needed to sign in/out and read the session, so it loads on first
  *  use instead of riding in the initial bundle (§3f budget). The PWA precaches the chunk. */
 export function loadAuthClient(): Promise<AuthClient> {
-  client ??= import("better-auth/client").then((m) => m.createAuthClient());
+  // Browsers may keep a failed module fetch for the life of the page, so a retry alone is not
+  // enough: the error asks for a reload (safe — the replica and outbox are durable). The memo is
+  // still dropped so an engine that does refetch recovers without one.
+  client ??= import("better-auth/client")
+    .then((m) => m.createAuthClient())
+    .catch(() => {
+      client = null;
+      throw new Error("auth_client_unavailable");
+    });
   return client;
 }
 

@@ -378,6 +378,7 @@ export const pl: Dict = {
   "Could not create the account — please try again.": "Nie udało się utworzyć konta — spróbuj ponownie.",
   "Could not reach the AI service — check the network connection and try again.":
     "Nie udało się połączyć z usługą AI — sprawdź połączenie z siecią i spróbuj ponownie.",
+  "Sign-in could not be loaded. Reload the page and try again.": "Nie udało się wczytać logowania. Odśwież stronę i spróbuj ponownie.",
   "Could not sign in — please try again.": "Nie udało się zalogować — spróbuj ponownie.",
   "Create account": "Utwórz konto",
   "Create an account": "Załóż konto",

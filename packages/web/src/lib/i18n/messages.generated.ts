@@ -759,6 +759,7 @@ export const MESSAGES = [
   "Sign out",
   "Sign out and remove this account's local data from this device? Your data already on the server will stay there.",
   "Sign out and use another account",
+  "Sign-in could not be loaded. Reload the page and try again.",
   "Sign-in is per device: a shared computer can stay session-only.",
   "Sign-out is already in progress.",
   "Signed in as {email}",

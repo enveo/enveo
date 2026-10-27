@@ -146,6 +146,7 @@ const ERROR_KEYS: Record<string, Message> = {
   sign_in_failed: msg("Could not sign in — please try again."),
   sign_up_failed: msg("Could not create the account — please try again."),
   auth_meta_failed: msg("Could not sign in — please try again."),
+  auth_client_unavailable: msg("Sign-in could not be loaded. Reload the page and try again."),
   device_storage_unavailable: msg("This browser blocked access to storage. Allow site storage before signing in."),
   local_sign_out_cleanup_failed: msg("Enveo could not remove the local copy. The server session has ended; retry the local cleanup before reloading the app."),
   server_sign_out_failed: msg("The server session could not be ended. You are still signed in — try again."),
