@@ -94,7 +94,7 @@ export function CoverStepSheet({
   );
   const poolAvailable = Math.max(0, state.readyToAssign);
   const [plan, setPlan] = useState<CoverPlan>(() => proposeCoverSources(step.amount, state.readyToAssign, donors));
-  const [pad, setPad] = useState<AmountPadTarget | null>(null);
+  const [pad, setPad] = useState<(AmountPadTarget & { id: string }) | null>(null);
 
   const status = coverPlanStatus(plan, [{ id: POOL_SOURCE_ID, available: poolAvailable }, ...donors]);
 
@@ -105,6 +105,7 @@ export function CoverStepSheet({
 
   const openPadFor = (id: string, label: string) =>
     setPad({
+      id,
       label,
       initial: plan[id] ?? 0,
       onCommit: (minor) => setPlan((p) => ({ ...p, [id]: minor })),
@@ -184,6 +185,7 @@ export function CoverStepSheet({
     // can drain under an open sheet); then the row must stay editable so the human can zero it.
     const inert = s.available === 0 && value === 0;
     const tone = bad ? C.neg : value > 0 ? TEAL : null;
+    const active = pad?.id === s.id;
     const open = () => !inert && openPadFor(s.id, s.name);
     return (
       <div
@@ -232,6 +234,8 @@ export function CoverStepSheet({
               borderRadius: 9,
               padding: "6px 9px",
               cursor: inert ? "default" : "pointer",
+              // The Budget screen's active-cell underline instead of the focus ring on a read-only input.
+              boxShadow: active ? "inset 0 -2px 0 var(--input-underline)" : undefined,
             }}
           >
             <span style={{ fontSize: 11, color: C.soft }}>−</span>
@@ -254,6 +258,7 @@ export function CoverStepSheet({
                 fontVariantNumeric: "tabular-nums",
                 cursor: inert ? "default" : "pointer",
                 padding: 0,
+                outline: "none",
               }}
             />
             <span style={{ fontSize: 11, color: C.soft }}>{symbol}</span>

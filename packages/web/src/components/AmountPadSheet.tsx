@@ -86,39 +86,43 @@ export function AmountPadSheet({
     onClose();
   };
 
+  // The pad usually opens over another sheet (cover, suggest, fill goals) whose body sits at z 100,
+  // above this sheet's z-90 backdrop — taps on it then missed the backdrop and the pad stayed open.
   return (
-    <Sheet show={show} onClose={onClose}>
-      {(C) => (
-        <div>
-          <div style={{ fontSize: 13.5, color: C.mute, textAlign: "center", marginBottom: 10 }}>{label}</div>
-          <div
-            role="status"
-            aria-label={label}
-            style={{
-              fontSize: 28,
-              fontWeight: 700,
-              fontVariantNumeric: "tabular-nums",
-              textAlign: "right",
-              color: error ? CORAL : C.text,
-              background: error ? "var(--danger-18)" : C.bg,
-              border: `1.5px solid ${error ? CORAL : C.line}`,
-              borderRadius: 12,
-              padding: "8px 14px",
-              overflowX: "auto",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {localizePadExpression(state.expr, lang) || "0"}
+    <div style={{ position: "relative", zIndex: 110 }}>
+      <Sheet show={show} onClose={onClose}>
+        {(C) => (
+          <div>
+            <div style={{ fontSize: 13.5, color: C.mute, textAlign: "center", marginBottom: 10 }}>{label}</div>
+            <div
+              role="status"
+              aria-label={label}
+              style={{
+                fontSize: 28,
+                fontWeight: 700,
+                fontVariantNumeric: "tabular-nums",
+                textAlign: "right",
+                color: error ? CORAL : C.text,
+                background: error ? "var(--danger-18)" : C.bg,
+                border: `1.5px solid ${error ? CORAL : C.line}`,
+                borderRadius: 12,
+                padding: "8px 14px",
+                overflowX: "auto",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {localizePadExpression(state.expr, lang) || "0"}
+            </div>
+            <div style={{ minHeight: 20, textAlign: "right", fontSize: 14, color: C.mute, fontVariantNumeric: "tabular-nums", margin: "6px 2px 10px" }}>
+              {hasOp && preview !== null ? t("= {amount}", { amount: M(preview) }) : ""}
+            </div>
+            {}
+            <div style={{ margin: "0 -20px calc(-28px - env(safe-area-inset-bottom))" }}>
+              <Numpad onKey={onKey} onOk={onOk} />
+            </div>
           </div>
-          <div style={{ minHeight: 20, textAlign: "right", fontSize: 14, color: C.mute, fontVariantNumeric: "tabular-nums", margin: "6px 2px 10px" }}>
-            {hasOp && preview !== null ? t("= {amount}", { amount: M(preview) }) : ""}
-          </div>
-          {}
-          <div style={{ margin: "0 -20px calc(-28px - env(safe-area-inset-bottom))" }}>
-            <Numpad onKey={onKey} onOk={onOk} />
-          </div>
-        </div>
-      )}
-    </Sheet>
+        )}
+      </Sheet>
+    </div>
   );
 }
