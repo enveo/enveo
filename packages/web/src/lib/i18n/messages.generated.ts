@@ -1100,6 +1100,7 @@ export const MESSAGES = [
   "{amount} to cover · {pool} in To be budgeted",
   "{amount} to go",
   "{available} available",
+  "{available} available → {after} after the move",
   "{available} available → {after} left",
   "{count} unsent changes are still on this device. Retry when online, export a backup, or explicitly discard them.",
   "{count}× · {amount}",

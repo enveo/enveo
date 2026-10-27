@@ -270,6 +270,8 @@ export function CoverStepSheet({
 
   const short = status.sum < step.amount;
   const hasTarget = step.amount > 0;
+  const targetAvailable = state.envelopes.find((e) => e.id === step.envelopeId)?.available ?? 0;
+  const targetAfter = targetAvailable + status.sum;
 
   return (
     <>
@@ -277,8 +279,20 @@ export function CoverStepSheet({
         {(C) => (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{title}</div>
-            <div style={{ fontSize: 12, color: C.mute, marginTop: 3, marginBottom: 12, fontVariantNumeric: "tabular-nums" }}>
+            <div style={{ fontSize: 12, color: C.mute, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
               {hasTarget ? t("Needs {amount} · pick where it comes from", { amount: M(step.amount) }) : t("Pick where the money comes from")}
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: targetAfter < 0 ? C.neg : C.text,
+                marginTop: 6,
+                marginBottom: 12,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {t("{available} available → {after} after the move", { available: M(targetAvailable), after: M(targetAfter) })}
             </div>
 
             {sources.map((s, i) => row(s, i === sources.length - 1))}

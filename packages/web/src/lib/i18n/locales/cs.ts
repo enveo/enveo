@@ -793,5 +793,6 @@ export const cs: Dict = {
   "Top up {name}": "Dorovnat {name}",
   "{amount} to cover · {pool} in To be budgeted": "K pokrytí {amount} · v K rozdělení {pool}",
   "{available} available": "K dispozici {available}",
+  "{available} available → {after} after the move": "K dispozici {available} → po přesunu {after}",
   "{available} available → {after} left": "K dispozici {available} → zůstane {after}",
 };

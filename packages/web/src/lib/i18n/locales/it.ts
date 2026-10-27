@@ -774,6 +774,7 @@ export const it: Dict = {
   "Top up {name}": "Ricarica {name}",
   "{amount} to cover · {pool} in To be budgeted": "{amount} da coprire · {pool} in Da assegnare",
   "{available} available": "{available} disponibili",
+  "{available} available → {after} after the move": "{available} disponibili → dopo lo spostamento {after}",
   "{available} available → {after} left": "{available} disponibili → ne resteranno {after}",
   "Skipped: {n}": "Saltati: {n}",
 };

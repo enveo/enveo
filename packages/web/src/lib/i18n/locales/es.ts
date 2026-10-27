@@ -781,5 +781,6 @@ export const es: Dict = {
   "Top up {name}": "Añadir a {name}",
   "{amount} to cover · {pool} in To be budgeted": "{amount} por cubrir · {pool} en Por presupuestar",
   "{available} available": "{available} disponible",
+  "{available} available → {after} after the move": "{available} disponible → tras moverlo {after}",
   "{available} available → {after} left": "{available} disponible → quedarán {after}",
 };

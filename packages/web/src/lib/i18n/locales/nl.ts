@@ -761,6 +761,7 @@ export const nl: Dict = {
   "Top up {name}": "{name} aanvullen",
   "{amount} to cover · {pool} in To be budgeted": "{amount} te dekken · {pool} in Te budgetteren",
   "{available} available": "{available} beschikbaar",
+  "{available} available → {after} after the move": "{available} beschikbaar → na het verplaatsen {after}",
   "{available} available → {after} left": "{available} beschikbaar → {after} blijft over",
   "Skipped: {n}": "Overgeslagen: {n}",
 };

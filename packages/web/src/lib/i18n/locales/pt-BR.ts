@@ -778,5 +778,6 @@ export const ptBR: Dict = {
   "Top up {name}": "Reforçar {name}",
   "{amount} to cover · {pool} in To be budgeted": "{amount} a cobrir · {pool} em A orçar",
   "{available} available": "{available} disponível",
+  "{available} available → {after} after the move": "{available} disponível → depois de mover {after}",
   "{available} available → {after} left": "{available} disponível → sobrarão {after}",
 };

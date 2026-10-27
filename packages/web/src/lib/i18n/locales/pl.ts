@@ -1415,6 +1415,7 @@ export const pl: Dict = {
   "Top up {name}": "Uzupełnij {name}",
   "{amount} to cover · {pool} in To be budgeted": "Do pokrycia {amount} · w Do rozdysponowania {pool}",
   "{available} available": "Dostępne {available}",
+  "{available} available → {after} after the move": "Dostępne {available} → po przeniesieniu {after}",
   "{available} available → {after} left": "Dostępne {available} → zostanie {after}",
   "Skipped: {n}": "Pominięto: {n}",
   "Details were not saved for this import.": "Nie zapisano szczegółów tego importu.",

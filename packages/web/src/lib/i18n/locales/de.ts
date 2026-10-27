@@ -763,5 +763,6 @@ export const de: Dict = {
   "Top up {name}": "{name} ausgleichen",
   "{amount} to cover · {pool} in To be budgeted": "{amount} zu decken · {pool} in Zu budgetieren",
   "{available} available": "{available} verfügbar",
+  "{available} available → {after} after the move": "{available} verfügbar → nach dem Verschieben {after}",
   "{available} available → {after} left": "{available} verfügbar → {after} bleiben",
 };

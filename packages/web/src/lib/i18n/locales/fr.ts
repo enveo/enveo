@@ -781,5 +781,6 @@ export const fr: Dict = {
   "Top up {name}": "Renflouer {name}",
   "{amount} to cover · {pool} in To be budgeted": "{amount} à couvrir · {pool} dans À budgétiser",
   "{available} available": "{available} disponible",
+  "{available} available → {after} after the move": "{available} disponible → après le transfert {after}",
   "{available} available → {after} left": "{available} disponible → il restera {after}",
 };

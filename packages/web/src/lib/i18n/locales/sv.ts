@@ -755,5 +755,6 @@ export const sv: Dict = {
   "Top up {name}": "Fyll på {name}",
   "{amount} to cover · {pool} in To be budgeted": "{amount} att täcka · {pool} i Att budgetera",
   "{available} available": "{available} tillgängligt",
+  "{available} available → {after} after the move": "{available} tillgängligt → efter flytten {after}",
   "{available} available → {after} left": "{available} tillgängligt → {after} kvar",
 };
