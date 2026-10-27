@@ -258,7 +258,9 @@ export function CoverStepSheet({
                 fontVariantNumeric: "tabular-nums",
                 cursor: inert ? "default" : "pointer",
                 padding: 0,
-                outline: "none",
+                // Transparent, not none: invisible here, but forced-colors mode (which drops the
+                // box-shadow underline) paints it, so keyboard focus stays visible there.
+                outline: "2px solid transparent",
               }}
             />
             <span style={{ fontSize: 11, color: C.soft }}>{symbol}</span>
