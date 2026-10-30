@@ -3,7 +3,7 @@
 import { runAudit } from "../../audit";
 
 const mode = process.argv[2] ?? "clean";
-const policyPath = process.argv[3] ?? new URL("../../../security/audit-policy.json", import.meta.url).pathname;
+const policyPath = process.argv[3] ?? new URL("./audit-policy.json", import.meta.url).pathname;
 
 process.exit(
   await runAudit({

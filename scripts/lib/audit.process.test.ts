@@ -9,7 +9,7 @@ import { describe, expect, it } from "bun:test";
 import { EXIT_FAILED_CLOSED, EXIT_OK, EXIT_POLICY_VIOLATION, runAudit, sanitizeToolOutput } from "../audit";
 
 const FAKE = new URL("./fixtures/fake-audit.ts", import.meta.url).pathname;
-const POLICY = new URL("../../security/audit-policy.json", import.meta.url).pathname;
+const POLICY = new URL("./fixtures/audit-policy.json", import.meta.url).pathname;
 const LOCK = new URL("../../bun.lock", import.meta.url).pathname;
 const NOW = new Date("2026-08-12T00:00:00Z");
 
@@ -32,7 +32,7 @@ async function run(mode: string, now = NOW) {
 
 describe("runAudit (real child process, fake audit command)", () => {
   it("fails the STALE exception when the command reports nothing (exit 0, `{}`)", async () => {
-    // The repository policy currently excepts one real advisory, so a clean report means that
+    // The fixture policy excepts one real advisory, so a clean report means that
     // exception is dead wood — the gate must say so rather than quietly pass.
     const { code, output } = await run("clean");
 

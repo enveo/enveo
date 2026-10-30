@@ -123,6 +123,10 @@ export const es: Dict = {
   "Could not create the account — please try again.": "No se ha podido crear la cuenta. Inténtalo de nuevo.",
   "Could not reach the AI service — check the network connection and try again.":
     "No se pudo conectar con el servicio de IA: comprueba la conexión de red e inténtalo de nuevo.",
+  "Account tools could not be loaded. Reload the page and try again.":
+    "No se pudieron cargar las funciones de la cuenta. Recarga la página e inténtalo de nuevo.",
+  "Account tools could not be loaded. Reloading fixes this, but it discards changes on this device that have not synced yet.":
+    "No se pudieron cargar las funciones de la cuenta. Recargar la página lo soluciona, pero descarta los cambios de este dispositivo que aún no se han sincronizado.",
   "Could not sign in — please try again.": "No se ha podido iniciar sesión. Inténtalo de nuevo.",
   "Create account": "Crear cuenta",
   "Create an account": "Crear una cuenta",

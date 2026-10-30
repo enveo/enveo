@@ -125,6 +125,9 @@ export const ptBR: Dict = {
   "Could not create the account — please try again.": "Não foi possível criar a conta — tente de novo.",
   "Could not reach the AI service — check the network connection and try again.":
     "Não foi possível conectar ao serviço de IA — verifique a conexão de rede e tente de novo.",
+  "Account tools could not be loaded. Reload the page and try again.": "Não foi possível carregar as funções da conta. Recarregue a página e tente novamente.",
+  "Account tools could not be loaded. Reloading fixes this, but it discards changes on this device that have not synced yet.":
+    "Não foi possível carregar as funções da conta. Recarregar a página resolve isso, mas descarta as alterações deste dispositivo que ainda não foram sincronizadas.",
   "Could not sign in — please try again.": "Não foi possível entrar — tente de novo.",
   "Create account": "Criar conta",
   "Create an account": "Criar uma conta",

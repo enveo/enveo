@@ -45,6 +45,8 @@ export const MESSAGES = [
   "Account deletion",
   "Account name",
   "Account preferences",
+  "Account tools could not be loaded. Reload the page and try again.",
+  "Account tools could not be loaded. Reloading fixes this, but it discards changes on this device that have not synced yet.",
   "Account, settings and sign out",
   "Accounts",
   "Accounts shown when collapsed",

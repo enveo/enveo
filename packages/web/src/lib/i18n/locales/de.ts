@@ -121,6 +121,10 @@ export const de: Dict = {
   "Could not create the account — please try again.": "Konto konnte nicht erstellt werden — bitte versuche es erneut.",
   "Could not reach the AI service — check the network connection and try again.":
     "Der KI-Dienst ist nicht erreichbar — prüfe die Netzwerkverbindung und versuche es erneut.",
+  "Account tools could not be loaded. Reload the page and try again.":
+    "Die Kontofunktionen konnten nicht geladen werden. Lade die Seite neu und versuche es erneut.",
+  "Account tools could not be loaded. Reloading fixes this, but it discards changes on this device that have not synced yet.":
+    "Die Kontofunktionen konnten nicht geladen werden. Ein Neuladen behebt das, verwirft aber noch nicht synchronisierte Änderungen auf diesem Gerät.",
   "Could not sign in — please try again.": "Anmeldung fehlgeschlagen — bitte versuche es erneut.",
   "Create account": "Konto erstellen",
   "Create an account": "Konto anlegen",

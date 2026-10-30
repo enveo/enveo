@@ -121,6 +121,10 @@ export const nl: Dict = {
   "Could not create the account — please try again.": "Het account kon niet worden aangemaakt — probeer het opnieuw.",
   "Could not reach the AI service — check the network connection and try again.":
     "Kan de AI-dienst niet bereiken — controleer de netwerkverbinding en probeer het opnieuw.",
+  "Account tools could not be loaded. Reload the page and try again.":
+    "Accountfuncties konden niet worden geladen. Laad de pagina opnieuw en probeer het nog eens.",
+  "Account tools could not be loaded. Reloading fixes this, but it discards changes on this device that have not synced yet.":
+    "Accountfuncties konden niet worden geladen. Opnieuw laden lost dit op, maar verwijdert wijzigingen op dit apparaat die nog niet zijn gesynchroniseerd.",
   "Could not sign in — please try again.": "Aanmelden is niet gelukt — probeer het opnieuw.",
   "Create account": "Account aanmaken",
   "Create an account": "Maak een account aan",

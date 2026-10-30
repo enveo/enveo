@@ -122,6 +122,9 @@ export const fr: Dict = {
   "Could not create the account — please try again.": "Impossible de créer le compte — réessayez.",
   "Could not reach the AI service — check the network connection and try again.":
     "Impossible de joindre le service d'IA — vérifiez la connexion réseau et réessayez.",
+  "Account tools could not be loaded. Reload the page and try again.": "Impossible de charger les fonctions du compte. Rechargez la page et réessayez.",
+  "Account tools could not be loaded. Reloading fixes this, but it discards changes on this device that have not synced yet.":
+    "Impossible de charger les fonctions du compte. Recharger la page corrige le problème, mais supprime les modifications de cet appareil qui ne sont pas encore synchronisées.",
   "Could not sign in — please try again.": "Impossible de se connecter — réessayez.",
   "Create account": "Créer un compte",
   "Create an account": "Créer un compte",
