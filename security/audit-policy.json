@@ -26,9 +26,9 @@
       "mitigation": "None required for reachability. Kept visible in every audit run rather than suppressed; drizzle-kit is re-checked at each dependency review for a release that drops @esbuild-kit/esm-loader.",
       "fixedVersion": "0.25.0",
       "owner": "Maintainer",
-      "rationale": "Not fixable from this repository today: drizzle-kit 0.31.10 (the latest stable, and the version Better Auth's peer range requires) still depends on @esbuild-kit/esm-loader > @esbuild-kit/core-utils, which pins esbuild to ~0.18.20. Overriding it would replace a wrapper's pinned dependency with an untested major jump for zero security benefit, since the vulnerable code path is never executed.",
-      "addedOn": "2026-08-11",
-      "expires": "2026-11-08"
+      "rationale": "Not fixable from this repository today: the installed drizzle-kit 0.31.10 and the latest stable 0.31.11 (re-checked 2026-10-30) both depend on @esbuild-kit/esm-loader > @esbuild-kit/core-utils, which pins esbuild to ~0.18.20. Overriding it would replace a wrapper's pinned dependency with an untested major jump for zero security benefit, since the vulnerable code path is never executed.",
+      "addedOn": "2026-10-30",
+      "expires": "2027-01-28"
     },
     {
       "advisoryId": "GHSA-gcqx-w48m-w2h4",
