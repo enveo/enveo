@@ -131,7 +131,9 @@ export const cs: Dict = {
   "Could not create the account — please try again.": "Účet se nepodařilo vytvořit — zkus to znovu.",
   "Could not reach the AI service — check the network connection and try again.":
     "Službu AI se nepodařilo kontaktovat — zkontroluj připojení k síti a zkus to znovu.",
-  "Sign-in could not be loaded. Reload the page and try again.": "Přihlášení se nepodařilo načíst. Obnovte stránku a zkuste to znovu.",
+  "Account tools could not be loaded. Reload the page and try again.": "Správu účtu se nepodařilo načíst. Obnovte stránku a zkuste to znovu.",
+  "Account tools could not be loaded. Reloading fixes this, but it discards changes on this device that have not synced yet.":
+    "Správu účtu se nepodařilo načíst. Obnovení stránky to opraví, ale zahodí změny na tomto zařízení, které ještě nebyly synchronizovány.",
   "Could not sign in — please try again.": "Přihlášení se nezdařilo — zkus to znovu.",
   "Create account": "Vytvořit účet",
   "Create an account": "Vytvoř si účet",

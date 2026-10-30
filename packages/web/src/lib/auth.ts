@@ -1,4 +1,5 @@
 import type { createAuthClient } from "better-auth/client";
+import { storageMode } from "./idb";
 import { runServerWriteOperation } from "./serverWriteOperations";
 import { type CoordinatedSignOutLease, runCoordinatedSessionEnd } from "./sync/multitab";
 
@@ -9,13 +10,14 @@ let client: Promise<AuthClient> | null = null;
  *  use instead of riding in the initial bundle (§3f budget). The PWA precaches the chunk. */
 export function loadAuthClient(): Promise<AuthClient> {
   // Browsers may keep a failed module fetch for the life of the page, so a retry alone is not
-  // enough: the error asks for a reload (safe — the replica and outbox are durable). The memo is
-  // still dropped so an engine that does refetch recovers without one.
+  // enough: the error asks for a reload. That is safe only with a durable replica and outbox; a
+  // memory-only one dies with the page, so that error warns first. The memo is still dropped so an
+  // engine that does refetch recovers without a reload.
   client ??= import("better-auth/client")
     .then((m) => m.createAuthClient())
     .catch(() => {
       client = null;
-      throw new Error("auth_client_unavailable");
+      throw new Error(storageMode() === "idb" ? "auth_client_unavailable" : "auth_client_unavailable_unsynced");
     });
   return client;
 }
@@ -104,7 +106,9 @@ export function assertServerSignOutSucceeded(error: { message?: string } | null)
   if (error) throw new Error("server_sign_out_failed");
 }
 
-export function normalizeServerSignOutFailure(_error: unknown): never {
+export function normalizeServerSignOutFailure(error: unknown): never {
+  // "Try again" cannot recover a client that failed to load, so that error keeps its own wording.
+  if (error instanceof Error && error.message.startsWith("auth_client_unavailable")) throw error;
   throw new Error("server_sign_out_failed");
 }
 
@@ -134,9 +138,7 @@ export function endSessionForSignOut(lease: CoordinatedSignOutLease): Promise<vo
 
 export async function hasSession(): Promise<boolean> {
   try {
-    const authClient = await loadAuthClient();
-    const s = await authClient.getSession();
-    return !!(s as { data?: { user?: unknown } })?.data?.user;
+    return (await fetchSessionUserId()) !== null;
   } catch {
     return false;
   }

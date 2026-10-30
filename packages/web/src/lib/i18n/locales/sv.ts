@@ -122,7 +122,9 @@ export const sv: Dict = {
   "Could not create the account — please try again.": "Kontot kunde inte skapas — försök igen.",
   "Could not reach the AI service — check the network connection and try again.":
     "Det gick inte att nå AI-tjänsten — kontrollera nätverksanslutningen och försök igen.",
-  "Sign-in could not be loaded. Reload the page and try again.": "Inloggningen kunde inte läsas in. Ladda om sidan och försök igen.",
+  "Account tools could not be loaded. Reload the page and try again.": "Kontofunktionerna kunde inte läsas in. Ladda om sidan och försök igen.",
+  "Account tools could not be loaded. Reloading fixes this, but it discards changes on this device that have not synced yet.":
+    "Kontofunktionerna kunde inte läsas in. Att ladda om sidan löser det, men tar bort ändringar på den här enheten som inte har synkats ännu.",
   "Could not sign in — please try again.": "Inloggningen misslyckades — försök igen.",
   "Create account": "Skapa konto",
   "Create an account": "Skapa ett konto",
