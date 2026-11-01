@@ -53,6 +53,7 @@ function remote(overrides: Partial<PlainImportJobRemote> = {}): PlainImportJobRe
   const cancellations: string[] = [];
   return {
     create: async () => detail(),
+    createPrepared: async () => detail(),
     list: async () => [],
     get: async () => detail(),
     cancel: async (id) => {

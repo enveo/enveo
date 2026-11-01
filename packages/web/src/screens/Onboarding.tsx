@@ -4,6 +4,7 @@ import { LogoMark } from "../components/chrome";
 import { markInstallOffered } from "../components/InstallBanner";
 import { InstallBody } from "../components/InstallBody";
 import { LazyChunk } from "../components/lazy";
+import { MigrationFlow } from "../components/MigrationSheet";
 import { fmtSignedTrim } from "../lib/amount";
 import { api, apiErrorMessage } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
@@ -131,6 +132,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const { settings, setSettings } = useSettings();
   const { t, tp, lang } = useT();
   const [step, setStep] = useState<0 | 1 | 2>(onboardingDraft.step);
+  const [migrating, setMigrating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -302,7 +304,18 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   ) : (
     <>
       {}
-      {step === 0 && (
+      {step === 0 && migrating && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          <MigrationFlow
+            onClose={() => setMigrating(false)}
+            onMigrated={() => {
+              clearOnboardingDraft();
+              onDone();
+            }}
+          />
+        </div>
+      )}
+      {step === 0 && !migrating && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 26 }}>
             <div style={{ marginBottom: 16 }}>
@@ -376,6 +389,16 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           />
           <div style={{ height: 10 }} />
           <BigButton label={busy ? t("Loading sample data…") : t("Try it with sample data")} onClick={() => void tryDemo()} disabled={busy} variant="outline" />
+          <div style={{ height: 10 }} />
+          <BigButton
+            label={t("Move from YNAB or Actual Budget")}
+            onClick={() => {
+              commitCurrency();
+              setMigrating(true);
+            }}
+            disabled={busy}
+            variant="outline"
+          />
           {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
         </div>
       )}

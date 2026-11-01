@@ -1,5 +1,12 @@
 import type { ImportCompletion } from "@enveo/shared";
-import { type AiLocale, type ImportJobDetail, type ImportJobSummary, importJobDetailSchema, importJobSummarySchema } from "@enveo/shared";
+import {
+  type AiLocale,
+  type ImportJobDetail,
+  type ImportJobSummary,
+  type ImportRecognitionResult,
+  importJobDetailSchema,
+  importJobSummarySchema,
+} from "@enveo/shared";
 import { http } from "../api";
 
 const summaryListSchema = importJobSummarySchema.array();
@@ -8,6 +15,8 @@ const detail = (method: string, path: string, body?: unknown): Promise<ImportJob
 
 export const importJobsApi = {
   create: (input: { id: string; budgetId: string; accountId: string; locale: AiLocale; images: string[] }) => detail("POST", "/import/jobs", input),
+  createPrepared: (input: { id: string; budgetId: string; accountId: string; locale: AiLocale; result: ImportRecognitionResult }) =>
+    detail("POST", "/import/jobs/prepared", input),
   list: (): Promise<ImportJobSummary[]> => http<unknown>("GET", "/import/jobs").then((value) => summaryListSchema.parse(value)),
   get: (id: string) => detail("GET", `/import/jobs/${encodeURIComponent(id)}`),
   cancel: (id: string, budgetId: string) => detail("POST", `/import/jobs/${encodeURIComponent(id)}/cancel`, { budgetId }),

@@ -1,8 +1,10 @@
 import {
   aiLocaleSchema,
   type BudgetPreferences,
+  IMPORT_CSV_MAX_ROWS,
   IMPORT_JOB_MAX_IMAGES,
   importJobDetailSchema,
+  importJobResultSchema,
   importJobSummarySchema,
   importReceiptSchema,
   reconcileBudgetPreferences,
@@ -24,7 +26,7 @@ type RouteContext = Context<{ Variables: Variables }>;
 
 export type ImportJobRouteRepository = Pick<
   ImportJobRepository,
-  "create" | "listForUser" | "getForUser" | "getForBudget" | "deleteMany" | "requestCancel" | "retry" | "markCompleted"
+  "create" | "createPrepared" | "listForUser" | "getForUser" | "getForBudget" | "deleteMany" | "requestCancel" | "retry" | "markCompleted"
 >;
 
 export interface ImportJobRouteOptions {
@@ -46,6 +48,10 @@ export const createImportJobInput = z
     images: z.array(z.string()).min(1).max(IMPORT_JOB_MAX_IMAGES),
   })
   .strict();
+export const createPreparedImportJobInput = z
+  .object({ id: z.guid(), budgetId: z.guid(), accountId: z.guid(), locale: aiLocaleSchema, result: importJobResultSchema })
+  .strict()
+  .refine((input) => input.result.proposals.length <= IMPORT_CSV_MAX_ROWS);
 export const importJobMutationInput = z.object({ budgetId: z.guid() }).strict();
 export const deleteImportJobsInput = importJobMutationInput.extend({ ids: z.array(z.guid()).min(1).max(100) }).strict();
 export const completeImportJobInput = importJobMutationInput.extend({
@@ -149,6 +155,28 @@ export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
       const publicJob = publicDetail(result.job);
       if (result.created) wake();
       return c.json(publicJob, 202);
+    } catch (error) {
+      if (error instanceof ImportJobConflict) return c.json({ error: error.code }, 409);
+      throw error;
+    }
+  });
+
+  routes.post("/import/jobs/prepared", async (c) => {
+    const body = createPreparedImportJobInput.parse(await c.req.json());
+    const authorization = await authorizeMutation(c, body.budgetId);
+    if ("response" in authorization) return authorization.response;
+    if (!(await accountBelongsToBudget(body.accountId, authorization.meta.id))) return c.json({ error: "account_unavailable" }, 400);
+    try {
+      const { job } = await repository.createPrepared({
+        id: body.id,
+        userId: authorization.owner,
+        budgetId: authorization.meta.id,
+        accountId: body.accountId,
+        locale: body.locale,
+        epoch: authorization.meta.epoch,
+        result: body.result,
+      });
+      return c.json(publicDetail(job), 201);
     } catch (error) {
       if (error instanceof ImportJobConflict) return c.json({ error: error.code }, 409);
       throw error;

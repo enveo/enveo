@@ -2,6 +2,7 @@ import { type ClientLedger, E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import qrcode from "qrcode-generator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "../../components/chrome";
+import { MigrationSheet } from "../../components/MigrationSheet";
 import { api, apiErrorMessage, useLedgerVersion } from "../../lib/api";
 import { hasSession } from "../../lib/auth";
 import { useTheme } from "../../lib/contexts";
@@ -154,6 +155,7 @@ function DataBackup() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [migrating, setMigrating] = useState(false);
 
   const doExport = () => {
     setError(null);
@@ -202,8 +204,16 @@ function DataBackup() {
           disabled={busy}
           busyLabel={busy ? t("Loading…") : undefined}
         />
+        <ActionRow
+          icon={<ActionIcon paths={IC.upload} />}
+          label={t("Move from YNAB or Actual Budget")}
+          desc={t("Brings your accounts, envelopes and history into an empty budget.")}
+          onClick={() => setMigrating(true)}
+          disabled={busy}
+        />
       </ActionGroup>
       <input ref={fileRef} type="file" accept="application/json,.json" onChange={(e) => void onFile(e)} style={{ display: "none" }} />
+      <MigrationSheet show={migrating} onClose={() => setMigrating(false)} />
 
       {error && <div style={{ fontSize: 12, color: C.neg, margin: "8px 4px 0", lineHeight: 1.5 }}>{error}</div>}
       {done && <div style={{ fontSize: 12, color: C.pos, margin: "8px 4px 0", lineHeight: 1.5 }}>{done}</div>}

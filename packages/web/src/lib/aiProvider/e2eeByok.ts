@@ -1,9 +1,9 @@
 import {
   type ChatRequest,
   type ImportChunkState,
-  type ImportHistoryRecord,
   type ImportRecognitionPipelineInput,
   type ImportRecognitionResult,
+  importHistoryRecords,
   type OpenAiModel,
   runImportRecognitionPipeline,
 } from "@enveo/shared";
@@ -127,22 +127,7 @@ export class E2eeByokProvider implements AiProvider {
   ): Promise<ImportExtractResult> {
     const today = new Date().toISOString().slice(0, 10);
     const currency = input.ledger.budgets.find((budget) => budget.id === this.deps.budgetId)?.currency ?? "EUR";
-    const envelopeNames = new Map(input.ledger.envelopes.map((envelope) => [envelope.id, envelope.name]));
-    const categoryNames = new Map(input.ledger.categories.map((category) => [category.id, category.name]));
-    const placeNames = new Map(input.ledger.places.map((place) => [place.id, place.name]));
-    const historyRecords: ImportHistoryRecord[] = input.ledger.transactions.map((transaction) => ({
-      accountId: transaction.accountId,
-      currency,
-      sourceRef: transaction.sourceRef,
-      tag: transaction.tag,
-      place: transaction.placeId ? (placeNames.get(transaction.placeId) ?? null) : null,
-      name: transaction.name,
-      envelope: transaction.envelopeId ? (envelopeNames.get(transaction.envelopeId) ?? null) : null,
-      category: transaction.categoryId ? (categoryNames.get(transaction.categoryId) ?? null) : null,
-      type: transaction.type,
-      isRefund: transaction.type === "expense" && transaction.isRefund,
-      toAccountId: transaction.type === "transfer" ? transaction.toAccountId : null,
-    }));
+    const historyRecords = importHistoryRecords(input.ledger, currency);
     return runImportRecognitionPipeline({
       images: input.images,
       locale: input.locale,

@@ -27,6 +27,16 @@ export interface ImportJobRoutesOutput {
     appliedCount: number | null;
     skippedCount: number | null;
   };
+  prepared: {
+    firstStatus: number;
+    replayStatus: number;
+    conflictStatus: number;
+    foreignBudgetStatus: number;
+    jobs: number;
+    status: string | null;
+    model: string | null;
+    phase: string | null;
+  };
   publicReadSafe: boolean;
 }
 
@@ -168,6 +178,44 @@ async function main() {
     const serialized = JSON.stringify(firstBody).toLowerCase();
     const forbidden = ["images", "requesthash", "leasetoken", "leaseowner", "leaseexpires", "extraction", "credential", "ciphertext"];
 
+    const preparedRequest = (id: string, proposalCount: number, budgetId = budgetA!.id) => ({
+      id,
+      budgetId,
+      accountId: accountA!.id,
+      locale: "en-US",
+      result: {
+        rows: [],
+        proposals: Array.from({ length: proposalCount }, (_, index) => ({
+          rowId: `r${index}`,
+          sourceRows: [`r${index}`],
+          disposition: "candidate",
+          date: "2026-09-01",
+          amount: 425,
+          currency: "USD",
+          type: "expense",
+          isRefund: false,
+          toAccountId: null,
+          semanticKind: "unknown",
+          relation: null,
+          name: "Linden Market",
+          tag: "linden market",
+          rawPlace: "Linden Market",
+          envelopeId: null,
+          categoryId: null,
+          placeName: "Linden Market",
+          reviewReasons: [],
+          selected: true,
+        })),
+      },
+    });
+    const preparedId = crypto.randomUUID();
+    const preparedFirst = await post("/api/import/jobs/prepared", preparedRequest(preparedId, 1));
+    const preparedReplay = await post("/api/import/jobs/prepared", preparedRequest(preparedId, 1));
+    const preparedConflict = await post("/api/import/jobs/prepared", preparedRequest(preparedId, 2));
+    const preparedForeign = await post("/api/import/jobs/prepared", preparedRequest(crypto.randomUUID(), 1, budgetB!.id));
+    const preparedRows = await isolated<{ status: string; model: string; phase: string }[]>`
+      SELECT status, model, phase FROM import_jobs WHERE id = ${preparedId}`;
+
     await emitChildResult(SENTINEL, {
       creation: {
         firstStatus: first.status,
@@ -201,6 +249,16 @@ async function main() {
         status: completed?.status ?? null,
         appliedCount: completed?.appliedCount ?? null,
         skippedCount: completed?.skippedCount ?? null,
+      },
+      prepared: {
+        firstStatus: preparedFirst.status,
+        replayStatus: preparedReplay.status,
+        conflictStatus: preparedConflict.status,
+        foreignBudgetStatus: preparedForeign.status,
+        jobs: preparedRows.length,
+        status: preparedRows[0]?.status ?? null,
+        model: preparedRows[0]?.model ?? null,
+        phase: preparedRows[0]?.phase ?? null,
       },
       publicReadSafe: forbidden.every((key) => !serialized.includes(key)) && wakes === 4,
     } satisfies ImportJobRoutesOutput);

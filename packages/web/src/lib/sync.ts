@@ -63,7 +63,7 @@ import { configureTransport } from "./sync/transport";
 export { bootOnce, getLastBootSource, retryBoot } from "./sync/boot";
 export type { BootSource, IdentityVerdict, PendingE2eeUpgrade, SyncState, SyncStatus } from "./sync/contracts";
 export { E2eeUpgradeRequiredError, EMPTY_LEDGER, TierMismatchError } from "./sync/contracts";
-export { __resetBackoff, fullResync, poke, pullNow, recheckReplicaOwner, syncNow } from "./sync/cycle";
+export { __resetBackoff, fullResync, poke, pullNow, recheckReplicaOwner, syncNow, syncNowCompleted } from "./sync/cycle";
 export { __resetIdentity, assertOwnReplica, decideIdentity, enterLoginPreservingReplica } from "./sync/identity";
 export type { CoordinatedSignOutLease } from "./sync/multitab";
 export {
@@ -76,7 +76,7 @@ export {
   markSignOutServerSucceeded,
   wipeLocalData,
 } from "./sync/multitab";
-export { __resetObligations, markReplacePending } from "./sync/obligations";
+export { __resetObligations, clearReplacePending, markReplacePending } from "./sync/obligations";
 export { getSyncStatus, subscribeSyncStatus } from "./sync/status";
 export { fetchSnapshot, getClientId, pushLocalToServer, resetServerE2ee } from "./sync/transport";
 export { discardPendingE2eeUpgrade, hasPendingE2eeUpgrade, upgradeServerE2eeV2 } from "./sync/upgrade";

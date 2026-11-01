@@ -1,5 +1,6 @@
 import type { ImportReceipt } from "@enveo/shared";
 import {
+  IMPORT_FILE_MODEL,
   IMPORT_JOB_CHUNK_SIZE,
   type ImportExtractBatch,
   type ImportJobDetail,
@@ -40,6 +41,16 @@ export interface CreateImportJobInput {
   tier: "plain" | "e2ee";
   epoch: number;
   images: ImportJobImageInput[];
+}
+
+export interface CreatePreparedImportJobInput {
+  id: string;
+  userId: string;
+  budgetId: string;
+  accountId: string;
+  locale: string;
+  epoch: number;
+  result: ImportRecognitionResult;
 }
 
 interface StoredImage {
@@ -276,6 +287,44 @@ export function createImportJobRepository(database: DB) {
           await tx.insert(importJobChunks).values(chunkRowsFor(input.id, images.length, now));
         }
         return { created: true, job: detailFromRow(inserted) };
+      });
+    },
+
+    /** Rows the browser already read from a file: nothing to recognize, so the job starts in review. */
+    async createPrepared(input: CreatePreparedImportJobInput, now = new Date()): Promise<{ created: boolean; job: ImportJobDetail }> {
+      const result = importJobResultSchema.parse(input.result);
+      const requestHash = sha256(
+        JSON.stringify(["enveo-prepared-import-job", 1, input.id, input.userId, input.budgetId, input.accountId, input.locale, result]),
+      );
+      return database.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(importJobs)
+          .values({
+            id: input.id,
+            clientId: input.id,
+            userId: input.userId,
+            budgetId: input.budgetId,
+            accountId: input.accountId,
+            provider: "enveo",
+            model: IMPORT_FILE_MODEL,
+            locale: input.locale,
+            tier: "plain",
+            epoch: input.epoch,
+            requestHash,
+            status: "ready",
+            phase: "ready",
+            result,
+            proposalCount: result.proposals.length,
+            createdAt: now,
+            updatedAt: now,
+            expiresAt: new Date(now.getTime() + IMPORT_JOB_RETENTION_MS),
+          })
+          .onConflictDoNothing({ target: importJobs.id })
+          .returning();
+        if (inserted) return { created: true, job: detailFromRow(inserted) };
+        const [existing] = await tx.select().from(importJobs).where(eq(importJobs.id, input.id));
+        if (!existing || existing.userId !== input.userId || existing.requestHash !== requestHash) throw new ImportJobConflict();
+        return { created: false, job: detailFromRow(existing) };
       });
     },
 

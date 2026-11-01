@@ -114,6 +114,28 @@ afterEach(() => {
 });
 
 describe("device-local E2EE import runner", () => {
+  it("stores a prepared file result encrypted and ready, without contacting a provider", async () => {
+    let providerCalls = 0;
+    const { runner, activity } = setup({
+      provider: () => {
+        providerCalls += 1;
+        return provider(async () => {});
+      },
+    });
+
+    const created = await runner.createPrepared({ id: ID, accountId: ACCOUNT, locale: "en-US", result: { rows: [], proposals: [] } });
+    await runner.resume();
+
+    expect(created).toMatchObject({ status: "ready", phase: "ready", provider: { provider: "openai", model: "csv-file" } });
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
+      status: "ready",
+      resultCiphertext: expect.stringMatching(/^v2\./),
+      inputCiphertext: null,
+    });
+    expect(activity.get(ID)?.result).toEqual({ rows: [], proposals: [] });
+    expect(providerCalls).toBe(0);
+  });
+
   it("completes locally with counts and removes encrypted detail without any server boundary", async () => {
     const { runner, activity } = setup();
     await runner.create(createInput());

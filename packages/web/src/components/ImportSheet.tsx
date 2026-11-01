@@ -1,10 +1,15 @@
 import type { ImportReceipt } from "@enveo/shared";
 import {
+  applyCsvHistory,
   type BalanceMatchChange,
   buildImportBalanceArbiterPrompt,
+  type CsvRow,
+  type CsvTable,
   computeStateResponse,
+  csvRowsToRecognition,
   decodeImportTextPage,
   findBalanceMatches,
+  IMPORT_CSV_MAX_ROWS,
   IMPORT_JOB_MAX_IMAGES,
   isImportTextPage,
   parseImportBalanceArbiterResponse,
@@ -79,15 +84,17 @@ import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Surface } from "./chrome";
 import { type ImportBalanceMatchState, ImportBalanceReceipt } from "./ImportBalanceReceipt";
 import { ImportCompletionDetails } from "./ImportCompletionDetails";
+import { ImportCsvMapping } from "./ImportCsvMapping";
 import { ImportDeleteConfirm, importPill } from "./ImportDelete";
 import { LazyChunk, useOpenedOnce } from "./lazy";
 
 const ReconcileSheet = lazy(() => import("./ReconcileSheet").then((m) => ({ default: m.ReconcileSheet })));
 
+import { isCsvFile, readCsvFile } from "../lib/importCsv";
 import { PdfWithoutTextError, statementPagesFromPdf } from "../lib/pdfText";
 import { ImportProgress, importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "./ImportProgress";
 
-type Phase = "pick" | "progress" | "review" | "done";
+type Phase = "pick" | "csv" | "progress" | "review" | "done";
 
 async function downscale(f: File, maxSide = 1600): Promise<string> {
   const bmp = await createImageBitmap(f);
@@ -132,6 +139,7 @@ export function ImportSheet({
   const [accountId, setAccountId] = useState(() => preferredAccountId(accounts, accounts[0]?.id ?? ""));
   const [images, setImages] = useState<string[]>([]);
   const [phase, setPhase] = useState<Phase>("pick");
+  const [csvTable, setCsvTable] = useState<CsvTable | null>(null);
   const [jobId, setJobId] = useState<string | null>(initialJobId ?? null);
   const [job, setJob] = useState<ImportActivityItem | undefined>();
   const [items, setItems] = useState<ImportReviewRow[]>([]);
@@ -383,6 +391,26 @@ export function ImportSheet({
     if (!files || files.length === 0) return;
     setError(null);
     setNotice(null);
+    const csvFile = [...files].find(isCsvFile);
+    if (csvFile) {
+      if (fileRef.current) fileRef.current.value = "";
+      const generation = viewGeneration.current;
+      try {
+        const table = await readCsvFile(csvFile);
+        if (generation !== viewGeneration.current) return;
+        if (table.rows.length > IMPORT_CSV_MAX_ROWS) {
+          setError(t("This file has more than {max} rows. Split it into smaller files.", { max: IMPORT_CSV_MAX_ROWS }));
+        } else {
+          setCsvTable(table);
+          setPhase("csv");
+        }
+      } catch (e) {
+        if (generation !== viewGeneration.current) return;
+        const tooLarge = e instanceof Error && e.message === "csv_too_large";
+        setError(tooLarge ? t("This file is too large to read in the browser.") : t("No table with dates was found in this file."));
+      }
+      return;
+    }
     try {
       const incoming: string[] = [];
       for (const file of files) {
@@ -430,6 +458,27 @@ export function ImportSheet({
         setPhase("progress");
       });
       if (generation !== viewGeneration.current) return;
+      setJob(created);
+      setJobId(created.id);
+      setPhase("progress");
+    } catch (e) {
+      if (generation === viewGeneration.current) setError(apiErrorMessage(e));
+    } finally {
+      if (generation === viewGeneration.current) setBusy(false);
+    }
+  };
+
+  const startCsv = async (rows: CsvRow[]) => {
+    const ledger = store.getLedger();
+    if (!ledger) return;
+    setBusy(true);
+    setError(null);
+    const generation = viewGeneration.current;
+    try {
+      const result = applyCsvHistory(csvRowsToRecognition(rows, currency), ledger, accountId, currency);
+      const created = await importJobManager.createPrepared({ accountId, locale: lang, result });
+      if (generation !== viewGeneration.current) return;
+      setCsvTable(null);
       setJob(created);
       setJobId(created.id);
       setPhase("progress");
@@ -913,7 +962,15 @@ export function ImportSheet({
                 </button>
               )}
             </div>
-            <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple onChange={(e) => addFiles(e.target.files)} style={{ display: "none" }} />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,application/pdf,text/csv,.csv"
+              multiple
+              onChange={(e) => addFiles(e.target.files)}
+              style={{ display: "none" }}
+            />
+            <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 12 }}>{t("A CSV export from your bank works too, and needs no AI.")}</div>
 
             {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
             {notice && (
@@ -946,6 +1003,20 @@ export function ImportSheet({
               {busy ? t("Recognizing…") : t("Process files")}
             </button>
           </>
+        )}
+
+        {phase === "csv" && csvTable && (
+          <ImportCsvMapping
+            table={csvTable}
+            busy={busy}
+            error={error}
+            onBack={() => {
+              setCsvTable(null);
+              setError(null);
+              setPhase("pick");
+            }}
+            onConfirm={(rows) => void startCsv(rows)}
+          />
         )}
 
         {phase === "progress" &&

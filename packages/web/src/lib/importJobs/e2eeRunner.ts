@@ -2,6 +2,7 @@ import type { ImportCompletion } from "@enveo/shared";
 import {
   advanceImportJob,
   type ClientLedger,
+  IMPORT_FILE_MODEL,
   IMPORT_JOB_MAX_IMAGES,
   ImportChunksPendingError,
   type ImportExtractBatch,
@@ -23,6 +24,7 @@ import * as e2ee from "../e2ee";
 import { type ImportJobStorageScope, importJobStorage, type StoredE2eeImportJob } from "../importJobStorage";
 import { store } from "../store";
 import { isLeaderTab } from "../sync/multitab";
+import type { PreparedImportCreateInput } from "./plain";
 import { type ImportActivityItem, type ImportActivityStore, type ImportJobScopeCapability, importActivityFromE2ee } from "./store";
 
 const IMPORT_JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -403,6 +405,64 @@ export class E2eeImportJobRunner {
     await importJobStorage.putJob(this.options.scope, job);
     this.assertCurrent();
     const item = importActivityFromE2ee(job);
+    this.options.activity.upsert(item);
+    return item;
+  }
+
+  /** The result is encrypted like any recognized one, so a file's rows never rest in plaintext. */
+  async createPrepared(input: PreparedImportCreateInput): Promise<ImportActivityItem> {
+    this.assertCurrent();
+    const meta = this.tierMeta();
+    if (meta.tier !== "e2ee" || meta.epoch < 1) throw new Error("tier_mismatch");
+    const account = this.ledger()?.accounts.find((candidate) => candidate.id === input.accountId && !candidate.archived);
+    if (!account) throw new Error("account_unavailable");
+    const key = this.requireDek(meta.epoch);
+    let resultCiphertext: string;
+    try {
+      resultCiphertext = await this.encrypt(
+        JSON.stringify(input.result),
+        key,
+        importJobAadContext(this.options.scope.budgetId, meta.epoch, input.id, "result"),
+      );
+      this.assertCurrent();
+    } finally {
+      key.fill(0);
+    }
+    const now = this.now();
+    const timestamp = now.toISOString();
+    const job = {
+      id: input.id,
+      ownerId: this.options.scope.ownerId,
+      budgetId: this.options.scope.budgetId,
+      accountId: input.accountId,
+      provider: { provider: "openai" as const, model: IMPORT_FILE_MODEL },
+      locale: input.locale,
+      tier: "e2ee" as const,
+      epoch: meta.epoch,
+      status: "ready" as const,
+      phase: "ready" as const,
+      resumePhase: null,
+      cancelRequested: false,
+      attempt: 0,
+      errorCode: null,
+      retryAt: null,
+      inputCiphertext: null,
+      chunkCiphertext: null,
+      checkpointCiphertext: null,
+      resultCiphertext,
+      checkpointRevision: 0,
+      proposalCount: input.result.proposals.length,
+      screenshots: { total: 0, read: 0, failed: 0 },
+      partialFailure: null,
+      appliedCount: 0,
+      skippedCount: 0,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      expiresAt: new Date(now.getTime() + IMPORT_JOB_RETENTION_MS).toISOString(),
+    } satisfies StoredE2eeImportJob;
+    await importJobStorage.putJob(this.options.scope, job);
+    this.assertCurrent();
+    const item = importActivityFromE2ee(job, input.result);
     this.options.activity.upsert(item);
     return item;
   }

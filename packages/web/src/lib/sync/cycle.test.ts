@@ -9,7 +9,17 @@ import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared
 import * as e2ee from "../e2ee";
 import { __resetSignOutBarrierForTests, activateSignOutAttempt, beginSignOut, createSignOutPermit, type SignOutPermit } from "../signOutBarrier";
 import { store } from "../store";
-import { __resetBackoff, awaitInFlightCycle, configureCycle, flushOutboxWithPermit, poke, quiesceSyncForSignOut, runWithSyncMutex, syncNow } from "./cycle";
+import {
+  __resetBackoff,
+  awaitInFlightCycle,
+  configureCycle,
+  flushOutboxWithPermit,
+  poke,
+  quiesceSyncForSignOut,
+  runWithSyncMutex,
+  syncNow,
+  syncNowCompleted,
+} from "./cycle";
 import { __resetIdentity, enterForeignReplica } from "./identity";
 
 const emptyLedger = (): ClientLedger => ({
@@ -102,6 +112,49 @@ describe("sync/cycle: single-flight with dirty coalescing", () => {
     expect(await repair).toBe("rebuilt");
     await triggered;
     expect(events).toEqual(["repair:start", "repair:end"]);
+  });
+});
+
+describe("sync/cycle: a run that must prove it finished", () => {
+  const withBudget = () => {
+    const budgetId = crypto.randomUUID();
+    store.replace(
+      { ...emptyLedger(), budgets: [{ id: budgetId, name: "Budget", currency: "EUR", preferences: createDefaultBudgetPreferences() }] },
+      0,
+      budgetId,
+    );
+  };
+
+  it("reports false when the network fails, though syncNow itself resolves", async () => {
+    withBudget();
+
+    expect(await syncNowCompleted("no-network")).toBe(false);
+  });
+
+  it("reports false when the replica has no ledger to sync and the cycle returns early", async () => {
+    store.setBootStatus("locked");
+
+    expect(await syncNowCompleted("locked")).toBe(false);
+  });
+
+  it("reports false when it joins a maintenance run whose drained cycle fails", async () => {
+    withBudget();
+    let finishRepair = () => {};
+    const repair = runWithSyncMutex(() => new Promise<void>((resolve) => (finishRepair = resolve)));
+
+    const completed = syncNowCompleted("joined");
+    finishRepair();
+    await repair;
+
+    expect(await completed).toBe(false);
+  });
+
+  it("reports false during sign-out, before any request", async () => {
+    withBudget();
+    beginSignOut();
+
+    expect(await syncNowCompleted("blocked-by-sign-out")).toBe(false);
+    expect(fetches).toEqual([]);
   });
 });
 

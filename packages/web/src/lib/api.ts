@@ -12,6 +12,7 @@ import {
   type AiLocale,
   type ChatRequest,
   type ClientLedger,
+  type ImportRecognitionResult,
   type OpenAiModel,
   type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
@@ -259,6 +260,8 @@ export const api = {
   importJobs: {
     create: (input: { id: string; budgetId: string; accountId: string; locale: AiLocale; images: string[] }) =>
       import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.create(input)),
+    createPrepared: (input: { id: string; budgetId: string; accountId: string; locale: AiLocale; result: ImportRecognitionResult }) =>
+      import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.createPrepared(input)),
     list: () => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.list()),
     get: (id: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.get(id)),
     cancel: (id: string, budgetId: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.cancel(id, budgetId)),

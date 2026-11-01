@@ -1,4 +1,4 @@
-import type { AiLocale, ImportCompletion, ImportJobDetail, ImportJobSummary } from "@enveo/shared";
+import type { AiLocale, ImportCompletion, ImportJobDetail, ImportJobSummary, ImportRecognitionResult } from "@enveo/shared";
 import { api } from "../api";
 import { type ImportJobStorageScope, importJobStorage, type PlainImportUploadDraft, type PlainImportUploadDraftInput } from "../importJobStorage";
 import {
@@ -10,8 +10,16 @@ import {
   importActivityFromServer,
 } from "./store";
 
+export interface PreparedImportCreateInput {
+  id: string;
+  accountId: string;
+  locale: AiLocale;
+  result: ImportRecognitionResult;
+}
+
 export interface PlainImportJobRemote {
   create(input: { id: string; budgetId: string; accountId: string; locale: AiLocale; images: string[] }): Promise<ImportJobDetail>;
+  createPrepared(input: { id: string; budgetId: string; accountId: string; locale: AiLocale; result: ImportRecognitionResult }): Promise<ImportJobDetail>;
   list(): Promise<ImportJobSummary[]>;
   get(id: string): Promise<ImportJobDetail>;
   cancel(id: string, budgetId: string): Promise<ImportJobDetail>;
@@ -205,6 +213,15 @@ export class PlainImportJobAdapter {
     this.publish(created);
     onCreated?.(created);
     return this.upload(draft);
+  }
+
+  async createPrepared(input: PreparedImportCreateInput): Promise<ImportActivityItem> {
+    if (!this.isCurrent()) throw new StalePlainImportAdapter();
+    const job = await this.remote.createPrepared({ ...input, budgetId: this.options.scope.budgetId });
+    if (!this.isCurrent()) throw new StalePlainImportAdapter();
+    const item = importActivityFromServer(job);
+    this.publish(item);
+    return item;
   }
 
   async resumeDrafts(): Promise<boolean> {
