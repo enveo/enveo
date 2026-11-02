@@ -49,6 +49,50 @@
       "rationale": "Not fixable from this repository today: the advisory lists no patched version and 4.3.1 is the latest deepmerge release. The dependency is transitive through the PWA build chain.",
       "addedOn": "2026-10-30",
       "expires": "2027-01-28"
+    },
+    {
+      "advisoryId": "GHSA-3g3m-2fjr-6pw4",
+      "package": "glob",
+      "severity": "moderate",
+      "vulnerableVersions": ">=9.0.0 <=14.0.1",
+      "installed": [
+        {
+          "version": "11.1.0",
+          "path": "glob"
+        }
+      ],
+      "scope": "Build tooling only: reached exclusively through vite-plugin-pwa > workbox-build while the service worker's precache list is generated. Not in the production runtime image's dependency closure and not in the browser bundle.",
+      "reachability": "Unreachable. The advisory is about traversal continuing after an AbortSignal fires. The only import in workbox-build 7.4.1 is one globSync call in lib/get-file-details.js, with cwd, follow and ignore options and no signal, so nothing here can abort a walk.",
+      "mitigation": "None required for reachability. Kept visible in every audit run rather than suppressed; re-checked at each dependency review for a workbox-build release that moves to a patched glob.",
+      "fixedVersion": "14.0.2",
+      "owner": "Maintainer",
+      "rationale": "Not fixable by an upstream update today: workbox-build 7.4.1 is the latest release and requires glob ^11.0.1, vite-plugin-pwa 2.0.0 keeps that same workbox-build, and no 11.x, 12.x or 13.x glob carries the fix (re-checked 2026-11-02). Forcing glob 14 would replace a dependency of the PWA update path with a three-major jump for zero security benefit, since the vulnerable code path is never executed.",
+      "addedOn": "2026-11-02",
+      "expires": "2027-01-28"
+    },
+    {
+      "advisoryId": "GHSA-g3hv-75wg-m249",
+      "package": "minimatch",
+      "severity": "moderate",
+      "vulnerableVersions": "<11.0.1",
+      "installed": [
+        {
+          "version": "10.2.6",
+          "path": "minimatch"
+        },
+        {
+          "version": "5.1.9",
+          "path": "filelist/minimatch"
+        }
+      ],
+      "scope": "Build tooling only: 10.2.6 through vite-plugin-pwa > workbox-build > glob, and 5.1.9 through workbox-build > @trickfilm400/rollup-plugin-off-main-thread > ejs > jake > filelist. Not in the production runtime image's dependency closure and not in the browser bundle.",
+      "reachability": "Unreachable. The advisory needs an attacker-supplied glob pattern. Under glob, every pattern comes from packages/web/vite.config.ts, the vite-plugin-pwa and workbox-build defaults, or the build's own output paths, never from users or from file contents. The 5.1.9 copy is never loaded: the rollup plugin only calls ejs.render, ejs/lib does not touch jake, and jake is used only by ejs's bin/cli.js, which no build step runs.",
+      "mitigation": "None required for reachability. Kept visible in every audit run rather than suppressed; re-checked at each dependency review together with the glob entry.",
+      "fixedVersion": "11.0.1",
+      "owner": "Maintainer",
+      "rationale": "Not fixable by an upstream update today: no 10.x or 5.x minimatch carries the fix, glob 11.1.0 requires ^10.1.1 and filelist 1.0.6 requires ^5.0.1 (re-checked 2026-11-02). Forcing 11 would add untested major jumps to the same build chain for zero security benefit, since the vulnerable code path is never executed.",
+      "addedOn": "2026-11-02",
+      "expires": "2027-01-28"
     }
   ]
 }
