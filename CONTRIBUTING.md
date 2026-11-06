@@ -69,7 +69,7 @@ Never use this command on a database containing real data.
 | `bun run format:check` | Non-mutating formatter check. |
 | `bun run test` | Shared, API, web-lib and tooling tests. Forces `OPENAI_API_KEY=""` and `TEST_DATABASE_URL=""`, so DB-backed groups skip. |
 | `bun run test:db` | The same tests with the DB-backed groups **required** against a throwaway PostgreSQL. |
-| `bun run typecheck` | Shared, API, web app, web tests and repository tooling. |
+| `bun run typecheck` | Shared, API, web app, web tests and repository tooling. Incremental: state is kept per project under `node_modules/.cache/tsc/`, so a repeat run only rechecks what changed (and still reports every error). |
 | `bun run build` | The production web/PWA build. |
 | `bun run security:audit` | `bun audit` evaluated against `security/audit-policy.json`. |
 | `bun run policy:docs` | `AGENTS.md` is the byte-identical mirror of `CLAUDE.md`. |

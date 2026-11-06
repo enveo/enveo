@@ -13,7 +13,7 @@
     "typecheck:shared": "bun run --cwd packages/shared typecheck",
     "typecheck:api": "bun run --cwd packages/api typecheck",
     "typecheck:web": "bun run --cwd packages/web typecheck",
-    "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json",
+    "typecheck:scripts": "tsc --noEmit --incremental --tsBuildInfoFile node_modules/.cache/tsc/scripts.tsbuildinfo -p tsconfig.scripts.json",
     "lint": "biome check .",
     "lint:ci": "biome ci .",
     "lint:staged": "bun scripts/check-staged.ts",
