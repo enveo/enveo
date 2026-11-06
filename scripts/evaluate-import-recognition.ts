@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { chmod, lstat, mkdtemp, readdir, readFile, readlink, realpath, rm, stat } from "node:fs/promises";
+import { chmodSync, lstatSync, readdirSync, readlinkSync, realpathSync } from "node:fs";
+import { chmod, lstat, mkdtemp, readFile, readlink, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -1163,10 +1164,10 @@ const pathIsInside = (root: string, path: string): boolean => {
   return fromRoot === "" || (!fromRoot.startsWith("..") && !isAbsolute(fromRoot));
 };
 
-const symlinkTargetIsConfined = async (root: string, path: string): Promise<boolean> => {
+const symlinkTargetIsConfined = (root: string, path: string): boolean => {
   try {
-    const target = resolve(dirname(path), await readlink(path));
-    return pathIsInside(root, target) && pathIsInside(root, await realpath(path));
+    const target = resolve(dirname(path), readlinkSync(path));
+    return pathIsInside(root, target) && pathIsInside(root, realpathSync(path));
   } catch {
     return false;
   }
@@ -1234,7 +1235,7 @@ export async function preflightSource(mode: "baseline" | "candidate", sourceTree
       if (entry.mode === "120000") {
         actual = new TextEncoder().encode(await readlink(path));
         actualMode = info.isSymbolicLink() ? "120000" : "invalid";
-        modesMatch &&= actualMode === "120000" && (await symlinkTargetIsConfined(root, path));
+        modesMatch &&= actualMode === "120000" && symlinkTargetIsConfined(root, path);
       } else {
         actual = new Uint8Array(await readFile(path));
         actualMode = info.isFile() ? ((info.mode & 0o111) !== 0 ? "100755" : "100644") : "invalid";
@@ -1270,23 +1271,26 @@ export async function preflightSource(mode: "baseline" | "candidate", sourceTree
   };
 }
 
+// The snapshot walks visit every installed entry (~10k) with SYNCHRONOUS calls: one awaited
+// syscall per entry made them most of a snapshot's lifetime, and a concurrent walk could still
+// be changing modes after a rejection while the failure path already cleans the tree up.
 const assertSnapshotLinksConfined = async (root: string): Promise<void> => {
-  const visit = async (path: string): Promise<void> => {
-    const info = await lstat(path);
+  const visit = (path: string): void => {
+    const info = lstatSync(path);
     if (info.isSymbolicLink()) {
-      if (!(await symlinkTargetIsConfined(root, path))) throw new Error("snapshot dependency link escapes source root");
+      if (!symlinkTargetIsConfined(root, path)) throw new Error("snapshot dependency link escapes source root");
       let target: string;
       try {
-        target = await realpath(path);
+        target = realpathSync(path);
       } catch {
         throw new Error("snapshot dependency link is unresolved");
       }
       if (!pathIsInside(root, target)) throw new Error("snapshot dependency link resolves outside source root");
       return;
     }
-    if (info.isDirectory()) for (const entry of await readdir(path)) await visit(resolve(path, entry));
+    if (info.isDirectory()) for (const entry of readdirSync(path)) visit(resolve(path, entry));
   };
-  await visit(root);
+  visit(root);
 };
 
 const installSnapshotDependencies = async (root: string): Promise<void> => {
@@ -1300,18 +1304,18 @@ const installSnapshotDependencies = async (root: string): Promise<void> => {
 };
 
 const setSnapshotWritable = async (root: string, writable: boolean): Promise<void> => {
-  const visit = async (path: string): Promise<void> => {
-    const info = await lstat(path);
+  const visit = (path: string): void => {
+    const info = lstatSync(path);
     if (info.isSymbolicLink()) return;
     if (info.isDirectory()) {
-      if (writable) await chmod(path, 0o700);
-      for (const entry of await readdir(path)) await visit(resolve(path, entry));
-      if (!writable) await chmod(path, 0o500);
+      if (writable) chmodSync(path, 0o700);
+      for (const entry of readdirSync(path)) visit(resolve(path, entry));
+      if (!writable) chmodSync(path, 0o500);
     } else {
-      await chmod(path, writable ? 0o600 : (info.mode & 0o111) !== 0 ? 0o500 : 0o400);
+      chmodSync(path, writable ? 0o600 : (info.mode & 0o111) !== 0 ? 0o500 : 0o400);
     }
   };
-  await visit(root);
+  visit(root);
 };
 
 export interface SourceSnapshot {
