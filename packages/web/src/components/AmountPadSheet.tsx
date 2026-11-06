@@ -135,6 +135,6 @@ export function AmountPadSheet({
         )}
       </Sheet>
     </div>,
-    portalTarget,
+    portalTarget ?? document.body,
   );
 }

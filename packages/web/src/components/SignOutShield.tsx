@@ -63,9 +63,10 @@ export function accountContentAccessibility(phase: SignOutPhase): { "aria-hidden
 const AccountPortalTarget = createContext<HTMLElement | null>(null);
 
 /** Where a fixed overlay showing account data portals to: inside the boundary, so sign-out's
- *  `aria-hidden`/`inert` still reach it, but outside every screen's clipping column. */
-export function useAccountPortalTarget(): HTMLElement {
-  return useContext(AccountPortalTarget) ?? document.body;
+ *  `aria-hidden`/`inert` still reach it, but outside every screen's clipping column. Null outside
+ *  a boundary (tests) and until the host mounts; callers fall back to `document.body`. */
+export function useAccountPortalTarget(): HTMLElement | null {
+  return useContext(AccountPortalTarget);
 }
 
 export function SignOutBoundary({ children }: { children: ReactNode }) {

@@ -93,7 +93,7 @@ describe("the amount pad sheet", () => {
     // then: the pad's wrapper is mounted on the sign-out boundary's portal host
     expect(src).toContain("const portalTarget = useAccountPortalTarget();");
     expect(src).toMatch(/return createPortal\(\s*<div style=\{\{ position: "relative", zIndex: 110,[^}]*fontFamily: font/);
-    expect(src).toMatch(/<\/div>,\s*portalTarget,\s*\);/);
+    expect(src).toMatch(/<\/div>,\s*portalTarget \?\? document\.body,\s*\);/);
   });
 
   it("docks across the side panel in wide layouts instead of a phone-width column", () => {

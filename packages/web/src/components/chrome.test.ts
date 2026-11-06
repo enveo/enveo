@@ -22,3 +22,17 @@ describe("StyleInjector's shared `.fi` fade class", () => {
     expect(source).toContain(".fu{animation:fu .4s ease-out both}");
   });
 });
+
+describe("Sheet hosted in the wide side panel", () => {
+  it("portals into the sign-out boundary's host with the app font, <body> only without a boundary", () => {
+    // given: the panel branch leaves the panel's transformed layer; <body> sits outside the
+    // sign-out boundary's aria-hidden/inert and outside the app container's font
+    const source = readFileSync(join(import.meta.dir, "chrome.tsx"), "utf8");
+    const branch = source.slice(source.indexOf("return hostedInPanel"), source.indexOf(": body;"));
+
+    // then
+    expect(source).toContain("const portalTarget = useAccountPortalTarget();");
+    expect(branch).toContain('<div data-wide-panel-portal style={{ display: "contents", fontFamily: font');
+    expect(branch).toMatch(/<\/div>,\s*portalTarget \?\? document\.body,\s*\)/);
+  });
+});

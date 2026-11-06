@@ -16,6 +16,7 @@ import { APP_VERSION, buildLabel } from "../lib/version";
 import { PHONE_COL } from "../lib/viewMode";
 import { HeaderImportBadge, ImportBadge } from "./HeaderImportBadge";
 import { LazyChunk } from "./lazy";
+import { useAccountPortalTarget } from "./SignOutShield";
 
 // Lazy — the pane-surface presentation lives in the wide chunk; phone (and any un-hosted mount)
 // never requests it, since `Surface` below only reaches this branch when `useWideHost()?.surfaces`
@@ -205,6 +206,7 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, anchor =
 
   const wideHost = useWideHost();
   const hostedInPanel = wideHost?.host === "panel";
+  const portalTarget = useAccountPortalTarget();
 
   useEffect(() => {
     if (show) {
@@ -320,12 +322,14 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, anchor =
     </>
   );
 
+  // Out of the panel's transformed layer, but inside the sign-out boundary (its aria-hidden/inert must
+  // reach a sheet showing account data). The target sits outside the app container's font.
   return hostedInPanel
     ? createPortal(
-        <div data-wide-panel-portal style={{ display: "contents" }}>
+        <div data-wide-panel-portal style={{ display: "contents", fontFamily: font, WebkitFontSmoothing: "antialiased" }}>
           {body}
         </div>,
-        document.body,
+        portalTarget ?? document.body,
       )
     : body;
 }
