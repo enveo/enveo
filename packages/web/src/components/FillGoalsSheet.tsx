@@ -155,6 +155,7 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
                   ) : (
                     <div
                       onClick={(ev) => ev.currentTarget.querySelector("input")?.focus()}
+                      data-pad-box
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -169,6 +170,7 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
                       <span style={{ fontSize: 11, color: C.soft }}>+</span>
                       <PadInput
                         value={localizePadExpression(edited[p.envelopeId] ?? "", lang)}
+                        boxed
                         target={() => padTargetFor(p)}
                         onPad={setPad}
                         tabIndex={0}

@@ -6,7 +6,7 @@ import { evalExpression, formatMoney, localizePadExpression, parseAmount } from 
 import { useT } from "../lib/i18n";
 import { useWideHost } from "../lib/shellContext";
 import { font } from "../lib/theme";
-import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
+import { AmountPadHost, type AmountPadTarget, useDockedPadLine } from "./AmountPadSheet";
 
 const inlineFigureStyle = (underline: string, color: string): React.CSSProperties => ({
   width: 120,
@@ -57,6 +57,8 @@ export function AmountField({
   const [input, setInput] = useState(value);
   const [err, setErr] = useState(false);
   const [focused, setFocused] = useState(false);
+  const openedRef = useRef<AmountPadTarget | null>(null);
+  const docked = useDockedPadLine(openedRef.current);
 
   const cancelingRef = useRef(false);
 
@@ -79,7 +81,8 @@ export function AmountField({
         inputMode="decimal"
         aria-label={label}
         aria-invalid={err || undefined}
-        value={input}
+        // At rest the inline figure reads as money, like the pad layouts' display; editing shows the raw draft.
+        value={inline && !focused && !err && parseAmount(input) !== null ? formatMoney(parseAmount(input)!, currency, lang) : input}
         placeholder={placeholder}
         onFocus={() => setFocused(true)}
         onChange={(ev) => {
@@ -153,24 +156,42 @@ export function AmountField({
     );
   }
 
-  const openPad = () => setPad({ label, initial: parseAmount(value) ?? 0, allowNegative, onCommit: (minor) => onCommit(fmtSignedTrim(minor)) });
+  const openPad = () => {
+    const target: AmountPadTarget = { label, initial: parseAmount(value) ?? 0, allowNegative, onCommit: (minor) => onCommit(fmtSignedTrim(minor)) };
+    openedRef.current = target;
+    setPad(target);
+  };
 
   return (
     <>
       <input
-        value={inline && parseAmount(value) !== null ? formatMoney(parseAmount(value)!, currency, lang) : localizePadExpression(value, lang)}
+        value={
+          docked !== null
+            ? localizePadExpression(docked, lang) || "0"
+            : inline && parseAmount(value) !== null
+              ? formatMoney(parseAmount(value)!, currency, lang)
+              : localizePadExpression(value, lang)
+        }
+        data-pad-active={docked !== null ? "" : undefined}
         readOnly
         placeholder={placeholder}
         onClick={openPad}
         onFocus={openPad}
         style={
           inline
-            ? { ...inlineFigureStyle(C.mute, C.text), fontFamily: font, cursor: "pointer" }
+            ? {
+                ...inlineFigureStyle(C.mute, C.text),
+                fontFamily: font,
+                cursor: "pointer",
+                ...(docked !== null
+                  ? { background: "var(--card)", borderBottom: "none", borderRadius: 6, outline: "2px solid var(--accent)", outlineOffset: 3 }
+                  : null),
+              }
             : {
                 width: "100%",
                 padding: "10px 12px",
                 borderRadius: 9,
-                border: `1px solid ${C.line}`,
+                border: `1px solid ${docked !== null ? "var(--accent)" : C.line}`,
                 background: C.bg,
                 color: C.text,
                 fontSize: 14,

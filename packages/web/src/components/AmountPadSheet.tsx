@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { fmtSignedTrim, type PadState, padKey, padPreview } from "../lib/amount";
 import { useMask, useTheme } from "../lib/contexts";
@@ -30,12 +30,36 @@ export type AmountPadTarget = {
   onCommit: (minor: number) => void;
 };
 
-/** Heights of the open docked pads; PaneSurface reserves the tallest as bottom padding. */
+/** Heights of the open docked pads; PaneSurface reserves the tallest (plus a gap, so the edited
+ *  field never sits flush on the keys) as bottom padding. */
 const dockHeights = new Map<object, number>();
 function syncDockHeight() {
   const root = document.documentElement;
   if (dockHeights.size === 0) root.style.removeProperty("--amount-dock-h");
-  else root.style.setProperty("--amount-dock-h", `${Math.max(...dockHeights.values())}px`);
+  else root.style.setProperty("--amount-dock-h", `${Math.max(...dockHeights.values()) + 12}px`);
+}
+
+/** The line a docked pad is editing, so the field that opened it can show it in place. */
+type DockedLine = { target: unknown; expr: string };
+let dockedLine: DockedLine | null = null;
+const dockedLineListeners = new Set<() => void>();
+function publishDockedLine(next: DockedLine | null) {
+  dockedLine = next;
+  for (const listener of dockedLineListeners) listener();
+}
+function subscribeDockedLine(listener: () => void) {
+  dockedLineListeners.add(listener);
+  return () => dockedLineListeners.delete(listener);
+}
+/** The expression a docked pad is editing for `target` (the object the field handed to its pad
+ *  host), or null when no docked pad edits it. */
+export function useDockedPadLine(target: unknown): string | null {
+  const line = useSyncExternalStore(
+    subscribeDockedLine,
+    () => dockedLine,
+    () => null,
+  );
+  return target != null && line?.target === target ? line.expr : null;
 }
 
 export function AmountPadHost({ target, onClose }: { target: AmountPadTarget | null; onClose: () => void }) {
@@ -149,6 +173,17 @@ export function AmountPadSheet({
       syncDockHeight();
     };
   }, [docked, dockKey]);
+
+  useEffect(() => {
+    if (!docked) return;
+    publishDockedLine({ target: resetKey, expr: state.expr });
+  }, [docked, resetKey, state.expr]);
+  useEffect(() => {
+    if (!docked) return;
+    return () => {
+      if (dockedLine?.target === resetKey) publishDockedLine(null);
+    };
+  }, [docked, resetKey]);
 
   // The field that opened (or retargeted) the pad is the focused one.
   useLayoutEffect(() => {

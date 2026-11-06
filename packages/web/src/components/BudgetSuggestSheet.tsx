@@ -564,6 +564,7 @@ function AmountBox({
   return (
     <div
       onClick={target ? (ev) => ev.currentTarget.querySelector("input")?.focus() : undefined}
+      data-pad-box
       style={{
         display: "flex",
         alignItems: "center",
@@ -577,7 +578,7 @@ function AmountBox({
     >
       {prefix && <span style={{ fontSize: 11, color: C.soft }}>{prefix}</span>}
       {target ? (
-        <PadInput value={value} target={target} onPad={onPad} placeholder="0" aria-label={label} tabIndex={0} style={inputStyle} />
+        <PadInput boxed value={value} target={target} onPad={onPad} placeholder="0" aria-label={label} tabIndex={0} style={inputStyle} />
       ) : (
         <input value={value} readOnly placeholder="0" aria-label={label} tabIndex={-1} style={inputStyle} />
       )}

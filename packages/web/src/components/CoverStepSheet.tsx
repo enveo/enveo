@@ -228,6 +228,7 @@ export function CoverStepSheet({
             // The whole box is the field's hit area; focusing the input opens the pad (phone,
             // foldable) or starts typing (desktop).
             onClick={(ev) => ev.currentTarget.querySelector("input")?.focus()}
+            data-pad-box
             style={{
               display: "flex",
               alignItems: "center",
@@ -244,6 +245,7 @@ export function CoverStepSheet({
             <span style={{ fontSize: 11, color: C.soft }}>−</span>
             <PadInput
               value={localizePadExpression(fmtTrim(value), lang)}
+              boxed
               target={() => padTargetFor(s.id, s.name)}
               onPad={(target) => !inert && setPad(target)}
               disabled={inert}

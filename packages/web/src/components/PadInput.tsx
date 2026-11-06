@@ -1,21 +1,29 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { fmtSignedTrim } from "../lib/amount";
-import { evalExpression } from "../lib/format";
+import { useTheme } from "../lib/contexts";
+import { evalExpression, localizePadExpression } from "../lib/format";
+import { useT } from "../lib/i18n";
 import { useWideHost } from "../lib/shellContext";
-import type { AmountPadTarget } from "./AmountPadSheet";
+import { type AmountPadTarget, useDockedPadLine } from "./AmountPadSheet";
 
 /**
  * The amount input of a sheet or panel form. On phone and foldable layouts it is read-only and a
- * tap or focus opens the shared amount pad (`onPad(target())`). On desktop there is a keyboard,
- * so it is typed in directly, like a Budget allocation cell: focus starts an edit from the
- * target's value, + − × ÷ work, Enter or leaving the field commits, Escape discards, and Tab
- * moves to the next field (committing this one).
+ * tap or focus opens the shared amount pad (`onPad(target())`); while a docked pad (foldable)
+ * edits it, it shows that pad's expression. On desktop there is a keyboard, so it is typed in
+ * directly, like a Budget allocation cell: focus starts an edit from the target's value, + − × ÷
+ * work, Enter or leaving the field commits, Escape discards, and Tab moves to the next field
+ * (committing this one).
+ *
+ * The active field is marked with `data-pad-active` (`data-pad-error` on a bad value). Inside a
+ * caller's `data-pad-box` container (pass `boxed`) the box draws the ring (PAD_BOX_CSS), so the
+ * sign and currency symbol beside the input sit inside it; otherwise the input draws it.
  */
 export function PadInput<T extends AmountPadTarget>({
   value,
   target,
   onPad,
+  boxed = false,
   style,
   ...input
 }: {
@@ -23,13 +31,18 @@ export function PadInput<T extends AmountPadTarget>({
   value: string;
   target: () => T;
   onPad: (target: T) => void;
+  boxed?: boolean;
   style?: React.CSSProperties;
 } & Pick<React.InputHTMLAttributes<HTMLInputElement>, "aria-label" | "placeholder" | "tabIndex" | "disabled">) {
+  const C = useTheme();
+  const { lang } = useT();
   const desktop = useWideHost()?.mode === "desktop";
   const [draft, setDraft] = useState<string | null>(null);
   const [err, setErr] = useState(false);
   // Escape blurs the field to end the edit; that blur must not commit what Escape discarded.
   const cancelingRef = useRef(false);
+  const openedRef = useRef<T | null>(null);
+  const docked = useDockedPadLine(openedRef.current);
   // A draft started on desktop does not survive a switch to the pad layouts.
   useEffect(() => {
     if (!desktop) {
@@ -38,15 +51,36 @@ export function PadInput<T extends AmountPadTarget>({
     }
   }, [desktop]);
 
+  const active = desktop ? draft !== null : docked !== null;
+  const activeStyle = (bad: boolean): React.CSSProperties => ({
+    color: bad ? "var(--danger)" : C.text,
+    ...(boxed ? null : { background: "var(--card)", borderRadius: 6, outline: `2px solid ${bad ? "var(--danger)" : "var(--accent)"}`, outlineOffset: 3 }),
+  });
+  const marks = { "data-pad-active": active ? "" : undefined, "data-pad-error": active && err ? "" : undefined };
+
   if (!desktop) {
-    const open = () => onPad(target());
-    return <input {...input} value={value} readOnly onClick={open} onFocus={open} style={style} />;
+    const open = () => {
+      const t = target();
+      openedRef.current = t;
+      onPad(t);
+    };
+    return (
+      <input
+        {...input}
+        {...marks}
+        value={docked !== null ? localizePadExpression(docked, lang) || "0" : value}
+        readOnly
+        onClick={open}
+        onFocus={open}
+        style={active ? { ...style, ...activeStyle(false) } : style}
+      />
+    );
   }
 
-  const editing = draft !== null;
   return (
     <input
       {...input}
+      {...marks}
       inputMode="decimal"
       value={draft ?? value}
       aria-invalid={err || undefined}
@@ -89,19 +123,7 @@ export function PadInput<T extends AmountPadTarget>({
         setDraft(null);
         setErr(false);
       }}
-      style={{
-        ...style,
-        cursor: "text",
-        ...(editing
-          ? {
-              background: "var(--card)",
-              borderRadius: 6,
-              outline: `2px solid ${err ? "var(--danger)" : "var(--accent)"}`,
-              outlineOffset: 3,
-              color: err ? "var(--danger)" : style?.color,
-            }
-          : null),
-      }}
+      style={{ ...style, cursor: "text", ...(active ? activeStyle(err) : null) }}
     />
   );
 }

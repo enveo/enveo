@@ -36,3 +36,14 @@ describe("Sheet hosted in the wide side panel", () => {
     expect(branch).toMatch(/<\/div>,\s*portalTarget \?\? document\.body,\s*\)/);
   });
 });
+
+describe("StyleInjector's active amount box", () => {
+  it("injects the ring that an active PadInput draws on its data-pad-box", () => {
+    const source = readFileSync(join(import.meta.dir, "chrome.tsx"), "utf8");
+    const presentation = readFileSync(join(import.meta.dir, "../lib/focusPresentation.ts"), "utf8");
+
+    expect(source).toMatch(/\$\{INPUT_FOCUS_CSS\}\$\{PAD_BOX_CSS\}/);
+    expect(presentation).toContain("[data-pad-box]:has(>input[data-pad-active])");
+    expect(presentation).toContain("[data-pad-box]:has(>input[data-pad-error])");
+  });
+});
