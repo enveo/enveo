@@ -39,7 +39,7 @@ const dockHeights = new Map<object, number>();
 function syncDockHeight() {
   const root = document.documentElement;
   if (dockHeights.size === 0) root.style.removeProperty("--amount-dock-h");
-  else root.style.setProperty("--amount-dock-h", `${Math.max(...dockHeights.values()) + 12}px`);
+  else root.style.setProperty("--amount-dock-h", `${Math.max(...dockHeights.values()) + 18}px`);
 }
 
 /** The lines docked pads are editing, keyed by their target, so the field that opened a pad can

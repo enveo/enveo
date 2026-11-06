@@ -136,6 +136,7 @@ export function AmountField({
                       background: "var(--card)",
                       borderBottom: "none",
                       borderRadius: 6,
+                      padding: "1px 6px 2px",
                       outline: `2px solid ${err ? "var(--danger)" : "var(--accent)"}`,
                       outlineOffset: 3,
                     }
@@ -193,7 +194,14 @@ export function AmountField({
                 fontFamily: font,
                 cursor: "pointer",
                 ...(docked !== null
-                  ? { background: "var(--card)", borderBottom: "none", borderRadius: 6, outline: "2px solid var(--accent)", outlineOffset: 3 }
+                  ? {
+                      background: "var(--card)",
+                      borderBottom: "none",
+                      borderRadius: 6,
+                      padding: "1px 6px 2px",
+                      outline: "2px solid var(--accent)",
+                      outlineOffset: 3,
+                    }
                   : null),
               }
             : {
