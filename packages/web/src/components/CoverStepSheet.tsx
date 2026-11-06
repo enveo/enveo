@@ -9,10 +9,12 @@ import { useT } from "../lib/i18n";
 import { Glyph } from "../lib/icons";
 import { local } from "../lib/mutate";
 import type { BudgetStep } from "../lib/reportSummary";
+import { useWideHost } from "../lib/shellContext";
 import { store } from "../lib/store";
 import { CTA, font, TEAL } from "../lib/theme";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Surface } from "./chrome";
+import { PadInput } from "./PadInput";
 
 export interface CoverDelta {
   envelopeId: string;
@@ -78,6 +80,7 @@ export function CoverStepSheet({
   const currency = useCurrency();
   const { settings } = useSettings();
   const { t, lang } = useT();
+  const desktop = useWideHost()?.mode === "desktop";
   const symbol = currencySymbol(currency, lang);
 
   const compareNames = useMemo(() => new Intl.Collator(lang).compare, [lang]);
@@ -103,13 +106,12 @@ export function CoverStepSheet({
     onClose();
   };
 
-  const openPadFor = (id: string, label: string) =>
-    setPad({
-      id,
-      label,
-      initial: plan[id] ?? 0,
-      onCommit: (minor) => setPlan((p) => ({ ...p, [id]: minor })),
-    });
+  const padTargetFor = (id: string, label: string): AmountPadTarget & { id: string } => ({
+    id,
+    label,
+    initial: plan[id] ?? 0,
+    onCommit: (minor) => setPlan((p) => ({ ...p, [id]: minor })),
+  });
 
   const confirm = () => {
     if (!status.valid) return;
@@ -186,7 +188,6 @@ export function CoverStepSheet({
     const inert = s.available === 0 && value === 0;
     const tone = bad ? C.neg : value > 0 ? TEAL : null;
     const active = pad?.id === s.id;
-    const open = () => !inert && openPadFor(s.id, s.name);
     return (
       <div
         key={s.id}
@@ -224,7 +225,9 @@ export function CoverStepSheet({
           </div>
         ) : (
           <div
-            onClick={open}
+            // The whole box is the field's hit area; focusing the input opens the pad (phone,
+            // foldable) or starts typing (desktop).
+            onClick={(ev) => ev.currentTarget.querySelector("input")?.focus()}
             style={{
               display: "flex",
               alignItems: "center",
@@ -239,13 +242,13 @@ export function CoverStepSheet({
             }}
           >
             <span style={{ fontSize: 11, color: C.soft }}>−</span>
-            <input
+            <PadInput
               value={localizePadExpression(fmtTrim(value), lang)}
-              readOnly
+              target={() => padTargetFor(s.id, s.name)}
+              onPad={(target) => !inert && setPad(target)}
               disabled={inert}
               tabIndex={inert ? -1 : 0}
               aria-label={t("Amount from {name}", { name: s.name })}
-              onFocus={open}
               style={{
                 width: 60,
                 background: "none",
@@ -336,6 +339,11 @@ export function CoverStepSheet({
               >
                 {t("Move {sum}", { sum: M(status.sum) })}
               </button>
+              {desktop && (
+                <div style={{ fontSize: 11.5, color: C.mute, marginTop: 8 }}>
+                  {t("Type an amount — + − × ÷ work, ⏎ saves, Esc cancels, Tab moves to the next envelope")}
+                </div>
+              )}
             </div>
           </>
         )}

@@ -9,7 +9,7 @@ import { LOCALE_OF } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { D_INSTALL, Ico } from "../lib/icons";
 import { isInstallable, useInstall } from "../lib/installPrompt";
-import { type PaneRect, useWideHost } from "../lib/shellContext";
+import { useWideHost } from "../lib/shellContext";
 import { store } from "../lib/store";
 import { CORAL, CTA, font, P, type Theme, tint } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
@@ -192,12 +192,10 @@ export type SheetProps = {
   onClose: () => void;
   lockSwipe?: boolean;
   tall?: boolean;
-  /** Wide layouts: dock the sheet across this pane instead of a phone-width column centred on the screen. */
-  anchor?: PaneRect | null;
   children: ReactNode | ((C: Theme) => ReactNode);
 };
 
-export function Sheet({ show, onClose, lockSwipe = false, tall = false, anchor = null, children }: SheetProps) {
+export function Sheet({ show, onClose, lockSwipe = false, tall = false, children }: SheetProps) {
   const C = useTheme();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ y0: number; scroll0: number; dy: number; active: boolean } | null>(null);
@@ -299,13 +297,16 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, anchor =
         style={{
           position: "fixed",
           boxSizing: "border-box",
-          ...(anchor ? { left: anchor.left, width: anchor.width } : { left: 0, right: 0, margin: "0 auto", maxWidth: PHONE_COL }),
+          left: 0,
+          right: 0,
+          margin: "0 auto",
           zIndex: 100,
           background: C.sheet,
           padding: "18px 20px calc(28px + env(safe-area-inset-bottom))",
           boxShadow: "0 -8px 30px rgba(0,0,0,0.35)",
           overscrollBehavior: "contain",
           bottom: 0,
+          maxWidth: PHONE_COL,
           borderRadius: "22px 22px 0 0",
           animation: "su .3s cubic-bezier(.4,0,.2,1)",
           ...(tall

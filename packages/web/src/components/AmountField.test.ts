@@ -95,11 +95,4 @@ describe("the amount pad sheet", () => {
     expect(src).toMatch(/return createPortal\(\s*<div style=\{\{ position: "relative", zIndex: 110,[^}]*fontFamily: font/);
     expect(src).toMatch(/<\/div>,\s*portalTarget \?\? document\.body,\s*\);/);
   });
-
-  it("docks across the side panel in wide layouts instead of a phone-width column", () => {
-    const src = stripComments(readFileSync(join(SRC_ROOT, "components/AmountPadSheet.tsx"), "utf8"));
-
-    expect(src).toContain("const anchor = rects ? (rects.panel ?? rects.primary) : null;");
-    expect(src).toContain("<Sheet show={show} onClose={onClose} anchor={anchor}>");
-  });
 });

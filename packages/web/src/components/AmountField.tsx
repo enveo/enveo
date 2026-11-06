@@ -2,7 +2,7 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { fmtSignedTrim } from "../lib/amount";
 import { useCurrency, useTheme } from "../lib/contexts";
-import { formatMoney, localizePadExpression, parseAmount } from "../lib/format";
+import { evalExpression, formatMoney, localizePadExpression, parseAmount } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useWideHost } from "../lib/shellContext";
 import { font } from "../lib/theme";
@@ -56,6 +56,7 @@ export function AmountField({
   const [pad, setPad] = externalPad ?? [internalPad, setInternalPad];
   const [input, setInput] = useState(value);
   const [err, setErr] = useState(false);
+  const [focused, setFocused] = useState(false);
 
   const cancelingRef = useRef(false);
 
@@ -75,6 +76,7 @@ export function AmountField({
         aria-invalid={err || undefined}
         value={input}
         placeholder={placeholder}
+        onFocus={() => setFocused(true)}
         onChange={(ev) => {
           setInput(ev.target.value);
           setErr(false);
@@ -94,6 +96,7 @@ export function AmountField({
           }
         }}
         onBlur={() => {
+          setFocused(false);
           if (cancelingRef.current) {
             cancelingRef.current = false;
             return;
@@ -104,7 +107,7 @@ export function AmountField({
             onCommit("");
             return;
           }
-          const minor = parseAmount(input);
+          const minor = evalExpression(input);
           if (minor === null || (minor < 0 && !allowNegative)) {
             setErr(true);
             return;
@@ -113,7 +116,20 @@ export function AmountField({
         }}
         style={
           inline
-            ? { ...inlineFigureStyle(C.mute, err ? "var(--danger)" : C.text), fontFamily: font }
+            ? {
+                ...inlineFigureStyle(C.mute, err ? "var(--danger)" : C.text),
+                fontFamily: font,
+                // The active-field look of every desktop amount input (PadInput): accent ring, card fill.
+                ...(focused || err
+                  ? {
+                      background: "var(--card)",
+                      borderBottom: "none",
+                      borderRadius: 6,
+                      outline: `2px solid ${err ? "var(--danger)" : "var(--accent)"}`,
+                      outlineOffset: 3,
+                    }
+                  : null),
+              }
             : {
                 width: "100%",
                 padding: "10px 12px",
