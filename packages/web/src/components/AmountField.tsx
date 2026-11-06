@@ -156,8 +156,14 @@ export function AmountField({
     );
   }
 
-  const openPad = () => {
-    const target: AmountPadTarget = { label, initial: parseAmount(value) ?? 0, allowNegative, onCommit: (minor) => onCommit(fmtSignedTrim(minor)) };
+  const openPad = (ev: React.SyntheticEvent<HTMLInputElement>) => {
+    const target: AmountPadTarget = {
+      label,
+      initial: parseAmount(value) ?? 0,
+      allowNegative,
+      onCommit: (minor) => onCommit(fmtSignedTrim(minor)),
+      field: ev.currentTarget,
+    };
     openedRef.current = target;
     setPad(target);
   };

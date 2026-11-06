@@ -28,6 +28,9 @@ export type AmountPadTarget = {
   initial: number;
   allowNegative?: boolean;
   onCommit: (minor: number) => void;
+  /** The field that opened the pad. A docked pad (no backdrop) belongs to it: it scrolls the field
+   *  above the keys and closes once the field leaves the DOM. */
+  field?: HTMLElement | null;
 };
 
 /** Heights of the open docked pads; PaneSurface reserves the tallest (plus a gap, so the edited
@@ -72,6 +75,7 @@ export function AmountPadHost({ target, onClose }: { target: AmountPadTarget | n
       onCommit={(minor) => target?.onCommit(minor)}
       onClose={onClose}
       resetKey={target}
+      field={target?.field}
     />
   );
 }
@@ -84,6 +88,7 @@ export function AmountPadSheet({
   onCommit,
   onClose,
   resetKey,
+  field = null,
 }: {
   show: boolean;
   label: string;
@@ -96,6 +101,7 @@ export function AmountPadSheet({
   /** A new value restarts the line even when `initial` is unchanged: the docked pad has no
    *  backdrop, so a tap on another field retargets it while it stays open. */
   resetKey?: unknown;
+  field?: HTMLElement | null;
 }) {
   const M = useMask();
   const C = useTheme();
@@ -137,7 +143,24 @@ export function AmountPadSheet({
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const dockKey = useRef({}).current;
-  const openerRef = useRef<HTMLElement | null>(null);
+  const fieldRef = useRef(field);
+  fieldRef.current = field;
+  const dockedRef = useRef(docked);
+  dockedRef.current = docked;
+
+  // A docked session whose host unmounts (its form returned null or went away) ends with it, so the
+  // caller's retained target cannot bring the pad back when the form reopens. Deferred: StrictMode
+  // replays this cleanup on mount, and the replayed setup marks the host alive again first.
+  const aliveRef = useRef(false);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      queueMicrotask(() => {
+        if (!aliveRef.current && dockedRef.current) closeRef.current();
+      });
+    };
+  }, []);
 
   // Desktop amount fields are typed in (PadInput, AmountField): a pad session still open when the
   // layout turns desktop would later commit over what was typed, so it ends here.
@@ -163,7 +186,7 @@ export function AmountPadSheet({
     // to its next stage). The pad belongs to its field: once that field leaves the DOM it closes,
     // and the caller's onClose clears the target it held.
     const observer = new MutationObserver(() => {
-      if (openerRef.current && !openerRef.current.isConnected) closeRef.current();
+      if (fieldRef.current && !fieldRef.current.isConnected) closeRef.current();
     });
     observer.observe(document.body, { childList: true, subtree: true });
     return () => {
@@ -185,14 +208,11 @@ export function AmountPadSheet({
     };
   }, [docked, resetKey]);
 
-  // The field that opened (or retargeted) the pad is the focused one.
   useLayoutEffect(() => {
-    if (!docked) return;
-    const active = document.activeElement;
-    openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
-    const raf = requestAnimationFrame(() => openerRef.current?.scrollIntoView({ block: "nearest" }));
+    if (!docked || !field) return;
+    const raf = requestAnimationFrame(() => field.scrollIntoView({ block: "nearest" }));
     return () => cancelAnimationFrame(raf);
-  }, [docked, resetKey]);
+  }, [docked, field]);
 
   if (wide) {
     if (!docked) return null;

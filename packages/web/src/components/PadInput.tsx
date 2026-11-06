@@ -59,8 +59,8 @@ export function PadInput<T extends AmountPadTarget>({
   const marks = { "data-pad-active": active ? "" : undefined, "data-pad-error": active && err ? "" : undefined };
 
   if (!desktop) {
-    const open = () => {
-      const t = target();
+    const open = (ev: React.SyntheticEvent<HTMLInputElement>) => {
+      const t = { ...target(), field: ev.currentTarget };
       openedRef.current = t;
       onPad(t);
     };
