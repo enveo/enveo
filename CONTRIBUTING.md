@@ -63,7 +63,7 @@ Never use this command on a database containing real data.
 
 | Command | What it does |
 |---|---|
-| `bun run verify` | What you run before pushing: `typecheck` + `lint` + `test` + `build` + `policy:sources` + `policy:web-security` + `policy:docs`. Offline, no database. |
+| `bun run verify` | What you run before pushing: `typecheck` + `lint` + `test` + `build` + `policy:sources` + `policy:web-security` + `policy:privacy` + `policy:docs`, run concurrently with prefixed output. Every phase runs to completion; any failure fails `verify`. Offline, no database. |
 | `bun run lint` | Non-mutating Biome check (format + lint + import organization) over the whole repository. |
 | `bun run format` | The **only** command that rewrites files (`biome format --write`). Run it yourself and review the diff — nothing else ever formats for you. |
 | `bun run format:check` | Non-mutating formatter check. |

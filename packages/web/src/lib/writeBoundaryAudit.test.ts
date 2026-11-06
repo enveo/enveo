@@ -539,10 +539,16 @@ describe("write-boundary AST audit", () => {
     await expect(productionFindings("/path/that/does/not/exist")).rejects.toThrow("write_boundary_discovery_failed");
   });
 
-  it("covers every production TS/TSX write call with a wrapper or exact audited site", async () => {
-    const findings = await productionFindings();
-    const unwrapped = findings.filter((finding) => !finding.wrapped).map(findingKey);
+  // Parses every production source file: about 2 s alone, past the 5 s default when `verify`
+  // runs its phases concurrently on a loaded machine.
+  it(
+    "covers every production TS/TSX write call with a wrapper or exact audited site",
+    async () => {
+      const findings = await productionFindings();
+      const unwrapped = findings.filter((finding) => !finding.wrapped).map(findingKey);
 
-    expect(unwrapped).toEqual([...AUDITED_UNWRAPPED_WRITE_SITES]);
-  });
+      expect(unwrapped).toEqual([...AUDITED_UNWRAPPED_WRITE_SITES]);
+    },
+    { timeout: 30_000 },
+  );
 });
