@@ -7,6 +7,7 @@ import { useT } from "../lib/i18n";
 import { CORAL, font } from "../lib/theme";
 import { Sheet } from "./chrome";
 import { Numpad } from "./pickers";
+import { useAccountPortalTarget } from "./SignOutShield";
 
 /**
  * Shared amount-numpad sheet (spec 2026-07-09-amount-pad-design): opened by
@@ -60,6 +61,7 @@ export function AmountPadSheet({
   const { t, lang } = useT();
   const [state, setState] = useState<PadState>({ expr: "", fresh: true });
   const [error, setError] = useState(false);
+  const portalTarget = useAccountPortalTarget();
 
   useEffect(() => {
     if (show) {
@@ -89,9 +91,9 @@ export function AmountPadSheet({
 
   // The pad usually opens over another sheet (cover, suggest, fill goals) whose body sits at z 100,
   // above this sheet's z-90 backdrop — taps on it then missed the backdrop and the pad stayed open.
-  // Portaled to <body>: iOS WebKit clipped the fixed pad inside this z-index wrapper to the screen's
-  // overflow:hidden column, which ends above the bottom nav, hiding the bottom key rows. <body>
-  // carries no app font, so the wrapper sets it.
+  // Portaled out of the screen: iOS WebKit clipped the fixed pad inside this z-index wrapper to the
+  // screen's overflow:hidden column, which ends above the bottom nav, hiding the bottom key rows.
+  // The target sits outside the app container's font, so the wrapper sets it.
   return createPortal(
     <div style={{ position: "relative", zIndex: 110, fontFamily: font, WebkitFontSmoothing: "antialiased" }}>
       <Sheet show={show} onClose={onClose}>
@@ -128,6 +130,6 @@ export function AmountPadSheet({
         )}
       </Sheet>
     </div>,
-    document.body,
+    portalTarget,
   );
 }

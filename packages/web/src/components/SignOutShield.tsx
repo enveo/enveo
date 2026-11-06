@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useSyncExternalStore } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
 import { getSignOutPhase, type SignOutPhase, subscribeSignOutPhase } from "../lib/signOutBarrier";
@@ -60,11 +60,23 @@ export function accountContentAccessibility(phase: SignOutPhase): { "aria-hidden
   return { "aria-hidden": blocked ? true : undefined, inert: blocked ? "" : undefined };
 }
 
+const AccountPortalTarget = createContext<HTMLElement | null>(null);
+
+/** Where a fixed overlay showing account data portals to: inside the boundary, so sign-out's
+ *  `aria-hidden`/`inert` still reach it, but outside every screen's clipping column. */
+export function useAccountPortalTarget(): HTMLElement {
+  return useContext(AccountPortalTarget) ?? document.body;
+}
+
 export function SignOutBoundary({ children }: { children: ReactNode }) {
   const phase = useSyncExternalStore(subscribeSignOutPhase, getSignOutPhase, getSignOutPhase);
+  const [portalTarget, setPortalTarget] = useState<HTMLDivElement | null>(null);
   return (
     <>
-      <div {...accountContentAccessibility(phase)}>{children}</div>
+      <div {...accountContentAccessibility(phase)}>
+        <AccountPortalTarget.Provider value={portalTarget}>{children}</AccountPortalTarget.Provider>
+        <div ref={setPortalTarget} data-account-portal />
+      </div>
       <SignOutShieldContent
         phase={phase}
         onRetry={() => {

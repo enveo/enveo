@@ -3,18 +3,15 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
 
 /**
- * Source scan for the ancestor-transform pitfall (CLAUDE.md): `Sheet`'s content div carries an
- * always-on `transform`, and on phone (or any un-hosted mount) `Surface` IS `Sheet` — so an
- * amount pad whose `AmountPadHost` renders as a DESCENDANT of a Surface/Sheet body gets its
- * `position:fixed` backdrop+numpad sized against that small sheet instead of the viewport. The
- * shipped shape (ReconcileSheet.tsx, Accounts.tsx "Starting balance") hoists the pad target into
- * the caller's state (`AmountField`'s `externalPad`) and renders `AmountPadHost` as a SIBLING of
- * the Surface. This scan makes the class un-regressable for the greppable case (the pad field and
- * its Surface in ONE file — the shape of both incidents this branch fixed): an `<AmountField>`
- * lexically inside a `<Surface>`/`<Sheet>` body must pass `externalPad`, and a raw
- * `<AmountPadHost>` must never sit inside one. Cross-file composition (a Surface body importing a
- * component that nests its own pad) is out of lexical reach — `AmountField`'s docblock carries
- * the rule for that case.
+ * Source scan for the hoisted-pad convention. `Sheet`'s content div carries an always-on
+ * `transform` (the ancestor-transform pitfall in CLAUDE.md); a pad rendered in that DOM once sized
+ * its `position:fixed` backdrop+numpad against the small sheet. `AmountPadSheet` now portals out
+ * of the screen, so DOM nesting no longer causes that, but the shipped shape stays: callers
+ * (ReconcileSheet.tsx, Accounts.tsx "Starting balance") hoist the pad target into their state
+ * (`AmountField`'s `externalPad`) and render `AmountPadHost` as a SIBLING of the Surface. For the
+ * greppable case (the pad field and its Surface in ONE file): an `<AmountField>` lexically inside
+ * a `<Surface>`/`<Sheet>` body must pass `externalPad`, and a raw `<AmountPadHost>` must never sit
+ * inside one. Cross-file composition is out of lexical reach.
  */
 
 const SRC_ROOT = join(import.meta.dir, "..");
@@ -88,13 +85,14 @@ describe("amount pads under a Surface/Sheet body", () => {
 });
 
 describe("the amount pad sheet", () => {
-  it("renders through a portal on <body>, outside every screen's overflow:hidden column", () => {
+  it("renders through a portal to the account portal target, outside every screen's overflow:hidden column", () => {
     // given: iOS WebKit clips a fixed pad inside the z-index wrapper to the clipping screen
     // column above the bottom nav, hiding the bottom key rows
     const src = stripComments(readFileSync(join(SRC_ROOT, "components/AmountPadSheet.tsx"), "utf8"));
 
-    // then: the pad's wrapper is mounted on <body>
+    // then: the pad's wrapper is mounted on the sign-out boundary's portal host
+    expect(src).toContain("const portalTarget = useAccountPortalTarget();");
     expect(src).toMatch(/return createPortal\(\s*<div style=\{\{ position: "relative", zIndex: 110,[^}]*fontFamily: font/);
-    expect(src).toMatch(/<\/div>,\s*document\.body,\s*\);/);
+    expect(src).toMatch(/<\/div>,\s*portalTarget,\s*\);/);
   });
 });
