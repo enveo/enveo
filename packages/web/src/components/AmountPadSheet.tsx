@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { fmtSignedTrim, type PadState, padKey, padPreview } from "../lib/amount";
 import { useMask } from "../lib/contexts";
 import { localizePadExpression } from "../lib/format";
 import { useT } from "../lib/i18n";
-import { CORAL } from "../lib/theme";
+import { CORAL, font } from "../lib/theme";
 import { Sheet } from "./chrome";
 import { Numpad } from "./pickers";
 
@@ -88,8 +89,11 @@ export function AmountPadSheet({
 
   // The pad usually opens over another sheet (cover, suggest, fill goals) whose body sits at z 100,
   // above this sheet's z-90 backdrop — taps on it then missed the backdrop and the pad stayed open.
-  return (
-    <div style={{ position: "relative", zIndex: 110 }}>
+  // Portaled to <body>: iOS WebKit clipped the fixed pad inside this z-index wrapper to the screen's
+  // overflow:hidden column, which ends above the bottom nav, hiding the bottom key rows. <body>
+  // carries no app font, so the wrapper sets it.
+  return createPortal(
+    <div style={{ position: "relative", zIndex: 110, fontFamily: font, WebkitFontSmoothing: "antialiased" }}>
       <Sheet show={show} onClose={onClose}>
         {(C) => (
           <div>
@@ -123,6 +127,7 @@ export function AmountPadSheet({
           </div>
         )}
       </Sheet>
-    </div>
+    </div>,
+    document.body,
   );
 }

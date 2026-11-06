@@ -86,3 +86,15 @@ describe("amount pads under a Surface/Sheet body", () => {
     expect(hoistedCallSites).toContain("screens/Accounts.tsx");
   });
 });
+
+describe("the amount pad sheet", () => {
+  it("renders through a portal on <body>, outside every screen's overflow:hidden column", () => {
+    // given: iOS WebKit clips a fixed pad inside the z-index wrapper to the clipping screen
+    // column above the bottom nav, hiding the bottom key rows
+    const src = stripComments(readFileSync(join(SRC_ROOT, "components/AmountPadSheet.tsx"), "utf8"));
+
+    // then: the pad's wrapper is mounted on <body>
+    expect(src).toMatch(/return createPortal\(\s*<div style=\{\{ position: "relative", zIndex: 110,[^}]*fontFamily: font/);
+    expect(src).toMatch(/<\/div>,\s*document\.body,\s*\);/);
+  });
+});
