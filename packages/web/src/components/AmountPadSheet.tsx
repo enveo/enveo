@@ -42,12 +42,15 @@ function syncDockHeight() {
   else root.style.setProperty("--amount-dock-h", `${Math.max(...dockHeights.values()) + 12}px`);
 }
 
-/** The line a docked pad is editing, so the field that opened it can show it in place. */
-type DockedLine = { target: unknown; expr: string };
-let dockedLine: DockedLine | null = null;
+/** The lines docked pads are editing, keyed by their target, so the field that opened a pad can
+ *  show its line in place. Replaced (never mutated) on change: the snapshot identity is the signal. */
+let dockedLines: ReadonlyMap<unknown, string> = new Map();
 const dockedLineListeners = new Set<() => void>();
-function publishDockedLine(next: DockedLine | null) {
-  dockedLine = next;
+function publishDockedLine(target: unknown, expr: string | null) {
+  const next = new Map(dockedLines);
+  if (expr === null) next.delete(target);
+  else next.set(target, expr);
+  dockedLines = next;
   for (const listener of dockedLineListeners) listener();
 }
 function subscribeDockedLine(listener: () => void) {
@@ -57,12 +60,12 @@ function subscribeDockedLine(listener: () => void) {
 /** The expression a docked pad is editing for `target` (the object the field handed to its pad
  *  host), or null when no docked pad edits it. */
 export function useDockedPadLine(target: unknown): string | null {
-  const line = useSyncExternalStore(
+  const lines = useSyncExternalStore(
     subscribeDockedLine,
-    () => dockedLine,
-    () => null,
+    () => dockedLines,
+    () => dockedLines,
   );
-  return target != null && line?.target === target ? line.expr : null;
+  return target != null ? (lines.get(target) ?? null) : null;
 }
 
 export function AmountPadHost({ target, onClose }: { target: AmountPadTarget | null; onClose: () => void }) {
@@ -199,12 +202,12 @@ export function AmountPadSheet({
 
   useEffect(() => {
     if (!docked) return;
-    publishDockedLine({ target: resetKey, expr: state.expr });
+    publishDockedLine(resetKey, state.expr);
   }, [docked, resetKey, state.expr]);
   useEffect(() => {
     if (!docked) return;
     return () => {
-      if (dockedLine?.target === resetKey) publishDockedLine(null);
+      publishDockedLine(resetKey, null);
     };
   }, [docked, resetKey]);
 

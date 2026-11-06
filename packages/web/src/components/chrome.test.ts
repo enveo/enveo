@@ -45,5 +45,7 @@ describe("StyleInjector's active amount box", () => {
     expect(source).toMatch(/\$\{INPUT_FOCUS_CSS\}\$\{PAD_BOX_CSS\}/);
     expect(presentation).toContain("[data-pad-box]:has(>input[data-pad-active])");
     expect(presentation).toContain("[data-pad-box]:has(>input[data-pad-error])");
+    // without :has() the active input keeps its own ring
+    expect(presentation).toContain("[data-pad-box]>input[data-pad-active]{outline:2px solid var(--accent)!important");
   });
 });

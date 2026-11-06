@@ -120,6 +120,9 @@ export function AmountField({
             setErr(true);
             return;
           }
+          // Canonical even when the committed value is unchanged (then `value` does not resync
+          // the draft): "50+50" over 100 must read 100, not the expression's leading 50.
+          setInput(fmtSignedTrim(minor));
           onCommit(fmtSignedTrim(minor));
         }}
         style={
