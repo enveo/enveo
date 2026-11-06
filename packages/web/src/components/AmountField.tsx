@@ -60,6 +60,11 @@ export function AmountField({
 
   const cancelingRef = useRef(false);
 
+  // Desktop types into the field: a pad session left open from a narrower layout must not commit later.
+  useEffect(() => {
+    if (desktop) setPad(null);
+  }, [desktop, setPad]);
+
   // Resync the desktop draft whenever the COMMITTED value changes from OUTSIDE this field (a
   // fresh "New account" open, an account switch) — never mid-edit on the same committed value,
   // since a successful commit round-trips back through this same string.

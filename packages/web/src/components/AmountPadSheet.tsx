@@ -30,6 +30,14 @@ export type AmountPadTarget = {
   onCommit: (minor: number) => void;
 };
 
+/** Heights of the open docked pads; PaneSurface reserves the tallest as bottom padding. */
+const dockHeights = new Map<object, number>();
+function syncDockHeight() {
+  const root = document.documentElement;
+  if (dockHeights.size === 0) root.style.removeProperty("--amount-dock-h");
+  else root.style.setProperty("--amount-dock-h", `${Math.max(...dockHeights.values())}px`);
+}
+
 export function AmountPadHost({ target, onClose }: { target: AmountPadTarget | null; onClose: () => void }) {
   return (
     <AmountPadSheet
@@ -100,37 +108,59 @@ export function AmountPadSheet({
     onClose();
   };
 
-  const docked = !!wide && show;
+  const desktop = wide?.mode === "desktop";
+  const docked = !!wide && !desktop && show;
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const dockKey = useRef({}).current;
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  // Desktop amount fields are typed in (PadInput, AmountField): a pad session still open when the
+  // layout turns desktop would later commit over what was typed, so it ends here.
+  useEffect(() => {
+    if (show && desktop) closeRef.current();
+  }, [show, desktop]);
+
   // The docked pad sits over the bottom of the pane its field lives in. The pane's scroller gets
   // the dock's height as bottom padding and scroll padding (PaneSurface reads --amount-dock-h), so
-  // the field being edited can scroll up above the keys; Escape closes the pad alone — captured
+  // the field being edited scrolls up above the keys; Escape closes the pad alone — captured
   // before WideShell's document handler, which would close the whole panel.
   useLayoutEffect(() => {
     if (!docked) return;
-    const root = document.documentElement;
-    const opener = document.activeElement;
-    const setHeight = () => root.style.setProperty("--amount-dock-h", `${dockRef.current?.offsetHeight ?? 0}px`);
-    setHeight();
-    const raf = requestAnimationFrame(() => {
-      if (opener instanceof HTMLElement && opener !== document.body) opener.scrollIntoView({ block: "nearest" });
-    });
+    dockHeights.set(dockKey, dockRef.current?.offsetHeight ?? 0);
+    syncDockHeight();
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.stopImmediatePropagation();
       closeRef.current();
     };
     window.addEventListener("keydown", onKeyDown, true);
+    // With no backdrop, the form that opened the pad can go away under it (closed, replaced, moved
+    // to its next stage). The pad belongs to its field: once that field leaves the DOM it closes,
+    // and the caller's onClose clears the target it held.
+    const observer = new MutationObserver(() => {
+      if (openerRef.current && !openerRef.current.isConnected) closeRef.current();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
     return () => {
-      cancelAnimationFrame(raf);
       window.removeEventListener("keydown", onKeyDown, true);
-      root.style.removeProperty("--amount-dock-h");
+      observer.disconnect();
+      dockHeights.delete(dockKey);
+      syncDockHeight();
     };
-  }, [docked]);
+  }, [docked, dockKey]);
+
+  // The field that opened (or retargeted) the pad is the focused one.
+  useLayoutEffect(() => {
+    if (!docked) return;
+    const active = document.activeElement;
+    openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+    const raf = requestAnimationFrame(() => openerRef.current?.scrollIntoView({ block: "nearest" }));
+    return () => cancelAnimationFrame(raf);
+  }, [docked, resetKey]);
 
   if (wide) {
-    if (!show) return null;
+    if (!docked) return null;
     // Wide layouts have no popups: the pad is part of the pane its field lives in (every pad
     // caller is a surface in the side panel), docked across its bottom with no backdrop — the
     // DockedNumpad idiom of the Budget screen. Portaled out of the panel's transformed layer

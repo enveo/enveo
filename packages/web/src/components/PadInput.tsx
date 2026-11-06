@@ -1,5 +1,5 @@
 import type React from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fmtSignedTrim } from "../lib/amount";
 import { evalExpression } from "../lib/format";
 import { useWideHost } from "../lib/shellContext";
@@ -30,6 +30,13 @@ export function PadInput<T extends AmountPadTarget>({
   const [err, setErr] = useState(false);
   // Escape blurs the field to end the edit; that blur must not commit what Escape discarded.
   const cancelingRef = useRef(false);
+  // A draft started on desktop does not survive a switch to the pad layouts.
+  useEffect(() => {
+    if (!desktop) {
+      setDraft(null);
+      setErr(false);
+    }
+  }, [desktop]);
 
   if (!desktop) {
     const open = () => onPad(target());
