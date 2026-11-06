@@ -4,6 +4,7 @@ import { fmtSignedTrim, type PadState, padKey, padPreview } from "../lib/amount"
 import { useMask } from "../lib/contexts";
 import { localizePadExpression } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { useWideHost } from "../lib/shellContext";
 import { CORAL, font } from "../lib/theme";
 import { Sheet } from "./chrome";
 import { Numpad } from "./pickers";
@@ -62,6 +63,10 @@ export function AmountPadSheet({
   const [state, setState] = useState<PadState>({ expr: "", fresh: true });
   const [error, setError] = useState(false);
   const portalTarget = useAccountPortalTarget();
+  // Wide layouts have no popups: the pad docks across the side panel its field lives in (every
+  // pad caller is a surface there), like DockedNumpad docks across the primary pane.
+  const rects = useWideHost()?.rects;
+  const anchor = rects ? (rects.panel ?? rects.primary) : null;
 
   useEffect(() => {
     if (show) {
@@ -96,7 +101,7 @@ export function AmountPadSheet({
   // The target sits outside the app container's font, so the wrapper sets it.
   return createPortal(
     <div style={{ position: "relative", zIndex: 110, fontFamily: font, WebkitFontSmoothing: "antialiased" }}>
-      <Sheet show={show} onClose={onClose}>
+      <Sheet show={show} onClose={onClose} anchor={anchor}>
         {(C) => (
           <div>
             <div style={{ fontSize: 13.5, color: C.mute, textAlign: "center", marginBottom: 10 }}>{label}</div>
