@@ -2,11 +2,11 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { fmtSignedTrim } from "../lib/amount";
 import { useCurrency, useTheme } from "../lib/contexts";
-import { formatMoney, localizePadExpression, parseAmount } from "../lib/format";
+import { evalExpression, formatMoney, localizePadExpression, parseAmount } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useWideHost } from "../lib/shellContext";
 import { font } from "../lib/theme";
-import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
+import { AmountPadHost, type AmountPadTarget, useDockedPadLine } from "./AmountPadSheet";
 
 const inlineFigureStyle = (underline: string, color: string): React.CSSProperties => ({
   width: 120,
@@ -56,8 +56,16 @@ export function AmountField({
   const [pad, setPad] = externalPad ?? [internalPad, setInternalPad];
   const [input, setInput] = useState(value);
   const [err, setErr] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const openedRef = useRef<AmountPadTarget | null>(null);
+  const docked = useDockedPadLine(openedRef.current);
 
   const cancelingRef = useRef(false);
+
+  // Desktop types into the field: a pad session left open from a narrower layout must not commit later.
+  useEffect(() => {
+    if (desktop) setPad(null);
+  }, [desktop, setPad]);
 
   // Resync the desktop draft whenever the COMMITTED value changes from OUTSIDE this field (a
   // fresh "New account" open, an account switch) — never mid-edit on the same committed value,
@@ -73,8 +81,10 @@ export function AmountField({
         inputMode="decimal"
         aria-label={label}
         aria-invalid={err || undefined}
-        value={input}
+        // At rest the inline figure reads as money, like the pad layouts' display; editing shows the raw draft.
+        value={inline && !focused && !err && parseAmount(input) !== null ? formatMoney(parseAmount(input)!, currency, lang) : input}
         placeholder={placeholder}
+        onFocus={() => setFocused(true)}
         onChange={(ev) => {
           setInput(ev.target.value);
           setErr(false);
@@ -94,6 +104,7 @@ export function AmountField({
           }
         }}
         onBlur={() => {
+          setFocused(false);
           if (cancelingRef.current) {
             cancelingRef.current = false;
             return;
@@ -104,16 +115,33 @@ export function AmountField({
             onCommit("");
             return;
           }
-          const minor = parseAmount(input);
+          const minor = evalExpression(input);
           if (minor === null || (minor < 0 && !allowNegative)) {
             setErr(true);
             return;
           }
+          // Canonical even when the committed value is unchanged (then `value` does not resync
+          // the draft): "50+50" over 100 must read 100, not the expression's leading 50.
+          setInput(fmtSignedTrim(minor));
           onCommit(fmtSignedTrim(minor));
         }}
         style={
           inline
-            ? { ...inlineFigureStyle(C.mute, err ? "var(--danger)" : C.text), fontFamily: font }
+            ? {
+                ...inlineFigureStyle(C.mute, err ? "var(--danger)" : C.text),
+                fontFamily: font,
+                // The active-field look of every desktop amount input (PadInput): accent ring, card fill.
+                ...(focused || err
+                  ? {
+                      background: "var(--card)",
+                      borderBottom: "none",
+                      borderRadius: 6,
+                      padding: "1px 6px 2px",
+                      outline: `2px solid ${err ? "var(--danger)" : "var(--accent)"}`,
+                      outlineOffset: 3,
+                    }
+                  : null),
+              }
             : {
                 width: "100%",
                 padding: "10px 12px",
@@ -132,24 +160,55 @@ export function AmountField({
     );
   }
 
-  const openPad = () => setPad({ label, initial: parseAmount(value) ?? 0, allowNegative, onCommit: (minor) => onCommit(fmtSignedTrim(minor)) });
+  const openPad = (ev: React.SyntheticEvent<HTMLInputElement>) => {
+    const target: AmountPadTarget = {
+      label,
+      initial: parseAmount(value) ?? 0,
+      allowNegative,
+      onCommit: (minor) => onCommit(fmtSignedTrim(minor)),
+      field: ev.currentTarget,
+    };
+    openedRef.current = target;
+    setPad(target);
+  };
 
   return (
     <>
       <input
-        value={inline && parseAmount(value) !== null ? formatMoney(parseAmount(value)!, currency, lang) : localizePadExpression(value, lang)}
+        value={
+          docked !== null
+            ? localizePadExpression(docked, lang) || "0"
+            : inline && parseAmount(value) !== null
+              ? formatMoney(parseAmount(value)!, currency, lang)
+              : localizePadExpression(value, lang)
+        }
+        data-pad-active={docked !== null ? "" : undefined}
         readOnly
         placeholder={placeholder}
         onClick={openPad}
         onFocus={openPad}
         style={
           inline
-            ? { ...inlineFigureStyle(C.mute, C.text), fontFamily: font, cursor: "pointer" }
+            ? {
+                ...inlineFigureStyle(C.mute, C.text),
+                fontFamily: font,
+                cursor: "pointer",
+                ...(docked !== null
+                  ? {
+                      background: "var(--card)",
+                      borderBottom: "none",
+                      borderRadius: 6,
+                      padding: "1px 6px 2px",
+                      outline: "2px solid var(--accent)",
+                      outlineOffset: 3,
+                    }
+                  : null),
+              }
             : {
                 width: "100%",
                 padding: "10px 12px",
                 borderRadius: 9,
-                border: `1px solid ${C.line}`,
+                border: `1px solid ${docked !== null ? "var(--accent)" : C.line}`,
                 background: C.bg,
                 color: C.text,
                 fontSize: 14,

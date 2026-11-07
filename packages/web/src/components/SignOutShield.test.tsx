@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { accountContentAccessibility, SignOutShieldContent } from "./SignOutShield";
+import { __resetSignOutBarrierForTests, beginSignOut } from "../lib/signOutBarrier";
+import { accountContentAccessibility, SignOutBoundary, SignOutShieldContent } from "./SignOutShield";
 
 describe("SignOutShield", () => {
   it("keeps retry-only logout orchestration outside the initial application chunk", async () => {
@@ -35,5 +36,20 @@ describe("SignOutShield", () => {
     expect(accountContentAccessibility("idle")).toEqual({ "aria-hidden": undefined, inert: undefined });
     expect(accountContentAccessibility("blocking")).toEqual({ "aria-hidden": true, inert: "" });
     expect(accountContentAccessibility("cleanup-failed")).toEqual({ "aria-hidden": true, inert: "" });
+  });
+
+  it("hosts account overlays inside the hidden, inert subtree, so a portaled pad is covered too", () => {
+    // given: a sign-out in progress
+    __resetSignOutBarrierForTests();
+    beginSignOut();
+    try {
+      // when
+      const html = renderToStaticMarkup(createElement(SignOutBoundary, null, createElement("main")));
+
+      // then: the portal host is a child of the boundary that carries aria-hidden and inert
+      expect(html).toStartWith('<div aria-hidden="true" inert=""><main></main><div data-account-portal="true"></div></div>');
+    } finally {
+      __resetSignOutBarrierForTests();
+    }
   });
 });

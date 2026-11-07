@@ -11,6 +11,7 @@ import { store } from "../lib/store";
 import { CTA, font, TEAL } from "../lib/theme";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Surface } from "./chrome";
+import { PadInput } from "./PadInput";
 
 /**
  * "Fill by goals" preview (spec 2026-07-31): on open, proposes how to spend the current
@@ -68,12 +69,11 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
   const sum = visibleProposals.reduce((s, p) => s + editedMinor(p.envelopeId, p.add), 0);
   const over = sum > state.readyToAssign;
 
-  const openPadFor = (p: FillProposal) =>
-    setPad({
-      label: envById.get(p.envelopeId)?.name ?? p.envelopeId,
-      initial: editedMinor(p.envelopeId, p.add),
-      onCommit: (minor) => setEdited((s) => ({ ...s, [p.envelopeId]: fmtTrim(minor) })),
-    });
+  const padTargetFor = (p: FillProposal): AmountPadTarget => ({
+    label: envById.get(p.envelopeId)?.name ?? p.envelopeId,
+    initial: editedMinor(p.envelopeId, p.add),
+    onCommit: (minor) => setEdited((s) => ({ ...s, [p.envelopeId]: fmtTrim(minor) })),
+  });
 
   const close = () => {
     setPad(null);
@@ -154,7 +154,8 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
                     </div>
                   ) : (
                     <div
-                      onClick={() => openPadFor(p)}
+                      onClick={(ev) => ev.currentTarget.querySelector("input")?.focus()}
+                      data-pad-box
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -167,12 +168,12 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
                       }}
                     >
                       <span style={{ fontSize: 11, color: C.soft }}>+</span>
-                      <input
+                      <PadInput
                         value={localizePadExpression(edited[p.envelopeId] ?? "", lang)}
-                        readOnly
+                        boxed
+                        target={() => padTargetFor(p)}
+                        onPad={setPad}
                         tabIndex={0}
-                        onClick={() => openPadFor(p)}
-                        onFocus={() => openPadFor(p)}
                         style={{
                           width: 60,
                           background: "none",

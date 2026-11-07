@@ -19,6 +19,7 @@ import { store } from "../lib/store";
 import { CORAL, CTA, font, TEAL, type Theme } from "../lib/theme";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Surface } from "./chrome";
+import { PadInput } from "./PadInput";
 
 const GEAR_D =
   "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 00-2.1-1.2L14.4 3h-4l-.4 2.6a7.5 7.5 0 00-2.1 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 000 2.4l-2 1.6 2 3.4 2.4-1c.6.5 1.4.9 2.1 1.2l.4 2.6h4l.4-2.6a7.5 7.5 0 002.1-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z";
@@ -125,12 +126,11 @@ export function BudgetSuggestSheet({
 
   const deltaOf = (it: SuggestItem): number => editedMinor(it.envelopeId, it.proposedDelta);
 
-  const openPadFor = (it: SuggestItem) =>
-    setPad({
-      label: envById.get(it.envelopeId)?.name ?? it.envelopeId,
-      initial: deltaOf(it),
-      onCommit: (minor) => setEdited((s) => ({ ...s, [it.envelopeId]: fmtTrim(minor) })),
-    });
+  const padTargetFor = (it: SuggestItem): AmountPadTarget => ({
+    label: envById.get(it.envelopeId)?.name ?? it.envelopeId,
+    initial: deltaOf(it),
+    onCommit: (minor) => setEdited((s) => ({ ...s, [it.envelopeId]: fmtTrim(minor) })),
+  });
 
   const sumChecked = resp ? resp.items.reduce((s, it) => s + (checked[it.envelopeId] ? deltaOf(it) : 0), 0) : 0;
   const remaining = resp ? resp.amountToDistribute - sumChecked : 0;
@@ -406,7 +406,8 @@ export function BudgetSuggestSheet({
                                   value={localizePadExpression(edited[it.envelopeId] ?? "", lang)}
                                   highlight={on && isEdited}
                                   struck={!on}
-                                  onOpen={on ? () => openPadFor(it) : undefined}
+                                  target={on ? () => padTargetFor(it) : undefined}
+                                  onPad={setPad}
                                   symbol={currencySymbol(currency, lang)}
                                 />
                               </div>
@@ -523,14 +524,16 @@ function EnvelopeChip({ C, env }: { C: Theme; env: { color: string; icon: string
   );
 }
 
-/** Read-only amount field that opens the shared amount pad (the AmountPadHost idiom). */
+/** Amount field that opens the shared amount pad (the AmountPadHost idiom), typed in on desktop
+ *  (`PadInput`); without a `target` it is display-only. */
 function AmountBox({
   C,
   prefix,
   value,
   highlight,
   struck,
-  onOpen,
+  target,
+  onPad,
   symbol,
   label,
 }: {
@@ -539,13 +542,29 @@ function AmountBox({
   value: string;
   highlight: boolean;
   struck?: boolean;
-  onOpen?: () => void;
+  target?: () => AmountPadTarget;
+  onPad: (target: AmountPadTarget) => void;
   symbol: string;
   label?: string;
 }) {
+  const inputStyle: CSSProperties = {
+    width: 60,
+    background: "none",
+    border: "none",
+    textAlign: "right",
+    fontSize: 13,
+    fontWeight: 700,
+    color: highlight ? TEAL : C.text,
+    fontFamily: font,
+    fontVariantNumeric: "tabular-nums",
+    cursor: target ? "pointer" : "default",
+    textDecoration: struck ? "line-through" : "none",
+    padding: 0,
+  };
   return (
     <div
-      onClick={onOpen}
+      onClick={target ? (ev) => ev.currentTarget.querySelector("input")?.focus() : undefined}
+      data-pad-box
       style={{
         display: "flex",
         alignItems: "center",
@@ -554,33 +573,15 @@ function AmountBox({
         background: C.inset,
         borderRadius: 9,
         padding: "6px 9px",
-        cursor: onOpen ? "pointer" : "default",
+        cursor: target ? "pointer" : "default",
       }}
     >
       {prefix && <span style={{ fontSize: 11, color: C.soft }}>{prefix}</span>}
-      <input
-        value={value}
-        readOnly
-        placeholder="0"
-        aria-label={label}
-        tabIndex={onOpen ? 0 : -1}
-        onClick={onOpen}
-        onFocus={onOpen}
-        style={{
-          width: 60,
-          background: "none",
-          border: "none",
-          textAlign: "right",
-          fontSize: 13,
-          fontWeight: 700,
-          color: highlight ? TEAL : C.text,
-          fontFamily: font,
-          fontVariantNumeric: "tabular-nums",
-          cursor: onOpen ? "pointer" : "default",
-          textDecoration: struck ? "line-through" : "none",
-          padding: 0,
-        }}
-      />
+      {target ? (
+        <PadInput boxed value={value} target={target} onPad={onPad} placeholder="0" aria-label={label} tabIndex={0} style={inputStyle} />
+      ) : (
+        <input value={value} readOnly placeholder="0" aria-label={label} tabIndex={-1} style={inputStyle} />
+      )}
       <span style={{ fontSize: 11, color: C.soft }}>{symbol}</span>
     </div>
   );
@@ -840,16 +841,15 @@ function PresetManager({
                   value={amount > 0 ? localizePadExpression(fmtTrim(amount), lang) : ""}
                   highlight={amount > 0}
                   symbol={currencySymbol(currency, lang)}
-                  onOpen={() =>
-                    onPad({
-                      label: e.name,
-                      initial: amount,
-                      onCommit: (minor) => {
-                        setForm((f) => (f ? { ...f, amounts: { ...f.amounts, [e.id]: minor } } : f));
-                        setFormError(null);
-                      },
-                    })
-                  }
+                  target={() => ({
+                    label: e.name,
+                    initial: amount,
+                    onCommit: (minor) => {
+                      setForm((f) => (f ? { ...f, amounts: { ...f.amounts, [e.id]: minor } } : f));
+                      setFormError(null);
+                    },
+                  })}
+                  onPad={onPad}
                 />
               </div>
             );

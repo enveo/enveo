@@ -66,7 +66,18 @@ export function PaneSurface({
       </div>
       {}
       <InWideShell.Provider value={{ ...ctx, host: "panel" }}>
-        <div className="gs" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 20px calc(20px + env(safe-area-inset-bottom))" }}>
+        <div
+          className="gs"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            // An open docked amount pad (AmountPadSheet) covers the panel's bottom; its height lets
+            // the field being edited scroll above the keys.
+            padding: "16px 20px calc(20px + env(safe-area-inset-bottom) + var(--amount-dock-h, 0px))",
+            scrollPaddingBottom: "var(--amount-dock-h, 0px)",
+          }}
+        >
           {typeof children === "function" ? children(C) : children}
         </div>
       </InWideShell.Provider>

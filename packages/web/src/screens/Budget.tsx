@@ -5,6 +5,7 @@ import { DockedNumpad } from "../components/DockedNumpad";
 import { IconColorPicker } from "../components/IconColorPicker";
 import { CardBox, GoalRing, useBand } from "../components/kit";
 import { LazyChunk } from "../components/lazy";
+import { PadInput } from "../components/PadInput";
 import { fmtSignedTrim, type PadState, padPreview, padPreviewLive } from "../lib/amount";
 import type { EnvelopeView, StateResponse } from "../lib/api";
 import { linkedAccountNames } from "../lib/automaticEnvelopeAccountUi";
@@ -986,13 +987,12 @@ export function EnvEdit({
     }
   }, [env]);
   if (!env) return null;
-  const openTargetPad = () =>
-    setPad({
-      label: t("Monthly target (optional)"),
-      initial: target.trim() === "" ? 0 : (parseAmount(target) ?? 0),
+  const targetPad = (): AmountPadTarget => ({
+    label: t("Monthly target (optional)"),
+    initial: target.trim() === "" ? 0 : (parseAmount(target) ?? 0),
 
-      onCommit: (minor) => setTarget(minor === 0 ? "" : fmtTrim(minor)),
-    });
+    onCommit: (minor) => setTarget(minor === 0 ? "" : fmtTrim(minor)),
+  });
   return (
     <>
       <Surface show={!!env} onClose={onClose}>
@@ -1079,11 +1079,10 @@ export function EnvEdit({
               {t("Monthly target (optional)")}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-              <input
+              <PadInput
                 value={localizePadExpression(target, lang)}
-                readOnly
-                onClick={openTargetPad}
-                onFocus={openTargetPad}
+                target={targetPad}
+                onPad={setPad}
                 placeholder={t("e.g. 5000")}
                 style={{
                   flex: 1,

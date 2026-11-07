@@ -943,6 +943,7 @@ export const MESSAGES = [
   "Try again",
   "Try it with sample data",
   "Type",
+  "Type an amount — + − × ÷ work, ⏎ saves, Esc cancels, Tab moves to the next envelope",
   "Type in an Allocated cell — + − × ÷ work, ⏎ saves, Esc cancels",
   "Type or pick a category...",
   "Type or pick a place...",
