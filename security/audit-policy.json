@@ -74,23 +74,19 @@
       "advisoryId": "GHSA-g3hv-75wg-m249",
       "package": "minimatch",
       "severity": "moderate",
-      "vulnerableVersions": "<11.0.1",
+      "vulnerableVersions": ">=7.0.0 <11.0.1",
       "installed": [
         {
           "version": "10.2.6",
           "path": "minimatch"
-        },
-        {
-          "version": "5.1.9",
-          "path": "filelist/minimatch"
         }
       ],
-      "scope": "Build tooling only: 10.2.6 through vite-plugin-pwa > workbox-build > glob, and 5.1.9 through workbox-build > @trickfilm400/rollup-plugin-off-main-thread > ejs > jake > filelist. Not in the production runtime image's dependency closure and not in the browser bundle.",
-      "reachability": "Unreachable. The advisory needs an attacker-supplied glob pattern. Under glob, every pattern comes from packages/web/vite.config.ts, the vite-plugin-pwa and workbox-build defaults, or the build's own output paths, never from users or from file contents. The 5.1.9 copy is never loaded: the rollup plugin only calls ejs.render, ejs/lib does not touch jake, and jake is used only by ejs's bin/cli.js, which no build step runs.",
+      "scope": "Build tooling only: 10.2.6 through vite-plugin-pwa > workbox-build > glob. Not in the production runtime image's dependency closure and not in the browser bundle. The 5.1.9 copy under filelist left the advisory when its range was narrowed to >=7.0.0 (observed 2026-11-07).",
+      "reachability": "Unreachable. The advisory needs an attacker-supplied glob pattern. Under glob, every pattern comes from packages/web/vite.config.ts, the vite-plugin-pwa and workbox-build defaults, or the build's own output paths, never from users or from file contents.",
       "mitigation": "None required for reachability. Kept visible in every audit run rather than suppressed; re-checked at each dependency review together with the glob entry.",
       "fixedVersion": "11.0.1",
       "owner": "Maintainer",
-      "rationale": "Not fixable by an upstream update today: no 10.x or 5.x minimatch carries the fix, glob 11.1.0 requires ^10.1.1 and filelist 1.0.6 requires ^5.0.1 (re-checked 2026-11-02). Forcing 11 would add untested major jumps to the same build chain for zero security benefit, since the vulnerable code path is never executed.",
+      "rationale": "Not fixable by an upstream update today: no 10.x minimatch carries the fix (10.2.6 is the newest 10.x) and glob 11.1.0 requires ^10.1.1 (re-checked 2026-11-07). Forcing 11 would add untested major jumps to the same build chain for zero security benefit, since the vulnerable code path is never executed.",
       "addedOn": "2026-11-02",
       "expires": "2027-01-28"
     }

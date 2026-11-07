@@ -210,6 +210,36 @@ export function evaluateBudget(contributors: readonly Contributor[], limits: Bud
   return { contributors, totals, limits, violations };
 }
 
+export type LazySurface = Readonly<{ name: string; src?: string }>;
+
+/**
+ * Screens and sheets that must stay behind a dynamic `import()`. A surface with its own entry
+ * chunk is identified by its `src` key. A module shared by several lazy importers becomes a
+ * `_Name-hash` chunk with no `src` key, so it can only be matched by chunk `name` — a basename,
+ * which an unrelated lazy module of the same name could satisfy. A surface with no matching
+ * chunk fails too: it was renamed, or folded into another chunk, and the check would otherwise
+ * pass for nothing.
+ */
+export const LAZY_SURFACES: readonly LazySurface[] = [
+  { name: "Budget", src: "src/screens/Budget.tsx" },
+  { name: "Reports", src: "src/screens/Reports.tsx" },
+  { name: "BudgetSuggestSheet", src: "src/components/BudgetSuggestSheet.tsx" },
+  { name: "Settings" },
+  { name: "ImportSheet" },
+];
+
+export function eagerLazySurfaces(manifest: ViteManifest, closure: readonly string[], surfaces: readonly LazySurface[] = LAZY_SURFACES): readonly string[] {
+  const eager = new Set(closure);
+  const problems: string[] = [];
+  for (const { name, src } of surfaces) {
+    const keys = src ? (manifest[src] ? [src] : []) : Object.keys(manifest).filter((key) => manifest[key]?.name === name);
+    const label = JSON.stringify(src ?? name);
+    if (keys.length === 0) problems.push(`no chunk for ${label}: the lazy surface was renamed or folded into another chunk`);
+    else if (keys.some((key) => eager.has(key))) problems.push(`${label} is in the initial static closure: keep it behind a dynamic import()`);
+  }
+  return problems;
+}
+
 function kb(bytes: number): string {
   return `${(bytes / 1000).toFixed(2)} kB`;
 }

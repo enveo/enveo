@@ -63,13 +63,14 @@ Never use this command on a database containing real data.
 
 | Command | What it does |
 |---|---|
-| `bun run verify` | What you run before pushing: `typecheck` + `lint` + `test` + `build` + `policy:sources` + `policy:web-security` + `policy:docs`. Offline, no database. |
+| `bun run verify` | What you run before pushing: `typecheck` + `lint` + `test` + `build` + `policy:sources` + `policy:web-security` + `policy:privacy` + `policy:docs`, run concurrently with prefixed output. Every phase runs to completion; any failure fails `verify`. Offline, no database. |
 | `bun run lint` | Non-mutating Biome check (format + lint + import organization) over the whole repository. |
 | `bun run format` | The **only** command that rewrites files (`biome format --write`). Run it yourself and review the diff — nothing else ever formats for you. |
 | `bun run format:check` | Non-mutating formatter check. |
 | `bun run test` | Shared, API, web-lib and tooling tests. Forces `OPENAI_API_KEY=""` and `TEST_DATABASE_URL=""`, so DB-backed groups skip. |
+| `bun run test --files <path…>` | Only the named test files or directories, with the same forced environment as `bun run test` (also `test:db --files …`); options after the paths take the `--name=value` form. Use it instead of a bare `bun test`, which skips that environment. |
 | `bun run test:db` | The same tests with the DB-backed groups **required** against a throwaway PostgreSQL. |
-| `bun run typecheck` | Shared, API, web app, web tests and repository tooling. |
+| `bun run typecheck` | Shared, API, web app, web tests and repository tooling. Incremental: state is kept per project under `node_modules/.cache/tsc/`, so a repeat run only rechecks what changed (and still reports every error). |
 | `bun run build` | The production web/PWA build. |
 | `bun run security:audit` | `bun audit` evaluated against `security/audit-policy.json`. |
 | `bun run policy:docs` | `AGENTS.md` is the byte-identical mirror of `CLAUDE.md`. |
@@ -185,7 +186,7 @@ the app: any message you leave out simply renders its English text.
    picker and the lazy-loading are driven by that registry, so there is nothing
    else to wire up.
 5. `bun run i18n:extract` (in `packages/web`), then
-   `bun test packages/web/src/lib/i18n`. The tests report orphaned messages,
+   `bun run test --files packages/web/src/lib/i18n` (from the repository root). The tests report orphaned messages,
    incomplete plural categories and dropped `{placeholders}` by name.
 
 ## Fix a translation
@@ -207,7 +208,7 @@ single string is a complete contribution; you never have to finish a language.
   orphans that string in every other language. Keep the `{placeholders}` exactly as the key has
   them, and for a plural entry supply every CLDR category your language requires
   (`new Intl.PluralRules("cs").resolvedOptions().pluralCategories`). Then run
-  `bun run i18n:extract` (in `packages/web`) and `bun test packages/web/src/lib/i18n`.
+  `bun run i18n:extract` (in `packages/web`) and `bun run test --files packages/web/src/lib/i18n` (from the repository root).
 
 **Changing the English copy is a different job** and belongs to whoever changes the UI: it mints
 a new key, so `bun run i18n:extract` must be run and the orphan report read — the orphans name

@@ -11,7 +11,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile ../../node_modules/.cache/tsc/shared.tsbuildinfo -p tsconfig.json",
     "test": "bun test"
   },
   "dependencies": {
