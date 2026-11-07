@@ -39,13 +39,14 @@ function signalExitCode(signal: NodeJS.Signals): number {
 const REPO_ROOT = resolve(import.meta.dir, "..");
 
 async function coveredTestFiles(): Promise<string[]> {
-  const files: string[] = [];
+  // A Set, because TEST_PATHS nests roots (packages/web/src and its lib/components/screens).
+  const files = new Set<string>();
   for (const root of TEST_PATHS) {
     for await (const file of new Bun.Glob("**/*.test.{ts,tsx}").scan({ cwd: `${REPO_ROOT}/${root}`, onlyFiles: true })) {
-      if (!file.includes("node_modules/")) files.push(`${root}/${file}`);
+      if (!file.includes("node_modules/")) files.add(`${root}/${file}`);
     }
   }
-  return files;
+  return [...files];
 }
 
 async function main(argv: readonly string[]): Promise<number> {
