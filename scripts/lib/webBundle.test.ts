@@ -1,15 +1,15 @@
 import { describe, expect, it } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   DEFAULT_LIMITS,
-  DIST_DIR,
+  eagerLazySurfaces,
   evaluateBudget,
   formatReport,
   GZIP_BYTE_LIMIT,
   gzipByteLength,
   initialJsClosure,
-  MANIFEST_PATH,
+  LAZY_SURFACES,
   ManifestError,
   measureClosure,
   parseManifest,
@@ -19,7 +19,8 @@ import {
 
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 
-const chunk = (file: string, extra: Partial<{ isEntry: boolean; imports: string[]; dynamicImports: string[] }> = {}) => JSON.stringify({ file, ...extra });
+const chunk = (file: string, extra: Partial<{ name: string; isEntry: boolean; imports: string[]; dynamicImports: string[] }> = {}) =>
+  JSON.stringify({ file, ...extra });
 
 const manifestOf = (records: Record<string, string>): ViteManifest =>
   parseManifest(
@@ -219,34 +220,78 @@ describe("evaluateBudget", () => {
   });
 });
 
-describe("the real build output", () => {
-  const manifestFile = join(REPO_ROOT, MANIFEST_PATH);
-
-  it.skipIf(!existsSync(manifestFile))("stays inside both ceilings", () => {
-    const manifest = parseManifest(readFileSync(manifestFile, "utf8"));
-    const contributors = measureClosure(manifest, initialJsClosure(manifest), (file) => {
-      const path = join(REPO_ROOT, DIST_DIR, file);
-      return existsSync(path) ? readFileSync(path) : null;
-    });
-    const report = evaluateBudget(contributors);
-    expect(report.violations).toEqual([]);
+// The real build output is checked by `bundle:budget` right after `build:web`, on a fresh dist.
+// Suites never read dist: `verify` runs tests concurrently with the build that rewrites it.
+describe("eagerLazySurfaces", () => {
+  const surfaces = [{ name: "Budget", src: "src/screens/Budget.tsx" }, { name: "Settings" }];
+  const lazyManifest = manifestOf({
+    "index.html": chunk("assets/index.js", { isEntry: true, dynamicImports: ["src/screens/Budget.tsx", "src/screens/Reports.tsx"] }),
+    "src/screens/Budget.tsx": chunk("assets/Budget.js", { name: "Budget" }),
+    "src/screens/Reports.tsx": chunk("assets/Reports.js", { name: "Reports", imports: ["_Settings-x1.js"] }),
+    "_Settings-x1.js": chunk("assets/Settings-x1.js", { name: "Settings" }),
   });
 
-  it.skipIf(!existsSync(manifestFile))("keeps the lazy surfaces OUT of the initial closure", () => {
-    const manifest = parseManifest(readFileSync(manifestFile, "utf8"));
-    const closure = initialJsClosure(manifest);
-    expect(manifest["src/screens/Budget.tsx"]).toBeDefined();
-    for (const lazy of [
+  it("passes when every surface is its own chunk outside the initial closure, keyed by src or not", () => {
+    expect(eagerLazySurfaces(lazyManifest, initialJsClosure(lazyManifest), surfaces)).toEqual([]);
+  });
+
+  it("flags a surface whose chunk the entry imports statically", () => {
+    const manifest = manifestOf({
+      "index.html": chunk("assets/index.js", { isEntry: true, imports: ["_Settings-x1.js"], dynamicImports: ["src/screens/Budget.tsx"] }),
+      "src/screens/Budget.tsx": chunk("assets/Budget.js", { name: "Budget" }),
+      "_Settings-x1.js": chunk("assets/Settings-x1.js", { name: "Settings" }),
+    });
+    expect(eagerLazySurfaces(manifest, initialJsClosure(manifest), surfaces)).toEqual([
+      '"Settings" is in the initial static closure: keep it behind a dynamic import()',
+    ]);
+  });
+
+  it("flags a surface with no chunk at all, renamed or folded into an eager chunk", () => {
+    const manifest = manifestOf({
+      "index.html": chunk("assets/index.js", { isEntry: true, dynamicImports: ["src/screens/Budget.tsx"] }),
+      "src/screens/Budget.tsx": chunk("assets/Budget.js", { name: "Budget" }),
+    });
+    expect(eagerLazySurfaces(manifest, initialJsClosure(manifest), surfaces)).toEqual([
+      'no chunk for "Settings": the lazy surface was renamed or folded into another chunk',
+    ]);
+  });
+
+  it("identifies a surface with an entry chunk by src, so an unrelated chunk of the same name cannot stand in", () => {
+    const manifest = manifestOf({
+      "index.html": chunk("assets/index.js", { isEntry: true, dynamicImports: ["src/reports/Budget.tsx", "src/screens/Reports.tsx"] }),
+      "src/reports/Budget.tsx": chunk("assets/Budget.js", { name: "Budget" }),
+      "src/screens/Reports.tsx": chunk("assets/Reports.js", { name: "Reports", imports: ["_Settings-x1.js"] }),
+      "_Settings-x1.js": chunk("assets/Settings-x1.js", { name: "Settings" }),
+    });
+    expect(eagerLazySurfaces(manifest, initialJsClosure(manifest), surfaces)).toEqual([
+      'no chunk for "src/screens/Budget.tsx": the lazy surface was renamed or folded into another chunk',
+    ]);
+  });
+
+  it("flags a src-identified surface in the initial closure", () => {
+    const manifest = manifestOf({
+      "index.html": chunk("assets/index.js", { isEntry: true, imports: ["src/screens/Budget.tsx", "_Settings-x1.js"] }),
+      "src/screens/Budget.tsx": chunk("assets/Budget.js", { name: "Budget" }),
+      "_Settings-x1.js": chunk("assets/Settings-x1.js", { name: "Settings" }),
+    });
+    expect(eagerLazySurfaces(manifest, initialJsClosure(manifest), surfaces)).toEqual([
+      '"src/screens/Budget.tsx" is in the initial static closure: keep it behind a dynamic import()',
+      '"Settings" is in the initial static closure: keep it behind a dynamic import()',
+    ]);
+  });
+
+  it("guards the decided surfaces by default", () => {
+    expect(LAZY_SURFACES.map((surface) => surface.src ?? surface.name)).toEqual([
       "src/screens/Budget.tsx",
       "src/screens/Reports.tsx",
-      "src/screens/Settings.tsx",
-      "src/components/ImportSheet.tsx",
       "src/components/BudgetSuggestSheet.tsx",
-    ]) {
-      expect(closure).not.toContain(lazy);
-    }
+      "Settings",
+      "ImportSheet",
+    ]);
   });
+});
 
+describe("lazy boundaries in the source", () => {
   it("keeps Budget and its closed editor behind LazyChunk boundaries", () => {
     const app = readFileSync(join(REPO_ROOT, "packages", "web", "src", "App.tsx"), "utf8");
     expect(app).toContain('const BudgetScreen = lazy(() => import("./screens/Budget").then((m) => ({ default: m.BudgetScreen })));');

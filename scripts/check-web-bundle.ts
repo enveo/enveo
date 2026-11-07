@@ -11,12 +11,22 @@
  *
  * Exit codes:
  *   0  within budget
- *   1  over one or both ceilings
+ *   1  over one or both ceilings, or a lazy surface (`LAZY_SURFACES`) in the initial closure
  *   2  FAIL CLOSED — no manifest, unreadable manifest, or a manifest naming files the build
  *      did not emit (all of which mean the number would be a fiction)
  */
 import { readFileSync } from "node:fs";
-import { DIST_DIR, evaluateBudget, formatReport, initialJsClosure, MANIFEST_PATH, ManifestError, measureClosure, parseManifest } from "./lib/webBundle";
+import {
+  DIST_DIR,
+  eagerLazySurfaces,
+  evaluateBudget,
+  formatReport,
+  initialJsClosure,
+  MANIFEST_PATH,
+  ManifestError,
+  measureClosure,
+  parseManifest,
+} from "./lib/webBundle";
 
 export const EXIT_OK = 0;
 export const EXIT_OVER_BUDGET = 1;
@@ -35,9 +45,11 @@ export function runWebBundleBudget(log: (line: string) => void = console.log, ma
   }
 
   let report: ReturnType<typeof evaluateBudget>;
+  let eagerSurfaces: readonly string[];
   try {
     const manifest = parseManifest(manifestText);
     const closure = initialJsClosure(manifest);
+    eagerSurfaces = eagerLazySurfaces(manifest, closure);
     const contributors = measureClosure(manifest, closure, (file) => {
       try {
         return readFileSync(new URL(`${distDir}/${file}`, ROOT));
@@ -55,7 +67,8 @@ export function runWebBundleBudget(log: (line: string) => void = console.log, ma
   }
 
   log(formatReport(report));
-  if (report.violations.length > 0) {
+  for (const problem of eagerSurfaces) log(`  EAGER LAZY SURFACE: ${problem}`);
+  if (report.violations.length > 0 || eagerSurfaces.length > 0) {
     log("bundle:budget: FAILED — move code behind a dynamic `import()`; the ceilings are decided and are not raised to pass a build");
     return EXIT_OVER_BUDGET;
   }
