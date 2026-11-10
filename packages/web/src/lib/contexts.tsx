@@ -22,6 +22,7 @@ import { compactMoney, formatMoney } from "./format";
 // the REGISTRY, not lib/i18n: that one reads useSettings() from here — importing it would close the cycle
 import { detectLang, type Lang } from "./i18n/registry";
 import { startupPresentation } from "./startupSplash";
+import { statusBarColor } from "./statusBar";
 import { store } from "./store";
 import { light, type Theme, themeTokens } from "./theme";
 import { useViewMode } from "./viewMode";
@@ -231,6 +232,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   const isDark = settings.themeMode === "auto" ? prefersDark : settings.themeMode === "dark";
   const { vars, palette: theme } = useMemo(() => themeTokens(settings.accentTheme, isDark), [settings.accentTheme, isDark]);
 
+  const statusBar = useSyncExternalStore(statusBarColor.subscribe, statusBarColor.get);
   useLayoutEffect(() => {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (startupPresentation(bootStatus) === "splash") {
@@ -239,9 +241,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
       return;
     }
     for (const [k, v] of Object.entries(vars)) document.documentElement.style.setProperty(k, v);
-    document.documentElement.style.background = theme.bg;
-    if (meta) meta.setAttribute("content", isDark ? theme.surface : theme.bg);
-  }, [bootStatus, vars, theme, isDark]);
+    document.documentElement.style.background = statusBar ?? theme.bg;
+    if (meta) meta.setAttribute("content", statusBar ?? (isDark ? theme.surface : theme.bg));
+  }, [bootStatus, vars, theme, isDark, statusBar]);
 
   const ctx = useMemo(() => ({ settings, setSettings }), [settings]);
 

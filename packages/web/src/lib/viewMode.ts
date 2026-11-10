@@ -15,7 +15,7 @@
  * input degrades to the SAFE direction ("phone", the layout that fits everywhere) rather
  * than throwing during a resize.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 export type ViewMode = "phone" | "fold" | "desktop";
 
@@ -61,4 +61,23 @@ export function useViewMode(): ViewMode {
     return () => window.removeEventListener("resize", read);
   }, []);
   return mode;
+}
+
+/**
+ * Whether the phone column is framed: the window is meaningfully wider than the column (the
+ * historical 500px threshold, PHONE_COL + 80). Subscribed, because a rotated phone crosses it
+ * without changing the layout mode, and the status-bar colour depends on it.
+ */
+const FRAMED_QUERY = `(min-width: ${PHONE_COL + 81}px)`;
+function subscribeFramed(onChange: () => void) {
+  const mq = window.matchMedia(FRAMED_QUERY);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+export function useFramed(): boolean {
+  return useSyncExternalStore(
+    subscribeFramed,
+    () => window.matchMedia(FRAMED_QUERY).matches,
+    () => false,
+  );
 }
