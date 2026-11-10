@@ -1,6 +1,6 @@
 import { computeStateResponse, newestTransactionFirst, type Transaction } from "@enveo/shared";
 import { lazy, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
+import { BottomNav, Drawer, type ScreenId, StatusBarEdge, StyleInjector, statusBarFill, useStatusBarColor } from "./components/chrome";
 import { LazyChunk, useOpenedOnce } from "./components/lazy";
 import { SignOutBoundary } from "./components/SignOutShield";
 import { StartupSplash } from "./components/StartupSplash";
@@ -17,13 +17,14 @@ import { useT } from "./lib/i18n";
 import { importManagerBootstrap } from "./lib/importJobs/bootstrap";
 import { historyAction, parseUrl, routeToUrl } from "./lib/routing";
 import { OpenImportActivity } from "./lib/shellContext";
+import { getSignOutPhase, subscribeSignOutPhase } from "./lib/signOutBarrier";
 import { startupPresentation } from "./lib/startupSplash";
 import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
 import { font, P, TEAL } from "./lib/theme";
 import type { TransactionFilters } from "./lib/transactionSearch";
 import { APP_VERSION, buildLabel } from "./lib/version";
-import { PHONE_COL, useViewMode } from "./lib/viewMode";
+import { PHONE_COL, useFramed, useViewMode } from "./lib/viewMode";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
 import { defaultSpendingView, type SpendingView } from "./screens/reports/spendingPath";
 import type { ReportTab, ReportView } from "./screens/reports/types";
@@ -161,6 +162,7 @@ function AppContent() {
   const { data: state, isLoading, isError } = useStateQuery(month);
   const bootStatus = useSyncExternalStore(store.subscribe, store.getBootStatus);
   const importManagerStatus = useSyncExternalStore(importManagerBootstrap.subscribe, importManagerBootstrap.getSnapshot);
+  const signOutPhase = useSyncExternalStore(subscribeSignOutPhase, getSignOutPhase);
 
   useEffect(() => {
     void bootOnce();
@@ -392,13 +394,15 @@ function AppContent() {
   // not a stray narrow window). This is NOT the layout mode — it is kept on its historical
   // 500px threshold (PHONE_COL + 80) so this refactor changes no pixels; the layout mode
   // (`useViewMode`) has no consumer yet and lands with the navigation rail in a later PR.
-  const framed = typeof window !== "undefined" && window.innerWidth > PHONE_COL + 80;
+  const framed = useFramed();
   // Desktop backdrop: on narrow (phone) viewports the ~420px column already fills the
   // screen, so this stays transparent — nothing changes there. On wide viewports it's a
   // full-viewport translucent tint layered over the theme background (set on <html> by
   // ThemeProvider), so the phone-width card reads as a deliberate frame, not a stray
   // narrow window; the existing shadow on the card then separates it from the tint.
-  const backdrop = { minHeight: "100dvh", background: framed ? "rgba(0,0,0,0.06)" : "transparent" } as const;
+  // Painted explicitly, not left to <html>: the document background follows the status-bar colour
+  // (useStatusBarColor), which must not show beside a column narrower than the window.
+  const backdrop = { minHeight: "100dvh", background: framed ? `linear-gradient(rgba(0,0,0,0.06), rgba(0,0,0,0.06)), ${C.bg}` : C.bg } as const;
 
   const unauthed = bootStatus === "unauthed";
 
@@ -410,6 +414,11 @@ function AppContent() {
   // is normally never set — the guard silently discards the replica instead (enterForeignReplica)
   // and only its failure path lands here.
   const foreign = bootStatus === "foreign";
+  // Only where the phone column spans the status bar (not a framed column on a tablet or a phone
+  // held sideways), and not while the sign-out shield covers the screen.
+  const ownsStatusBar = mode === "phone" && !framed && signOutPhase === "idle" && !!state && !onboarding && !envView && !unauthed && !locked && !foreign;
+  const statusBarTone = ownsStatusBar ? statusBarFill(C, screen) : null;
+  useStatusBarColor(statusBarTone);
 
   // History wiring, one effect: popstate applies the parsed route through `nav()` — reusing its
   // hygiene (clears presets/editTxn/envView), then overrides in the same batch exactly like the
@@ -844,6 +853,7 @@ function AppContent() {
           }}
         >
           <StyleInjector />
+          {!framed && <StatusBarEdge fill={statusBarTone ?? C.bg} />}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
             {isLoading && <BootSkeleton />}
             {isError && <FirstBootError />}

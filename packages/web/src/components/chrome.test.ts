@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { statusBarFill } from "./chrome";
 
 describe("StyleInjector's shared `.fi` fade class", () => {
   it("carries NO fill-forwards — unlike `.fu`, which keeps it on purpose", () => {
@@ -49,5 +50,22 @@ describe("StyleInjector's active amount box", () => {
     expect(presentation).toContain("[data-pad-box]:has(>input[data-pad-error])");
     // without :has() the active input keeps its own ring
     expect(presentation).toContain("[data-pad-box]>input[data-pad-active]{outline:2px solid var(--accent)!important");
+  });
+});
+
+describe("statusBarFill", () => {
+  const band = { headerStyle: "band", headerBg: "#102040" } as const;
+  const plain = { headerStyle: "plain", headerBg: "#f4f3ef" } as const;
+
+  it("takes the band colour on every phone screen that opens with a band header", () => {
+    for (const screen of ["start", "budget", "transactions", "reports", "activity", "addExpense", "settings"] as const) {
+      expect(statusBarFill(band, screen)).toBe("#102040");
+    }
+  });
+
+  it("leaves the theme default where no band header sits under the status bar", () => {
+    expect(statusBarFill(band, "accounts")).toBeNull();
+    expect(statusBarFill(band, null)).toBeNull();
+    expect(statusBarFill(plain, "start")).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { computeStateResponse } from "@enveo/shared";
-import { lazy, type ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLedgerVersion } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
@@ -10,6 +10,7 @@ import { useT } from "../lib/i18n";
 import { D_INSTALL, Ico } from "../lib/icons";
 import { isInstallable, useInstall } from "../lib/installPrompt";
 import { useWideHost } from "../lib/shellContext";
+import { statusBarColor } from "../lib/statusBar";
 import { store } from "../lib/store";
 import { CORAL, CTA, font, P, type Theme, tint } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
@@ -349,6 +350,51 @@ export function Surface(props: SheetProps) {
 }
 
 export type ScreenId = "start" | "budget" | "transactions" | "accounts" | "reports" | "activity" | "addExpense" | "settings";
+
+/** Phone screens whose header is the coloured band on a band theme; Accounts keeps a plain header. */
+const BAND_HEADER_SCREENS: ReadonlySet<ScreenId> = new Set(["start", "budget", "transactions", "reports", "activity", "addExpense", "settings"]);
+
+/** The band colour when the visible phone screen opens with a band header, else `null` (theme default). */
+export function statusBarFill(C: Pick<Theme, "headerStyle" | "headerBg">, screen: ScreenId | null): string | null {
+  return C.headerStyle === "band" && screen !== null && BAND_HEADER_SCREENS.has(screen) ? C.headerBg : null;
+}
+
+/** Hands the visible screen's status-bar colour to the theme provider (see `lib/statusBar.ts`). */
+export function useStatusBarColor(fill: string | null) {
+  useLayoutEffect(() => {
+    statusBarColor.set(fill);
+  }, [fill]);
+  useLayoutEffect(() => () => statusBarColor.set(null), []);
+}
+
+/**
+ * A solid edge for iOS to sample at the very top of the page. The status-bar colour alone left
+ * current iOS blurring the top of a home-screen web app into it (the "scroll edge" haze over the
+ * header and over scrolled content); WebKit keeps that edge solid when a fixed element of at
+ * least 6 px, spanning most of the width, sits at the top. Under every badge, sheet and overlay;
+ * it hides at most 6 px of content that scrolls beneath it. Keyed by colour: WebKit samples an
+ * element this thin as an image and keeps that sample for the same element, so a recoloured strip
+ * must be a new one.
+ */
+export function StatusBarEdge({ fill }: { fill: string }) {
+  return (
+    <div
+      key={fill}
+      aria-hidden
+      data-status-bar-edge
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        height: "max(6px, env(safe-area-inset-top))",
+        background: fill,
+        zIndex: 50,
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
 
 export function LogoMark({ size }: { size: number }) {
   return (
