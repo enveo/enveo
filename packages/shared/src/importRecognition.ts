@@ -1,6 +1,7 @@
 import { isSupportedCurrency } from "./currency";
 import { isCalendarDate } from "./dates";
 import { printedAmountIn } from "./importAmounts";
+import { settleImportDuplicates } from "./importChunks";
 import { buildImportDupIndex, classifyImportDup, existingImportRowsForAccount, type ImportDupStatus, importCandidateDirection } from "./importDedupe";
 import type { ImportReceipt } from "./importReceipt";
 import type { Account, Category, Envelope, Transaction } from "./types";
@@ -183,7 +184,7 @@ export function applyImportSeamReviewReasons(result: ImportRecognitionResult): I
   return {
     ...result,
     proposals: result.proposals.map((proposal) =>
-      flagged.has(proposal.rowId) ? { ...proposal, reviewReasons: addReasons(proposal.reviewReasons, "possible_duplicate") } : proposal,
+      flagged.has(proposal.rowId) ? { ...proposal, reviewReasons: addReasons(proposal.reviewReasons, "possible_duplicate"), selected: false } : proposal,
     ),
   };
 }
@@ -404,6 +405,13 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
   const invalidRelations = new Set<string>();
   const acceptedRelations = new Map<string, ImportRowRelation>();
   const shapeChangingRelations = new Set<string>();
+  const duplicates = settleImportDuplicates(rows);
+  const possibleDuplicates = new Set(duplicates.possible.map((pair) => pair.laterRowId));
+  for (const [rowId, targetRowId] of duplicates.links) {
+    if (rowsById.get(rowId)!.relation) continue;
+    acceptedRelations.set(rowId, { kind: "duplicate_of", rowId: targetRowId });
+    shapeChangingRelations.add(rowId);
+  }
   for (const row of rows) {
     if (!row.relation) continue;
     const target = rowsById.get(row.relation.rowId);
@@ -411,6 +419,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
       invalidRelations.add(row.rowId);
       continue;
     }
+    if (row.relation.kind === "duplicate_of" && duplicates.links.get(row.rowId) !== target.rowId) continue;
     if (!relationSupportedByFacts(row, target)) continue;
     acceptedRelations.set(row.rowId, row.relation);
     shapeChangingRelations.add(row.rowId);
@@ -477,6 +486,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     // Suspicious content never blocks a row (the facts may still be right) but it is never
     // pre-selected: whatever the text asked for, the human decides with the flag in view.
     if (row.suspiciousText) reasons = addReasons(reasons, "suspicious_text");
+    if (possibleDuplicates.has(row.rowId)) reasons = addReasons(reasons, "possible_duplicate");
 
     return proposalFrom(row, {
       disposition,
@@ -484,7 +494,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
       isRefund: mapping.isRefund,
       relation,
       reviewReasons: reasons,
-      selected: !row.suspiciousText && !reasons.includes("inconsistent_direction"),
+      selected: !row.suspiciousText && !reasons.includes("inconsistent_direction") && !reasons.includes("possible_duplicate"),
       ...(converted !== undefined ? { amount: converted, currency: budgetCurrency } : {}),
     });
   });
@@ -511,6 +521,11 @@ function foreignAmountsInBudgetCurrency(
   }
   return converted;
 }
+
+/** Only an entry that could become a transaction stands for a recorded one. Evidence rows and
+ *  entries the bank itself declined never take a ledger row away from a real entry. */
+const claimsLedgerRow = (proposal: ImportProposal): boolean =>
+  proposal.disposition !== "supporting" && !(proposal.disposition === "declined" && proposal.reviewReasons.includes("pending_or_declined"));
 
 export function reconcileImportProposals(input: {
   proposals: ImportProposal[];
@@ -540,7 +555,7 @@ export function reconcileImportProposals(input: {
       duplicateStatus = "exists";
       disposition = "declined";
       selected = false;
-    } else if (isCalendarDate(proposal.date) && hasPositiveMinorAmount(proposal.amount)) {
+    } else if (claimsLedgerRow(proposal) && isCalendarDate(proposal.date) && hasPositiveMinorAmount(proposal.amount)) {
       duplicateStatus = classifyImportDup(
         {
           date: proposal.date,
@@ -562,8 +577,6 @@ export function reconcileImportProposals(input: {
         }
       } else if (duplicateStatus === "probable") {
         selected = false;
-      } else if (proposal.disposition === "candidate") {
-        duplicates.markSeen({ date: proposal.date, amount: proposal.amount, rawPlace: proposal.rawPlace });
       }
     }
     if (sourceAccountInvalid) {

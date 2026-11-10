@@ -239,7 +239,8 @@ describe("screenshot import proposal validation", () => {
     expect(result.proposals).toMatchObject([
       { rowId: "purchase", relation: null, reviewReasons: ["relation_changes_ledger_shape"] },
       { rowId: "other", relation: null, reviewReasons: [] },
-      { rowId: "duplicate", relation: { kind: "duplicate_of", rowId: "purchase" }, reviewReasons: ["relation_changes_ledger_shape"] },
+      // Identical entries in ONE screenshot are separate transactions: the claim is dropped.
+      { rowId: "duplicate", relation: null, reviewReasons: [] },
       { rowId: "fx", relation: { kind: "fx_for", rowId: "purchase" }, reviewReasons: [] },
       { rowId: "incomplete", relation: null, reviewReasons: ["missing_fact"] },
       { rowId: "incomplete-target", relation: null, reviewReasons: ["missing_fact"] },
@@ -621,6 +622,38 @@ describe("screenshot import proposal reconciliation", () => {
       envelopeId: kind === "merchant_refund" ? "envelope-1" : null,
     });
     expect(candidate.envelopeId).toBe("envelope-1");
+  });
+
+  it("keeps two identical entries of one screenshot as two payments, each recorded row covering one of them", () => {
+    const twin = (rowId: string, visualOrder: number) => extractRow({ rowId, visualOrder, rawTextLines: ["TRANSFER TO SAVINGS"], amount: 50000 });
+    const { proposals } = validateImportExtraction({ batch: { rows: [twin("first", 0), twin("second", 1)] }, budgetCurrency: "USD" });
+
+    const fresh = reconcileImportProposals(input({ proposals }));
+    expect(fresh.map((row) => [row.duplicateStatus, row.disposition, row.selected])).toEqual([
+      ["new", "candidate", true],
+      ["new", "candidate", true],
+    ]);
+
+    // One of the two is already booked: the other is shown for review, not hidden behind it.
+    const booked = transaction({ amount: 50000, sourceRef: "TRANSFER TO SAVINGS" });
+    const halfBooked = reconcileImportProposals(input({ proposals, transactions: [booked] }));
+    expect(halfBooked.map((row) => [row.duplicateStatus, row.disposition, row.selected])).toEqual([
+      ["exists", "declined", false],
+      ["probable", "candidate", false],
+    ]);
+
+    const bothBooked = reconcileImportProposals(input({ proposals, transactions: [booked, { ...booked, id: "transaction-2" }] }));
+    expect(bothBooked.map((row) => row.duplicateStatus)).toEqual(["exists", "exists"]);
+  });
+
+  it("never lets an entry the bank declined take a recorded row away from the real payment", () => {
+    const rows = [
+      extractRow({ rowId: "declined", postingStatus: "declined", rawTextLines: ["SAAS VENDOR"] }),
+      extractRow({ rowId: "charged", visualOrder: 1, rawTextLines: ["SAAS VENDOR"] }),
+    ];
+    const { proposals } = validateImportExtraction({ batch: { rows }, budgetCurrency: "USD" });
+    const reconciled = reconcileImportProposals(input({ proposals, transactions: [transaction({ sourceRef: "SAAS VENDOR" })] }));
+    expect(reconciled.find((row) => row.rowId === "charged")).toMatchObject({ duplicateStatus: "exists", disposition: "declined" });
   });
 
   it("clears stale assignments and uses exact and probable duplicate evidence", () => {

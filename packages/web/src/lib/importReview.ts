@@ -523,7 +523,9 @@ export function reviewedImportRowsForApply(args: {
       items: [{ ...item, include: true }],
       edited: edit ? { 0: edit } : {},
       editedAutomaticDefaults: { 0: args.editedAutomaticDefaults[index] ?? false },
-    }).map((item) => ({ ...item, importRowId: row.rowId }));
+      // A flagged repeat the human chose to add is not matched again on its own: the recorded
+      // row it resembles already stands for another entry of this review.
+    }).map((item) => ({ ...item, importRowId: row.rowId, ...(row.duplicateStatus === "probable" ? { force: true } : {}) }));
   });
 }
 

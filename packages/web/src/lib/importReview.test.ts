@@ -689,6 +689,20 @@ describe("screenshot import review view model", () => {
     expect(selected[0]).toMatchObject({ name: "candidate", rawPlace: "raw candidate\n$25.00" });
   });
 
+  it("adds a flagged repeat the human included without matching it against the ledger again", () => {
+    const review = buildImportReviewRows({
+      recognition: recognition([row("repeat")], [proposal("repeat", { duplicateStatus: "probable", selected: false })]),
+      ledger: ledger(),
+      dryRunResults: [],
+      automaticEnvelopeId: null,
+      budgetCurrency: "USD",
+    });
+    expect(review[0]).toMatchObject({ duplicateStatus: "probable", include: false });
+
+    const [item] = reviewedImportRowsForApply({ rows: [{ ...review[0]!, include: true }], edited: {}, editedAutomaticDefaults: {} });
+    expect(item).toMatchObject({ importRowId: "repeat", force: true });
+  });
+
   it("keeps a currency warning advisory at the final apply boundary", () => {
     const review = buildImportReviewRows({
       recognition: recognition([row("currency", { currency: "EUR" })], [proposal("currency", { currency: "EUR" })]),

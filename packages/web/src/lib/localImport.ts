@@ -86,6 +86,7 @@ export function recognitionCandidatesForDryRun(result: ReconciledImportRecogniti
       .trim();
     return [
       {
+        importRowId: proposal.rowId,
         date: proposal.date,
         amount: proposal.amount,
         type: proposal.type,
@@ -255,7 +256,11 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
       results.push({ ...candidate.item, status: "probable" });
       continue;
     }
-    dupIndex.markSeen({ date: candidate.item.date, amount: candidate.item.amount, rawPlace: candidate.item.rawPlace });
+    // Reviewed screenshot rows were settled against each other with the whole review in view
+    // (identical entries of one screenshot are separate payments); only legacy batches collapse
+    // identical items here.
+    if (candidate.item.importRowId === undefined)
+      dupIndex.markSeen({ date: candidate.item.date, amount: candidate.item.amount, rawPlace: candidate.item.rawPlace });
     if (!dryRun) {
       transactions.push({
         rowId: candidate.item.importRowId ?? candidate.item.rawPlace?.trim() ?? `${candidate.item.date}:${candidate.item.amount}`,

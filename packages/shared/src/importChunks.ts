@@ -9,11 +9,11 @@
  * A job with at most one chunk behaves exactly as before (raw model rowIds, no seam pass).
  *
  * WHAT THE MODEL LOSES: cycle one compares the screenshots it can SEE for overlap. Across chunk
- * boundaries that comparison is rebuilt here: identical entries (date, amount, text) are already
- * caught by `reconcileImportProposals` (strong key), so the only remaining case is the same
- * posting facts with DIFFERENT text — those become "seam pairs" for one cheap text-only model
- * call (see `buildImportSeamPrompt`), bounded by IMPORT_SEAM_MAX_MODEL_PAIRS; the rest, and every
- * pair a failed seam call could not judge, is surfaced as `possible_duplicate` for review.
+ * boundaries that comparison is rebuilt here: identical entries (date, amount, text) are settled
+ * by `settleImportDuplicates` (same facts AND same neighbouring entries), so the only remaining
+ * case is the same posting facts with DIFFERENT text — those become "seam pairs" for one cheap
+ * text-only model call (see `buildImportSeamPrompt`), bounded by IMPORT_SEAM_MAX_MODEL_PAIRS; the
+ * rest, and every pair a failed seam call could not judge, is surfaced as `possible_duplicate`.
  */
 import type { ImportExtractBatch, ImportExtractRow } from "./importRecognition";
 
@@ -137,7 +137,7 @@ const seamKey = (row: ImportExtractRow): string => `${row.date}|${row.amount}|${
 /**
  * Cross-chunk pairs with identical posting facts but different visible text — the only
  * overlap the merged extraction cannot settle deterministically. Identical text is left to
- * `reconcileImportProposals`, which already declines the later occurrence as an existing row.
+ * `settleImportDuplicates`.
  * Pairs are emitted in screenshot order, each later row paired with its nearest earlier
  * candidate only, so one repeated amount cannot explode into a quadratic pair list.
  */
@@ -444,4 +444,103 @@ export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch 
   }
 
   return { rows };
+}
+
+export interface ImportDuplicateSettlement {
+  /** Later capture → the earlier capture of the same entry. Only these rows are declined. */
+  links: Map<string, string>;
+  /** Captures that look like a repeat but could not be proven one: shown, unselected. */
+  possible: Array<{ earlierRowId: string; laterRowId: string }>;
+}
+
+/**
+ * Owner rule (decided 2026-11): a row is the SAME entry as a row of another screenshot only when
+ * every fact agrees (text, amount, currency, date, direction) AND the entries next to it agree
+ * too. Identical entries inside one screenshot are always separate transactions, and a lone
+ * identical amount on a different screenshot may be a second real payment (screenshots do not
+ * always tile the list), so neither is ever hidden on text alone.
+ *
+ * Neighbours are the adjacent financial entries of each capture, compared on their posting facts
+ * (amount, currency, date, direction). A side is compared only when
+ * both captures show an entry there (the screenshot edge or a cut-off row hides one); at least
+ * one compared side must agree and none may disagree. Anything short of that, including links
+ * proposed by the model, the seam pass or date inference, becomes a `possible_duplicate` for the
+ * human instead of a silent decline. A capture is linked at most once per screenshot, so two
+ * identical rows of one screenshot can never both collapse onto one earlier row.
+ */
+export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): ImportDuplicateSettlement {
+  const sorted = ordered(rows);
+  const entriesByImage = new Map<number, ImportExtractRow[]>();
+  for (const row of sorted) {
+    if (row.rowRole !== "financial_event") continue;
+    entriesByImage.set(row.imageIndex, [...(entriesByImage.get(row.imageIndex) ?? []), row]);
+  }
+  const position = new Map<string, number>();
+  for (const entries of entriesByImage.values()) {
+    for (const [index, row] of entries.entries()) position.set(row.rowId, index);
+  }
+  const neighbour = (row: ImportExtractRow, step: 1 | -1): ImportExtractRow | undefined =>
+    entriesByImage.get(row.imageIndex)?.[position.get(row.rowId)! + step];
+  const sameFacts = (row: ImportExtractRow, other: ImportExtractRow): boolean =>
+    isFinancialTwinCandidate(row) && row.amount === other.amount && row.currency === other.currency && row.date === other.date;
+  const sameEntry = (row: ImportExtractRow, other: ImportExtractRow): boolean =>
+    row.imageIndex !== other.imageIndex &&
+    isFinancialTwinCandidate(row) &&
+    twinKey(row) === twinKey(other) &&
+    row.date === other.date &&
+    compatibleDirections(row, other);
+  // Neighbours are compared on their posting facts, not their text: a second reading of the same
+  // entry may drop a letter, and that must not unmake the proof for the row next to it.
+  const sameNeighbour = (mine: ImportExtractRow, theirs: ImportExtractRow): boolean =>
+    mine.amount === theirs.amount && mine.currency === theirs.currency && mine.date === theirs.date && compatibleDirections(mine, theirs);
+  const neighboursAgree = (row: ImportExtractRow, other: ImportExtractRow): boolean => {
+    let agreeing = 0;
+    for (const step of [-1, 1] as const) {
+      const mine = neighbour(row, step);
+      const theirs = neighbour(other, step);
+      if (!mine || !theirs) continue;
+      if (!sameNeighbour(mine, theirs)) return false;
+      agreeing += 1;
+    }
+    return agreeing > 0;
+  };
+
+  const rowsById = new Map(rows.map((row) => [row.rowId, row]));
+  const order = new Map(sorted.map((row, index) => [row.rowId, index]));
+  const twins = twinIndex(rows);
+  const links = new Map<string, string>();
+  const possible: Array<{ earlierRowId: string; laterRowId: string }> = [];
+  const claimedFrom = new Map<string, Set<number>>();
+  const claim = (row: ImportExtractRow, target: ImportExtractRow): boolean => {
+    const images = claimedFrom.get(target.rowId) ?? new Set<number>();
+    if (images.has(row.imageIndex)) return false;
+    images.add(row.imageIndex);
+    claimedFrom.set(target.rowId, images);
+    return true;
+  };
+
+  for (const row of sorted) {
+    if (row.rowRole !== "financial_event") continue;
+    if (row.relation && row.relation.kind !== "duplicate_of") continue;
+    const declared = row.relation ? rowsById.get(row.relation.rowId) : undefined;
+    // A claimed twin that does not even share the posting facts (or sits in the same screenshot)
+    // is not a repeat at all: the claim is dropped, not surfaced.
+    if (row.relation && !(declared && declared.imageIndex !== row.imageIndex && sameFacts(row, declared))) continue;
+    const earlier = (candidate: ImportExtractRow) => order.get(candidate.rowId)! < order.get(row.rowId)!;
+    const candidates = declared
+      ? [declared]
+      : isFinancialTwinCandidate(row)
+        ? (twins.get(twinKey(row)) ?? []).filter((twin) => earlier(twin) && sameEntry(row, twin) && !links.has(twin.rowId))
+        : [];
+    if (candidates.length === 0) continue;
+    const proven = candidates.filter((target) => sameEntry(row, target) && neighboursAgree(row, target));
+    const target = proven.length === 1 ? proven[0]! : undefined;
+    if (target && claim(row, target)) {
+      links.set(row.rowId, target.rowId);
+      continue;
+    }
+    const nearest = candidates.at(-1)!;
+    possible.push(seamPair(row, nearest));
+  }
+  return { links, possible };
 }

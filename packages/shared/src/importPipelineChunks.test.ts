@@ -158,8 +158,11 @@ describe("seam between windows", () => {
     const later = result.rows.find((row) => row.rowId === "c1:first")!;
     expect(later.relation).toEqual({ kind: "duplicate_of", rowId: "c0:last" });
 
+    // Same text and facts, but no neighbouring entry visible on both captures proves it is the
+    // same entry: it is shown as a possible duplicate, never hidden.
     const identical = result.proposals.find((proposal) => proposal.rowId === "c1:same")!;
-    expect(identical.duplicateStatus).toBe("exists");
+    expect(identical.duplicateStatus).toBe("new");
+    expect(identical.reviewReasons).toContain("possible_duplicate");
     expect(identical.selected).toBe(false);
   });
 
@@ -175,7 +178,7 @@ describe("seam between windows", () => {
 
     const later = result.proposals.find((proposal) => proposal.rowId === "c1:first")!;
     expect(later.reviewReasons).toContain("possible_duplicate");
-    expect(later.selected).toBe(true);
+    expect(later.selected).toBe(false);
     expect(result.proposals.find((proposal) => proposal.rowId === "c0:last")!.reviewReasons).not.toContain("possible_duplicate");
   });
 

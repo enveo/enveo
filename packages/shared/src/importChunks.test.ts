@@ -16,6 +16,7 @@ import {
   partitionImportSeamPairs,
   rebaseChunkBatch,
   repairImportRelations,
+  settleImportDuplicates,
 } from "./importChunks";
 import type { ImportExtractRow } from "./importRecognition";
 
@@ -452,5 +453,76 @@ describe("the same entry captured in non-adjacent screenshots", () => {
     const out = inferImportDates({ rows }).rows;
     expect(out.map((r) => r.relation)).toEqual([null, null, null, null]);
     expect(out.map((r) => r.date)).toEqual(["2031-09-01", "2031-09-01", "2031-09-04", "2031-09-04"]);
+  });
+});
+
+describe("settling repeats across screenshots", () => {
+  const entry = (rowId: string, imageIndex: number, visualOrder: number, text: string, over: Partial<ImportExtractRow> = {}) =>
+    row(rowId, imageIndex, { visualOrder, rawTextLines: [text], ...over });
+
+  it("links a capture whose facts and neighbouring entries match the earlier screenshot", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("x2", 1, 0, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b2", 1, 1, "PINE HARDWARE"),
+    ]);
+    // The screenshot edge hides one side of each capture; the side both show must agree.
+    expect(settled.links).toEqual(new Map());
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
+
+    const overlapping = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b1", 0, 2, "PINE HARDWARE"),
+      entry("x2", 1, 0, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b2", 1, 1, "PINE HARDWARE"),
+    ]);
+    expect(overlapping.links).toEqual(
+      new Map([
+        ["x2", "x1"],
+        ["b2", "b1"],
+      ]),
+    );
+    expect(overlapping.possible).toEqual([]);
+  });
+
+  it("keeps two identical entries of one screenshot as two, even when an earlier screenshot shows one", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("a2", 1, 0, "ORCHARD BAKERY"),
+      entry("x2", 1, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("y2", 1, 2, "TRANSFER TO SAVINGS", { amount: 50000 }),
+    ]);
+    expect(settled.links.get("x2")).toBe("x1");
+    expect(settled.links.has("y2")).toBe(false);
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "y2" }]);
+  });
+
+  it("does not hide an identical payment on a screenshot whose neighbours differ", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b1", 0, 2, "PINE HARDWARE"),
+      entry("c2", 1, 0, "RIVER CINEMA", { amount: 2400 }),
+      entry("x2", 1, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("d2", 1, 2, "MAPLE PHARMACY", { amount: 915 }),
+    ]);
+    expect(settled.links).toEqual(new Map());
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
+  });
+
+  it("treats a model link with different text or another date as a possible duplicate, and drops a link inside one screenshot", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("a2", 1, 0, "ORCHARD BAKERY"),
+      entry("x2", 1, 1, "TRANSFER TO SAVINGS LTD", { amount: 50000, relation: { kind: "duplicate_of", rowId: "x1" } }),
+      entry("z2", 1, 2, "ORCHARD BAKERY", { relation: { kind: "duplicate_of", rowId: "a2" } }),
+    ]);
+    // The text differs, so x2 is not proven the same entry; its posting facts still vouch for a2.
+    expect(settled.links).toEqual(new Map([["a2", "a1"]]));
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
   });
 });
