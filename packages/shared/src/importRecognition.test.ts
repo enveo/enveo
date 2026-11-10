@@ -766,3 +766,78 @@ describe("contradictory signed entries", () => {
     expect(result.proposals[0]).toMatchObject({ selected: false, type: "expense", reviewReasons: ["inconsistent_direction"] });
   });
 });
+
+describe("a foreign-currency payment takes the account-currency figure printed for it", () => {
+  const purchase = (over: Partial<ImportExtractRow> = {}) =>
+    extractRow({ rowId: "purchase", visualOrder: 1, rawTextLines: ["− 16.50 EUR", "SAAS VENDOR"], amount: 1650, currency: "EUR", ...over });
+  const validate = (rows: ImportExtractRow[]) => validateImportExtraction({ batch: { rows }, budgetCurrency: "USD" }).proposals;
+
+  it("from an exchange entry next to it, which then stays evidence instead of a second expense", () => {
+    // The model may read the exchange entry as anything: an event, a detail, either currency.
+    for (const reading of [
+      { rowRole: "financial_event" as const, semanticKind: "unknown" as const, amount: 1650, currency: "EUR", direction: "unknown" as const },
+      { rowRole: "financial_event" as const, semanticKind: "fx_conversion" as const, amount: 1782, currency: "USD" },
+      { rowRole: "supporting_detail" as const, semanticKind: "fx_conversion" as const },
+    ]) {
+      const proposals = validate([
+        extractRow({ rowId: "divider", visualOrder: 0, rowRole: "ui_metadata", rawTextLines: ["Aug 7"], amount: null, currency: null }),
+        extractRow({
+          rowId: "exchange",
+          visualOrder: 1,
+          rawTextLines: ["16.50 EUR < 17.82 USD", "Exchange USD to EUR", "1.00 USD =", "0.925926 EUR"],
+          ...reading,
+        }),
+        purchase({ visualOrder: 2 }),
+        extractRow({ rowId: "next", visualOrder: 3, rawTextLines: ["− 9.40 USD", "CORNER CAFE"], amount: 940 }),
+      ]);
+      expect(proposals.find((row) => row.rowId === "purchase")).toMatchObject({
+        amount: 1782,
+        currency: "USD",
+        reviewReasons: ["fx_converted"],
+        selected: true,
+      });
+      expect(proposals.find((row) => row.rowId === "exchange")).toMatchObject({ disposition: "supporting", selected: false });
+      expect(proposals.find((row) => row.rowId === "next")).toMatchObject({ amount: 940, currency: "USD" });
+    }
+  });
+
+  it("from its own lines when the entry prints both amounts", () => {
+    const [proposal] = validate([purchase({ rawTextLines: ["−17,82 USD", "SAAS VENDOR", "16,50 €"] })]);
+    expect(proposal).toMatchObject({ amount: 1782, currency: "USD", reviewReasons: ["fx_converted"] });
+  });
+
+  it("not at all when only the foreign amount is shown or the evidence is ambiguous", () => {
+    expect(validate([purchase()])[0]).toMatchObject({ amount: 1650, currency: "EUR", reviewReasons: [] });
+
+    const exchange = (rowId: string, visualOrder: number, usd: string) =>
+      extractRow({ rowId, visualOrder, rowRole: "supporting_detail", semanticKind: "fx_conversion", rawTextLines: [`16.50 EUR < ${usd} USD`] });
+    const twoCandidates = validate([exchange("above", 0, "17.82"), purchase(), exchange("below", 2, "17.90")]);
+    expect(twoCandidates.find((row) => row.rowId === "purchase")).toMatchObject({ amount: 1650, currency: "EUR" });
+
+    const sharedEvidence = validate([
+      purchase({ rowId: "first", visualOrder: 0 }),
+      exchange("between", 1, "17.82"),
+      purchase({ rowId: "second", visualOrder: 2 }),
+    ]);
+    expect(sharedEvidence.filter((row) => row.currency === "EUR").map((row) => row.rowId)).toEqual(["first", "second"]);
+
+    // A neighbouring payment that prints both of its own amounts is that payment, even when its
+    // foreign amount happens to equal this one's.
+    const twoPayments = validate([
+      extractRow({ rowId: "bank", visualOrder: 0, rawTextLines: ["−17,82 USD", "BOOK SHOP", "16,50 €"], amount: 1650, currency: "EUR" }),
+      purchase(),
+    ]);
+    expect(twoPayments.map((row) => [row.rowId, row.disposition, row.amount, row.currency])).toEqual([
+      ["bank", "candidate", 1782, "USD"],
+      ["purchase", "candidate", 1650, "EUR"],
+    ]);
+
+    // A different screenshot or a date divider in between is not "next to it".
+    const apart = validate([
+      exchange("exchange", 0, "17.82"),
+      extractRow({ rowId: "divider", visualOrder: 1, rowRole: "ui_metadata", rawTextLines: ["Aug 6"], amount: null, currency: null }),
+      purchase({ visualOrder: 2 }),
+    ]);
+    expect(apart.find((row) => row.rowId === "purchase")).toMatchObject({ currency: "EUR" });
+  });
+});

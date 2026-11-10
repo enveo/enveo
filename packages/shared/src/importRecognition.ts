@@ -428,12 +428,12 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
   }
 
   const budgetCurrencySupported = isSupportedCurrency(budgetCurrency);
-  const fxByEvent = foreignAmountsInBudgetCurrency(rows, rowsById, budgetCurrency);
+  const foreign = foreignAmountsInBudgetCurrency(rows, rowsById, budgetCurrency);
   const proposals = rows.map((row) => {
     const mapping = mappingFor(row.semanticKind, row.direction);
     const relation = acceptedRelations.get(row.rowId) ?? null;
 
-    if (row.rowRole !== "financial_event") {
+    if (row.rowRole !== "financial_event" || foreign.exchangeLines.has(row.rowId)) {
       return proposalFrom(row, { disposition: "supporting", type: null, relation, reviewReasons: [], selected: false });
     }
     // A pending entry has already left the account: the bank shows it and the money is spent, so
@@ -449,7 +449,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
         selected: false,
       });
     }
-    const converted = fxByEvent.get(row.rowId);
+    const converted = foreign.converted.get(row.rowId);
 
     let disposition: ImportProposal["disposition"] = "candidate";
     let type = mapping.type;
@@ -502,24 +502,97 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
   return { rows, proposals };
 }
 
+interface ForeignAmounts {
+  /** Foreign-currency event → its printed account-currency figure. */
+  converted: Map<string, number>;
+  /** Exchange entries whose figure was taken: evidence only, never booked a second time. */
+  exchangeLines: Set<string>;
+}
+
+/**
+ * A foreign-currency payment takes the account-currency figure PRINTED for it, never a computed
+ * rate. The figure is tied to the payment by the exact foreign amount, not by a layout or by the
+ * model's labels, so it works for any bank or wallet:
+ *  1. a linked exchange line (`fx_for` in either direction, as the model reported it);
+ *  2. an adjacent entry (same screenshot, nothing but supporting text between them) that prints
+ *     the payment's foreign amount AND one account-currency figure — a wallet that books the
+ *     exchange as its own entry next to the purchase. That entry becomes evidence; one read as a
+ *     payment of its own (any kind but an exchange or unknown) never does;
+ *  3. the payment's own lines, when they print one account-currency figure next to its amount.
+ * Anything ambiguous (two candidates, two figures, a candidate claimed by two payments) leaves
+ * the amount as read, with the currency warning, for the human.
+ */
 function foreignAmountsInBudgetCurrency(
   rows: ReadonlyArray<ImportExtractRow>,
   rowsById: ReadonlyMap<string, ImportExtractRow>,
   budgetCurrency: string,
-): Map<string, number> {
+): ForeignAmounts {
   const converted = new Map<string, number>();
+  const exchangeLines = new Set<string>();
+  const isForeignEvent = (row: ImportExtractRow | undefined): row is ImportExtractRow =>
+    row !== undefined && row.rowRole === "financial_event" && row.currency !== null && row.currency !== budgetCurrency && hasPositiveMinorAmount(row.amount);
   const isFx = (row: ImportExtractRow | undefined): row is ImportExtractRow =>
     row !== undefined && row.rowRole === "supporting_detail" && row.semanticKind === "fx_conversion";
   for (const row of rows) {
     if (row.relation?.kind !== "fx_for") continue;
     const target = rowsById.get(row.relation.rowId);
     const [fx, event] = isFx(row) ? [row, target] : isFx(target) ? [target, row] : [undefined, undefined];
-    if (!fx || !event || event.rowRole !== "financial_event" || event.currency === null || event.currency === budgetCurrency) continue;
-    if (!hasPositiveMinorAmount(event.amount)) continue;
+    if (!fx || !isForeignEvent(event)) continue;
     const figure = printedAmountIn(fx.rawTextLines, budgetCurrency);
     if (figure !== null && figure > 0) converted.set(event.rowId, figure);
   }
-  return converted;
+
+  const byImage = new Map<number, ImportExtractRow[]>();
+  for (const row of rows) byImage.set(row.imageIndex, [...(byImage.get(row.imageIndex) ?? []), row]);
+  for (const imageRows of byImage.values()) imageRows.sort((left, right) => left.visualOrder - right.visualOrder);
+  // The rows between a payment and the next entry on each side: supporting text belongs to the
+  // nearest entry, and a divider or other interface text ends the search.
+  const adjacent = (row: ImportExtractRow): ImportExtractRow[] => {
+    const imageRows = byImage.get(row.imageIndex)!;
+    const at = imageRows.indexOf(row);
+    const found: ImportExtractRow[] = [];
+    for (const step of [-1, 1]) {
+      for (let index = at + step; index >= 0 && index < imageRows.length; index += step) {
+        const other = imageRows[index]!;
+        if (other.rowRole === "ui_metadata") break;
+        found.push(other);
+        if (other.rowRole === "financial_event") break;
+      }
+    }
+    return found;
+  };
+  const printsPair = (row: ImportExtractRow, event: ImportExtractRow): number | null =>
+    printedAmountIn(row.rawTextLines, event.currency!) === event.amount ? printedAmountIn(row.rawTextLines, budgetCurrency) : null;
+  // A neighbour read as a payment of its own (a bank entry printing both of ITS amounts) is never
+  // another payment's exchange line, even when the two foreign amounts happen to be equal.
+  const mayBeExchange = (row: ImportExtractRow): boolean =>
+    row.rowRole !== "financial_event" || row.semanticKind === "fx_conversion" || row.semanticKind === "unknown";
+
+  const pairs = new Map<string, { exchange: string; figure: number }>();
+  const claims = new Map<string, number>();
+  for (const event of rows) {
+    if (!isForeignEvent(event) || converted.has(event.rowId)) continue;
+    if (printedAmountIn(event.rawTextLines, budgetCurrency) !== null) continue;
+    const matches = adjacent(event).flatMap((other) => {
+      const figure = mayBeExchange(other) ? printsPair(other, event) : null;
+      return figure === null ? [] : [{ exchange: other.rowId, figure }];
+    });
+    if (matches.length !== 1) continue;
+    pairs.set(event.rowId, matches[0]!);
+    claims.set(matches[0]!.exchange, (claims.get(matches[0]!.exchange) ?? 0) + 1);
+  }
+  for (const [eventId, pair] of pairs) {
+    if (claims.get(pair.exchange) !== 1) continue;
+    converted.set(eventId, pair.figure);
+    exchangeLines.add(pair.exchange);
+  }
+
+  for (const event of rows) {
+    if (!isForeignEvent(event) || converted.has(event.rowId) || exchangeLines.has(event.rowId)) continue;
+    const figure = printsPair(event, event);
+    if (figure !== null) converted.set(event.rowId, figure);
+  }
+  return { converted, exchangeLines };
 }
 
 /** Only an entry that could become a transaction stands for a recorded one. Evidence rows and

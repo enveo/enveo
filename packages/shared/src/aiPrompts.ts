@@ -247,7 +247,7 @@ const importExtractResponseFormat = (imageCount: number): Record<string, unknown
 export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRefs, today: string, locale: AiLocale, currency: string): ChatRequest {
   const sysExtract =
     "You extract facts from screenshots (Apple Wallet, bank account history, payment confirmations), not hypotheses. " +
-    `Today is ${today} — resolve relative dates ("today", "yesterday") against this date; when the year is missing, assume the most recent past date. ` +
+    `Today is ${today} — resolve relative dates ("today", "yesterday", "5 hours ago", a weekday name meaning the most recent such day, in any language) against this date; when the year is missing, assume the most recent past date. ` +
     "One output row means one coherent transaction-list entry, date divider, balance/summary, or other distinct text block — not each text line inside an entry. " +
     "Group its amount, merchant/payee, card suffix, and secondary text into that row's rawTextLines. Do not create separate rows for icons, loyalty/reward points, card suffixes, exchange-rate text, or status text that belongs to the same entry. " +
     "Return those coherent rows in visual order. Use imageIndex plus visualOrder to preserve where each appeared. Preserve each visible line in rawTextLines; trim only surrounding whitespace. " +
@@ -845,10 +845,13 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     const annotations = new Map(merged.proposals.map((proposal) => [proposal.rowId, proposal]));
     const finalRows = result.rows.map((row) => {
       const annotation = annotations.get(row.rowId)!;
+      // A link to a printed exchange figure is read evidence, not an annotation: cycle two may
+      // add links but never drops the one the amount was converted from.
+      const keepsExchange = row.relation?.kind === "fx_for";
       return {
         ...row,
-        semanticKind: annotation.semanticKind,
-        relation: annotation.relation,
+        semanticKind: keepsExchange && row.semanticKind === "fx_conversion" ? row.semanticKind : annotation.semanticKind,
+        relation: keepsExchange ? row.relation : annotation.relation,
         reviewReasons: mergeReviewReasons(row.reviewReasons, annotation.reviewReasons),
       };
     });
@@ -871,7 +874,11 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       const row = finalRowById.get(proposal.rowId)!;
       const actionableAnnotationReasons =
         row.rowRole === "financial_event" && row.postingStatus !== "declined"
-          ? annotation.reviewReasons.filter((reason) => !["unknown_kind", "inconsistent_direction"].includes(reason) || proposal.reviewReasons.includes(reason))
+          ? annotation.reviewReasons.filter(
+              // Fact-derived reasons come from the final validation alone, or a conversion that
+              // no longer holds would keep claiming its amount came from an exchange line.
+              (reason) => !["unknown_kind", "inconsistent_direction", "fx_converted"].includes(reason) || proposal.reviewReasons.includes(reason),
+            )
           : [];
       return {
         ...proposal,

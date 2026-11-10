@@ -1472,6 +1472,68 @@ describe("runImportRecognitionPipeline", () => {
     expect(result.proposals.find((proposal) => proposal.rowId === "purchase")?.reviewReasons).toContain("relation_changes_ledger_shape");
   });
 
+  it("keeps a conversion from the exchange line when cycle two drops the link", async () => {
+    const row = (over: Record<string, unknown>) => ({
+      imageIndex: 0,
+      date: "2026-08-07",
+      direction: "debit",
+      postingStatus: "posted",
+      relation: null,
+      confidence: "medium",
+      reviewReasons: [],
+      ...over,
+    });
+    const enrich = (rowId: string, semanticKind: string) => ({
+      rowId,
+      name: "",
+      place: null,
+      envelopeId: null,
+      categoryId: null,
+      semanticKind,
+      relation: null,
+      reviewReasons: [],
+    });
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) {
+          return JSON.stringify({
+            rows: [
+              row({
+                rowId: "purchase",
+                visualOrder: 0,
+                rawTextLines: ["100 EUR", "MERCHANT"],
+                amount: 10000,
+                currency: "EUR",
+                rowRole: "financial_event",
+                semanticKind: "card_purchase",
+              }),
+              // Not next to the purchase: only the model's link ties the two together.
+              row({ rowId: "label", visualOrder: 1, rawTextLines: ["Details"], amount: null, currency: null, rowRole: "ui_metadata", semanticKind: "unknown" }),
+              row({
+                rowId: "fx",
+                visualOrder: 2,
+                rawTextLines: ["100 EUR", "125 USD"],
+                amount: 12500,
+                currency: "USD",
+                rowRole: "supporting_detail",
+                semanticKind: "fx_conversion",
+                relation: { kind: "fx_for", rowId: "purchase" },
+              }),
+            ],
+          });
+        }
+        return JSON.stringify({ rows: [enrich("purchase", "card_purchase"), enrich("label", "unknown"), enrich("fx", "unknown")] });
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals.find((proposal) => proposal.rowId === "purchase")).toMatchObject({ amount: 12500, currency: "USD" });
+    expect(result.proposals.find((proposal) => proposal.rowId === "purchase")?.reviewReasons).toContain("fx_converted");
+  });
+
   it("builds byte-identical cycle-two prompts for permutations of set-like ledger context", async () => {
     const envelope2 = { ...base.envelopes[0]!, id: "envelope-2", name: "Travel", sort: 1 };
     const categories = [
