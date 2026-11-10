@@ -526,6 +526,8 @@ export function ImportSheet({
           plan,
           previouslyApplied.appliedRowIds,
           currentEdited,
+          // The state captured when this handler ran, before the rebuild above replaced it.
+          recognized,
         );
         await importJobManager.receiptDraft(job.id, receiptDraft);
         await importJobManager.recordSkipped(

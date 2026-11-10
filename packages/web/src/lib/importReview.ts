@@ -3,6 +3,8 @@ import {
   type BalanceMatchChange,
   balanceMatchOptions,
   type ClientLedger,
+  IMPORT_CORRECTION_FIELDS,
+  type ImportCorrectionField,
   type ImportDupStatus,
   type ImportProposal,
   type ImportReviewReason,
@@ -118,6 +120,43 @@ export function importReviewChanges(args: {
   const bankValue = args.bankValue === args.recognizedBankValue ? null : args.bankValue;
   if (Object.keys(rows).length === 0 && bankValue === null && !args.reconcileAfter) return null;
   return { rows, bankValue, reconcileAfter: args.reconcileAfter };
+}
+
+/**
+ * The fields of one row the human changed against what was recognized, for the import receipt.
+ * Final difference only: an edit undone is no correction. A row read in a foreign currency and
+ * booked from an edit is recorded in the budget currency, so its currency counts as corrected.
+ * undefined when the row has no recognized baseline to compare with.
+ */
+export function importRowCorrections(args: {
+  recognized: ImportReviewRow | undefined;
+  row: ImportReviewRow;
+  edit: EditedImportItem | undefined;
+  budgetCurrency: string;
+  accountId: string;
+}): ImportCorrectionField[] | undefined {
+  const { recognized, row, edit } = args;
+  if (!recognized) return undefined;
+  const fields = new Set<ImportCorrectionField>();
+  if (row.include !== recognized.include) fields.add("selection");
+  if (edit) {
+    const base = recognized.item ?? recognized.draftItem;
+    const text = (value: string | null | undefined) => value?.trim() ?? "";
+    const id = (value: string | null | undefined) => value || null;
+    if (edit.type !== base?.type) fields.add("type");
+    if (edit.isRefund !== (base?.isRefund ?? false)) fields.add("isRefund");
+    if (edit.amount !== base?.amount) fields.add("amount");
+    if (recognized.currency !== null && recognized.currency !== args.budgetCurrency) fields.add("currency");
+    if (edit.date !== base?.date) fields.add("date");
+    if (edit.accountId !== args.accountId) fields.add("accountId");
+    if (id(edit.toAccountId) !== id(base?.toAccountId)) fields.add("toAccountId");
+    if (id(edit.envelopeId) !== id(base?.envelopeId)) fields.add("envelopeId");
+    if (id(edit.categoryId) !== id(base?.categoryId)) fields.add("categoryId");
+    if (text(edit.name) !== text(base?.name)) fields.add("name");
+    if (text(edit.placeName) !== text(base?.placeName)) fields.add("placeName");
+    if (text(edit.note) !== "") fields.add("note");
+  }
+  return IMPORT_CORRECTION_FIELDS.filter((field) => fields.has(field));
 }
 
 /** An edit chooses the row's assignment itself, so a saved assignment that is unavailable no

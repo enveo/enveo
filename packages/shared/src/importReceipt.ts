@@ -1,6 +1,24 @@
 import { z } from "zod";
 
 const money = z.number().int().safe();
+
+/** Which reviewed fields the human changed against the recognized row: names only, never values. */
+export const IMPORT_CORRECTION_FIELDS = [
+  "selection",
+  "type",
+  "isRefund",
+  "amount",
+  "currency",
+  "date",
+  "accountId",
+  "toAccountId",
+  "envelopeId",
+  "categoryId",
+  "name",
+  "placeName",
+  "note",
+] as const;
+export type ImportCorrectionField = (typeof IMPORT_CORRECTION_FIELDS)[number];
 const label = z.string();
 export const importReceiptSchema = z
   .object({
@@ -29,6 +47,12 @@ export const importReceiptSchema = z
             placeName: label.nullable(),
             note: label.nullable(),
             tag: label,
+            /** Absent = not measured (older receipt or no recognized baseline); [] = measured, unchanged. */
+            correctionFields: z
+              .array(z.enum(IMPORT_CORRECTION_FIELDS))
+              .max(IMPORT_CORRECTION_FIELDS.length)
+              .refine((fields) => new Set(fields).size === fields.length, "duplicate correction field")
+              .optional(),
           })
           .strict(),
       )

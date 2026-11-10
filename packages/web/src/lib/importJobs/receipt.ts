@@ -1,6 +1,6 @@
 import { type ClientLedger, computeBudgetState, type ImportReceipt } from "@enveo/shared";
 import type { EditedImportItem } from "../api";
-import type { ImportReviewRow } from "../importReview";
+import { type ImportReviewRow, importRowCorrections } from "../importReview";
 import type { LocalImportPlan } from "../localImport";
 
 const balances = (ledger: ClientLedger) =>
@@ -19,6 +19,8 @@ export function prepareImportReceipt(
   plan: LocalImportPlan,
   applied: readonly string[],
   edited: Record<number, EditedImportItem> = {},
+  /** The rows as recognized before the human's review: the baseline for `correctionFields`. */
+  recognized?: readonly ImportReviewRow[],
 ): ImportReceipt {
   if (previous?.completedAt) return previous;
   const planned = new Map(plan.transactions.map((tx) => [tx.rowId, tx]));
@@ -30,6 +32,8 @@ export function prepareImportReceipt(
     if (tx.payload.toAccountId) accountIds.add(tx.payload.toAccountId);
   }
   const current = balances(ledger);
+  const budgetCurrency = previous?.currency ?? ledger.budgets[0]?.currency ?? "EUR";
+  const baseline = recognized ? new Map(recognized.map((row) => [row.rowId, row])) : null;
   return {
     completedAt: null,
     currency: previous?.currency ?? ledger.budgets[0]?.currency ?? "EUR",
@@ -67,6 +71,7 @@ export function prepareImportReceipt(
         placeName: tx?.placeName ?? (tx ? name(ledger.places, tx.payload.placeId) : (edit?.placeName ?? row.item?.placeName ?? null)),
         note: tx?.payload.note ?? edit?.note ?? null,
         tag: tx?.payload.tag ?? row.item?.tag ?? row.draftItem?.tag ?? "",
+        ...(baseline ? { correctionFields: importRowCorrections({ recognized: baseline.get(row.rowId), row, edit, budgetCurrency, accountId }) } : {}),
       };
     }),
   };

@@ -126,3 +126,62 @@ test("a resumed import preserves known before balances and leaves newly encounte
   expect(result.balances.find((a) => a.accountId === "a")?.before).toBe(12000);
   expect(result.balances.find((a) => a.accountId === "b")?.before).toBeNull();
 });
+
+test("each receipt row records which fields the human corrected, by name only", () => {
+  const ledger = {
+    budgets: [{ currency: "USD" }],
+    accounts: [{ id: "a", name: "Bank", initialBalance: 0 }],
+    transactions: [],
+    envelopes: [],
+    groups: [],
+    allocations: [],
+    categories: [],
+    places: [],
+  } as unknown as ClientLedger;
+  const recognizedRow = (rowId: string, over: Partial<ImportReviewRow> = {}) =>
+    ({
+      rowId,
+      include: true,
+      rawTextLines: ["SAAS VENDOR"],
+      date: "2031-03-14",
+      amount: 1650,
+      currency: "USD",
+      item: null,
+      draftItem: { name: "Software", type: "expense", amount: 1650, date: "2031-03-14", tag: "", envelopeId: null },
+      ...over,
+    }) as ImportReviewRow;
+  const recognized = [recognizedRow("untouched"), recognizedRow("unchecked"), recognizedRow("foreign", { currency: "EUR" })];
+  const reviewed = [recognized[0]!, { ...recognized[1]!, include: false }, recognized[2]!];
+  const edit = {
+    type: "expense" as const,
+    accountId: "a",
+    toAccountId: null,
+    isRefund: false,
+    amount: 1782,
+    date: "2031-03-14",
+    name: "Software",
+    envelopeId: null,
+    categoryId: null,
+    placeName: null,
+    note: "",
+  };
+  const emptyPlan = { dryRun: false, added: 0, skipped: 0, transactions: [], results: [] };
+
+  const receipt = prepareImportReceipt(null, ledger, "a", reviewed, emptyPlan, [], { 2: edit }, recognized);
+  expect(receipt.rows.map((row) => [row.rowId, row.correctionFields])).toEqual([
+    ["untouched", []],
+    ["unchecked", ["selection"]],
+    ["foreign", ["amount", "currency"]],
+  ]);
+  expect(importReceiptSchema.safeParse(receipt).success).toBe(true);
+
+  // An edit saved without changing anything (or changed and undone) is no correction.
+  const unchanged = prepareImportReceipt(null, ledger, "a", reviewed, emptyPlan, [], { 0: { ...edit, amount: 1650 } }, recognized);
+  expect(unchanged.rows[0]!.correctionFields).toEqual([]);
+
+  // Without a recognized baseline nothing is claimed; older receipts without the field still parse.
+  expect(prepareImportReceipt(null, ledger, "a", reviewed, emptyPlan, []).rows[0]).not.toHaveProperty("correctionFields");
+  const withFields = (correctionFields: unknown) => ({ ...receipt, rows: [{ ...receipt.rows[0]!, correctionFields }] });
+  expect(importReceiptSchema.safeParse(withFields(["amount", "amount"])).success).toBe(false);
+  expect(importReceiptSchema.safeParse(withFields(["merchant"])).success).toBe(false);
+});
