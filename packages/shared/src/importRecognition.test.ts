@@ -903,6 +903,22 @@ describe("a foreign-currency payment takes the account-currency figure printed f
     expect(conflicting.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1650, currency: "EUR" });
     const agreeing = validate([...capture(0, null), ...capture(1, "17.82"), ...capture(2, "17.82")]);
     expect(agreeing.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1782, currency: "USD" });
+
+    // A capture whose own evidence contradicts itself also leaves the group unsettled.
+    const line = (rowId: string, visualOrder: number, text: string, over: Partial<ImportExtractRow> = {}) =>
+      extractRow({ rowId, imageIndex: 2, visualOrder, rowRole: "supporting_detail", semanticKind: "fx_conversion", rawTextLines: [text], ...over });
+    const selfContradicting = [
+      [
+        line("fx-2a", 2, "16.50 EUR < 17.82 USD", { relation: { kind: "fx_for", rowId: "store-2" } }),
+        line("fx-2b", 3, "16.50 EUR < 18.45 USD", { relation: { kind: "fx_for", rowId: "store-2" } }),
+      ],
+      [line("fx-2", 2, "16.50 EUR < 17.82 USD / 18.45 USD")],
+      [line("fx-2a", 0.5, "16.50 EUR < 17.82 USD"), line("fx-2b", 2, "16.50 EUR < 18.45 USD")],
+    ];
+    for (const evidence of selfContradicting) {
+      const proposals = validate([...capture(0, null), ...capture(1, "17.82"), ...capture(2, null), ...evidence]);
+      expect(proposals.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1650, currency: "EUR" });
+    }
   });
 
   it("from a linked line only when the line proves the link, in either or both directions", () => {

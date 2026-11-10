@@ -1,6 +1,6 @@
 import { isSupportedCurrency } from "./currency";
 import { isCalendarDate } from "./dates";
-import { printedAmountIn } from "./importAmounts";
+import { printedAmountIn, printedAmountsIn } from "./importAmounts";
 import { settleImportDuplicates } from "./importChunks";
 import { buildImportDupIndex, classifyImportDup, existingImportRowsForAccount, type ImportDupStatus, importCandidateDirection } from "./importDedupe";
 import type { ImportReceipt } from "./importReceipt";
@@ -445,8 +445,9 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     const kept = keptCapture(rowId);
     figuresByKept.set(kept, (figuresByKept.get(kept) ?? new Set()).add(figure));
   }
+  const conflictedKept = new Set([...foreign.conflicted].map(keptCapture));
   for (const [kept, figures] of figuresByKept) {
-    if (figures.size === 1) foreign.converted.set(kept, [...figures][0]!);
+    if (figures.size === 1 && !conflictedKept.has(kept)) foreign.converted.set(kept, [...figures][0]!);
     else foreign.converted.delete(kept);
   }
   const proposals = rows.map((row) => {
@@ -527,6 +528,8 @@ interface ForeignAmounts {
   converted: Map<string, number>;
   /** Exchange entries whose figure was taken: evidence only, never booked a second time. */
   exchangeLines: Set<string>;
+  /** Payments whose printed evidence contradicts itself: no capture of them may be converted. */
+  conflicted: Set<string>;
 }
 
 /**
@@ -549,6 +552,7 @@ function foreignAmountsInBudgetCurrency(
 ): ForeignAmounts {
   const converted = new Map<string, number>();
   const exchangeLines = new Set<string>();
+  const conflicted = new Set<string>();
   // A payment the bank declined moves no money and never takes an exchange line from another.
   const isForeignEvent = (row: ImportExtractRow | undefined): row is ImportExtractRow =>
     row !== undefined &&
@@ -571,15 +575,18 @@ function foreignAmountsInBudgetCurrency(
     const [fx, event] = isFx(row) ? [row, target] : isFx(target) ? [target, row] : [undefined, undefined];
     if (!fx || !isForeignEvent(event)) continue;
     if (printedAmountIn(fx.rawTextLines, event.currency!) !== event.amount) continue;
-    const figure = printedAmountIn(fx.rawTextLines, budgetCurrency);
-    if (figure === null) continue;
+    const figures = printedAmountsIn(fx.rawTextLines, budgetCurrency);
+    if (figures.length > 1) conflicted.add(event.rowId);
+    if (figures.length !== 1) continue;
+    const figure = figures[0]!;
     usedEvidence.add(fx.rowId);
     linked.set(event.rowId, (linked.get(event.rowId) ?? new Map()).set(fx.rowId, figure));
     paymentsPerExchange.set(fx.rowId, (paymentsPerExchange.get(fx.rowId) ?? new Set()).add(event.rowId));
   }
   for (const [eventId, links] of linked) {
     const figures = new Set(links.values());
-    if (figures.size === 1 && [...links.keys()].every((exchange) => paymentsPerExchange.get(exchange)!.size === 1)) converted.set(eventId, [...figures][0]!);
+    if (figures.size > 1) conflicted.add(eventId);
+    else if ([...links.keys()].every((exchange) => paymentsPerExchange.get(exchange)!.size === 1)) converted.set(eventId, [...figures][0]!);
   }
 
   const byImage = new Map<number, ImportExtractRow[]>();
@@ -601,8 +608,9 @@ function foreignAmountsInBudgetCurrency(
     }
     return found;
   };
-  const printsPair = (row: ImportExtractRow, event: ImportExtractRow): number | null =>
-    printedAmountIn(row.rawTextLines, event.currency!) === event.amount ? printedAmountIn(row.rawTextLines, budgetCurrency) : null;
+  // The account-currency figures a row prints next to the payment's exact foreign amount.
+  const pairedFigures = (row: ImportExtractRow, event: ImportExtractRow): number[] =>
+    printedAmountIn(row.rawTextLines, event.currency!) === event.amount ? printedAmountsIn(row.rawTextLines, budgetCurrency) : [];
   // A neighbour read as a payment of its own (a bank entry printing both of ITS amounts) is never
   // another payment's exchange line, even when the two foreign amounts happen to be equal.
   const mayBeExchange = (row: ImportExtractRow): boolean =>
@@ -611,13 +619,15 @@ function foreignAmountsInBudgetCurrency(
   const pairs = new Map<string, { exchange: string; figure: number }>();
   const claims = new Map<string, number>();
   for (const event of rows) {
-    if (!isForeignEvent(event) || converted.has(event.rowId)) continue;
-    if (printedAmountIn(event.rawTextLines, budgetCurrency) !== null) continue;
+    if (!isForeignEvent(event) || converted.has(event.rowId) || conflicted.has(event.rowId)) continue;
+    if (printedAmountsIn(event.rawTextLines, budgetCurrency).length > 0) continue;
     const matches = adjacent(event).flatMap((other) => {
-      const figure = mayBeExchange(other) && !usedEvidence.has(other.rowId) ? printsPair(other, event) : null;
-      return figure === null ? [] : [{ exchange: other.rowId, figure }];
+      const figures = mayBeExchange(other) && !usedEvidence.has(other.rowId) ? pairedFigures(other, event) : [];
+      if (figures.length > 1) conflicted.add(event.rowId);
+      return figures.length === 1 ? [{ exchange: other.rowId, figure: figures[0]! }] : [];
     });
-    if (matches.length !== 1) continue;
+    if (new Set(matches.map((match) => match.figure)).size > 1) conflicted.add(event.rowId);
+    if (matches.length !== 1 || conflicted.has(event.rowId)) continue;
     pairs.set(event.rowId, matches[0]!);
     claims.set(matches[0]!.exchange, (claims.get(matches[0]!.exchange) ?? 0) + 1);
   }
@@ -628,11 +638,12 @@ function foreignAmountsInBudgetCurrency(
   }
 
   for (const event of rows) {
-    if (!isForeignEvent(event) || converted.has(event.rowId) || exchangeLines.has(event.rowId)) continue;
-    const figure = printsPair(event, event);
-    if (figure !== null) converted.set(event.rowId, figure);
+    if (!isForeignEvent(event) || converted.has(event.rowId) || exchangeLines.has(event.rowId) || conflicted.has(event.rowId)) continue;
+    const figures = pairedFigures(event, event);
+    if (figures.length > 1) conflicted.add(event.rowId);
+    else if (figures.length === 1) converted.set(event.rowId, figures[0]!);
   }
-  return { converted, exchangeLines };
+  return { converted, exchangeLines, conflicted };
 }
 
 /** Only an entry that could become a transaction stands for a recorded one. Evidence rows and

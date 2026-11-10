@@ -31,10 +31,16 @@ const FIGURE = String.raw`\d{1,3}(?:[\s .,]\d{3})+(?:[.,]\d{2})?|\d+(?:[.,]\d{2
 
 /**
  * The one amount printed in `currency` in these lines, or null when there is none or more than
- * one distinct figure. Exchange-rate expressions (`1.00 PLN = 0.2263 EUR`, a line ending in `=`
+ * one distinct figure (see `printedAmountsIn`). Exchange-rate expressions (`1.00 PLN = 0.2263 EUR`, a line ending in `=`
  * and the line it continues on) are not amounts.
  */
 export function printedAmountIn(lines: readonly string[], currency: string): number | null {
+  const figures = printedAmountsIn(lines, currency);
+  return figures.length === 1 ? figures[0]! : null;
+}
+
+/** Every distinct amount printed in `currency`, rate expressions excluded. */
+export function printedAmountsIn(lines: readonly string[], currency: string): number[] {
   const marks = [currency, ...(CURRENCY_SYMBOLS[currency] ?? [])].map(escapeRegExp).join("|");
   const pattern = new RegExp(`(?<![\\d.,])(?:(${FIGURE})\\s*(?:${marks})(?![\\p{L}])|(?<![\\p{L}])(?:${marks})\\s*(${FIGURE})(?![\\d]|[.,]\\d))`, "giu");
   const figures = new Set<number>();
@@ -45,5 +51,5 @@ export function printedAmountIn(lines: readonly string[], currency: string): num
       if (parsed !== null && parsed !== 0) figures.add(Math.abs(parsed));
     }
   }
-  return figures.size === 1 ? [...figures][0]! : null;
+  return [...figures];
 }
