@@ -429,17 +429,25 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
 
   const budgetCurrencySupported = isSupportedCurrency(budgetCurrency);
   const foreign = foreignAmountsInBudgetCurrency(rows, rowsById, budgetCurrency);
-  // The capture that is kept stands for the entry: when only a declined repeat showed the printed
-  // account-currency figure, that figure belongs to the kept one.
-  for (let changed = true; changed; ) {
-    changed = false;
-    for (const [rowId, relation] of acceptedRelations) {
-      if (relation.kind !== "duplicate_of") continue;
-      const figure = foreign.converted.get(rowId);
-      if (figure === undefined || foreign.converted.has(relation.rowId)) continue;
-      foreign.converted.set(relation.rowId, figure);
-      changed = true;
+  // The capture that is kept stands for the entry: a printed account-currency figure seen on any
+  // capture of it belongs to the kept one, provided every capture that shows one agrees.
+  const keptCapture = (rowId: string): string => {
+    const seen = new Set<string>();
+    let current = rowId;
+    for (let next = acceptedRelations.get(current); next?.kind === "duplicate_of" && !seen.has(next.rowId); next = acceptedRelations.get(current)) {
+      seen.add(current);
+      current = next.rowId;
     }
+    return current;
+  };
+  const figuresByKept = new Map<string, Set<number>>();
+  for (const [rowId, figure] of foreign.converted) {
+    const kept = keptCapture(rowId);
+    figuresByKept.set(kept, (figuresByKept.get(kept) ?? new Set()).add(figure));
+  }
+  for (const [kept, figures] of figuresByKept) {
+    if (figures.size === 1) foreign.converted.set(kept, [...figures][0]!);
+    else foreign.converted.delete(kept);
   }
   const proposals = rows.map((row) => {
     const mapping = mappingFor(row.semanticKind, row.direction);
@@ -552,25 +560,26 @@ function foreignAmountsInBudgetCurrency(
   const isFx = (row: ImportExtractRow | undefined): row is ImportExtractRow =>
     row !== undefined && row.rowRole === "supporting_detail" && row.semanticKind === "fx_conversion";
   // One piece of evidence pays for one payment, whichever way it was tied to it.
+  // A link counts only when the line itself proves it: it prints the payment's exact foreign
+  // amount and one account-currency figure. A disproved link reserves nothing.
   const usedEvidence = new Set<string>();
-  const linked = new Map<string, Array<{ exchange: string; figure: number }>>();
-  const linksPerExchange = new Map<string, number>();
+  const linked = new Map<string, Map<string, number>>();
+  const paymentsPerExchange = new Map<string, Set<string>>();
   for (const row of rows) {
     if (row.relation?.kind !== "fx_for") continue;
     const target = rowsById.get(row.relation.rowId);
     const [fx, event] = isFx(row) ? [row, target] : isFx(target) ? [target, row] : [undefined, undefined];
     if (!fx || !isForeignEvent(event)) continue;
-    usedEvidence.add(fx.rowId);
-    const foreign = printedAmountIn(fx.rawTextLines, event.currency!);
-    if (foreign !== null && foreign !== event.amount) continue;
+    if (printedAmountIn(fx.rawTextLines, event.currency!) !== event.amount) continue;
     const figure = printedAmountIn(fx.rawTextLines, budgetCurrency);
     if (figure === null) continue;
-    linked.set(event.rowId, [...(linked.get(event.rowId) ?? []), { exchange: fx.rowId, figure }]);
-    linksPerExchange.set(fx.rowId, (linksPerExchange.get(fx.rowId) ?? 0) + 1);
+    usedEvidence.add(fx.rowId);
+    linked.set(event.rowId, (linked.get(event.rowId) ?? new Map()).set(fx.rowId, figure));
+    paymentsPerExchange.set(fx.rowId, (paymentsPerExchange.get(fx.rowId) ?? new Set()).add(event.rowId));
   }
   for (const [eventId, links] of linked) {
-    const figures = new Set(links.map((link) => link.figure));
-    if (figures.size === 1 && links.every((link) => linksPerExchange.get(link.exchange) === 1)) converted.set(eventId, links[0]!.figure);
+    const figures = new Set(links.values());
+    if (figures.size === 1 && [...links.keys()].every((exchange) => paymentsPerExchange.get(exchange)!.size === 1)) converted.set(eventId, [...figures][0]!);
   }
 
   const byImage = new Map<number, ImportExtractRow[]>();

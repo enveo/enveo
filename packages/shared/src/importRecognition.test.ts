@@ -882,6 +882,63 @@ describe("a foreign-currency payment takes the account-currency figure printed f
     expect(mismatched[0]).toMatchObject({ amount: 1650, currency: "EUR" });
   });
 
+  it("for the kept capture only when every capture showing a figure agrees", () => {
+    const capture = (image: number, usd: string | null) => [
+      extractRow({ rowId: `cafe-${image}`, imageIndex: image, visualOrder: 0, rawTextLines: ["CORNER CAFE"], amount: 940 }),
+      purchase({ rowId: `store-${image}`, imageIndex: image }),
+      ...(usd
+        ? [
+            extractRow({
+              rowId: `fx-${image}`,
+              imageIndex: image,
+              visualOrder: 2,
+              rowRole: "supporting_detail" as const,
+              semanticKind: "fx_conversion" as const,
+              rawTextLines: [`16.50 EUR < ${usd} USD`],
+            }),
+          ]
+        : []),
+    ];
+    const conflicting = validate([...capture(0, null), ...capture(1, "17.82"), ...capture(2, "18.45")]);
+    expect(conflicting.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1650, currency: "EUR" });
+    const agreeing = validate([...capture(0, null), ...capture(1, "17.82"), ...capture(2, "17.82")]);
+    expect(agreeing.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1782, currency: "USD" });
+  });
+
+  it("from a linked line only when the line proves the link, in either or both directions", () => {
+    const line = (over: Partial<ImportExtractRow>) =>
+      extractRow({
+        rowId: "fx",
+        visualOrder: 1,
+        rowRole: "supporting_detail",
+        semanticKind: "fx_conversion",
+        rawTextLines: ["16.50 EUR < 17.82 USD"],
+        ...over,
+      });
+    const reciprocal = validate([
+      purchase({ visualOrder: 0, relation: { kind: "fx_for", rowId: "fx" } }),
+      line({ relation: { kind: "fx_for", rowId: "purchase" } }),
+    ]);
+    expect(reciprocal[0]).toMatchObject({ amount: 1782, currency: "USD" });
+
+    const unproven = validate([
+      purchase({ visualOrder: 0 }),
+      line({ visualOrder: 5, rawTextLines: ["17.82 USD"], relation: { kind: "fx_for", rowId: "purchase" } }),
+    ]);
+    expect(unproven[0]).toMatchObject({ amount: 1650, currency: "EUR" });
+
+    // A link the line disproves leaves the line free for the payment it does belong to.
+    const misdirected = validate([
+      purchase({ rowId: "a", visualOrder: 0, amount: 1700, rawTextLines: ["− 17.00 EUR", "STORE A"] }),
+      line({ relation: { kind: "fx_for", rowId: "a" } }),
+      purchase({ rowId: "b", visualOrder: 2, rawTextLines: ["− 16.50 EUR", "STORE B"] }),
+    ]);
+    expect(misdirected.filter((row) => row.disposition === "candidate").map((row) => [row.rowId, row.amount, row.currency])).toEqual([
+      ["a", 1700, "EUR"],
+      ["b", 1782, "USD"],
+    ]);
+  });
+
   it("never for a payment the bank declined, which leaves a real exchange next to it alone", () => {
     const proposals = validate([
       purchase({ rowId: "declined", visualOrder: 0, postingStatus: "declined" }),
