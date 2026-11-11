@@ -487,6 +487,25 @@ describe("settling repeats across screenshots", () => {
     expect(overlapping.possible).toEqual([]);
   });
 
+  it("flags a capture with the same facts and agreeing neighbours but other text as a possible repeat", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b1", 0, 2, "PINE HARDWARE", { amount: 1200 }),
+      entry("x2", 1, 0, "TRANSFER TO SAV", { amount: 50000 }),
+      entry("b2", 1, 1, "PINE HARDWARE", { amount: 1200 }),
+    ]);
+    expect(settled.links).toEqual(new Map([["b2", "b1"]]));
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
+
+    // Without an agreeing neighbour the same facts alone prove nothing and flag nothing.
+    const alone = settleImportDuplicates([
+      entry("x1", 0, 0, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("x2", 1, 0, "TRANSFER TO SAV", { amount: 50000 }),
+    ]);
+    expect(alone.possible).toEqual([]);
+  });
+
   it("keeps two identical entries of one screenshot as two, even when an earlier screenshot shows one", () => {
     const settled = settleImportDuplicates([
       entry("a1", 0, 0, "ORCHARD BAKERY"),

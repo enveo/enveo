@@ -571,6 +571,20 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
     possible.push(seamPair(row, nearest));
   }
 
+  // The same posting facts as an entry on another screenshot, with the neighbours agreeing too, but
+  // other text (a line cut off or read differently) is not proof of a repeat, yet too likely to stay
+  // silent: the later capture is flagged for the human. A model or seam claim reached the loop above.
+  const settled = new Set([...links.keys(), ...possible.map((pair) => pair.laterRowId)]);
+  const financial = sorted.filter((row) => row.rowRole === "financial_event");
+  for (const [index, row] of financial.entries()) {
+    if (settled.has(row.rowId) || row.relation?.kind === "duplicate_of" || !isFinancialTwinCandidate(row)) continue;
+    const earlier = financial
+      .slice(0, index)
+      .filter((other) => other.imageIndex !== row.imageIndex && twinKey(other) !== twinKey(row) && sameNeighbour(row, other) && neighboursAgree(row, other))
+      .at(-1);
+    if (earlier) possible.push(seamPair(row, earlier));
+  }
+
   // An entry cut off by the screenshot edge shows only some of its lines and no amount. When the
   // entry next to it is a repeat (proven or possible), the entry beside its other capture is probably
   // the whole one; if it carries every line of the piece, the piece is flagged as a possible repeat
