@@ -5,7 +5,6 @@ import {
   computeStateResponse,
   decodeImportTextPage,
   findBalanceMatches,
-  findNearestBalanceMatch,
   IMPORT_JOB_MAX_IMAGES,
   isImportTextPage,
   parseImportBalanceArbiterResponse,
@@ -38,6 +37,7 @@ import {
   bankBalanceHint,
   buildImportReviewRows,
   createImportReviewSaver,
+  foreignRowsAtFaceValue,
   type ImportBalanceDiagnosis,
   type ImportReviewChanges,
   type ImportReviewRow,
@@ -226,7 +226,7 @@ export function ImportSheet({
     });
     const restored = changes ? restoreImportReview(rebuilt, changes) : { rows: rebuilt, edited: {}, editedAutomaticDefaults: {} };
     const checked = reconcileReviewEdits({ rows: restored.rows, edited: restored.edited, ledger, defaultAccountId: importAccountId });
-    const hint = bankBalanceHint(result.rows);
+    const hint = bankBalanceHint(result.rows, ledger.budgets[0]?.currency ?? currency);
     const recognizedBank = hint === null ? "" : fmtSignedTrim(hint);
     // A reset leaves the stored changes in place for the autosave to clear.
     if (restore) storedChanges.current = readable ? changes && JSON.stringify(changes) : null;
@@ -679,13 +679,22 @@ export function ImportSheet({
 
     return edit?.name || row?.item?.name || row?.item?.tag || row?.rawTextLines[0] || rowId;
   };
+  // A suggestion or diagnosis answers one selection and one bank figure: any change retires it,
+  // and an answer still on its way for the old state is dropped.
+  const matchGeneration = useRef(0);
+  useEffect(() => {
+    matchGeneration.current++;
+    setMatch({ kind: "idle" });
+    setDiagnosis(null);
+  }, [items, edited, bankValue]);
   const runBalanceMatch = async () => {
     if (difference === null || difference === 0 || !job?.result) return;
     const generation = viewGeneration.current;
+    const asked = matchGeneration.current;
     const candidates = balanceMatchCandidatesForReview({ rows: items, edited, defaultAccountId: accountId });
     const solutions = findBalanceMatches(candidates, difference);
     if (solutions.length === 0) {
-      setMatch({ kind: "none", nearest: findNearestBalanceMatch(candidates, difference) });
+      setMatch({ kind: "none" });
       setDiagnosis(
         importBalanceDiagnosis({
           candidates,
@@ -735,11 +744,12 @@ export function ImportSheet({
         lang,
       );
       const answer = parseImportBalanceArbiterResponse(await provider.complete(request), solutions.length);
-      if (generation !== viewGeneration.current) return;
+      if (generation !== viewGeneration.current || asked !== matchGeneration.current) return;
       if (answer.choice === null) setMatch({ kind: "declined", rationale: answer.rationale });
       else setMatch({ kind: "proposal", changes: solutions[answer.choice]!, rationale: answer.rationale, alternatives: solutions.length - 1 });
     } catch {
-      if (generation === viewGeneration.current) setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: solutions.length - 1 });
+      if (generation === viewGeneration.current && asked === matchGeneration.current)
+        setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: solutions.length - 1 });
     }
   };
   const applyBalanceChanges = (changes: readonly BalanceMatchChange[]) => {
@@ -750,9 +760,6 @@ export function ImportSheet({
   };
   const applyBalanceMatch = () => {
     if (match.kind === "proposal") applyBalanceChanges(match.changes);
-  };
-  const applyNearestBalanceMatch = () => {
-    if (match.kind === "none" && match.nearest) applyBalanceChanges(match.nearest.changes);
   };
   const reconcileAccount = currentReconciliationAccount(accountsNow, reconcileOpen ? accountId : null);
   const deviceWarning = sharedDeviceImportWarning(e2ee.getTierMeta().tier, storageMode());
@@ -1265,7 +1272,8 @@ export function ImportSheet({
               onReconcileAfter={setReconcileAfter}
               onMatch={() => void runBalanceMatch()}
               onApply={applyBalanceMatch}
-              onApplyNearest={applyNearestBalanceMatch}
+              fromScreenshot={bankValue !== "" && bankValue === recognizedBankValue}
+              foreignRows={foreignRowsAtFaceValue(items, edited)}
               onDismiss={() => setMatch({ kind: "idle" })}
             />
 

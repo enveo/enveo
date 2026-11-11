@@ -17,6 +17,7 @@ import {
   bankBalanceHint,
   buildImportReviewRows,
   createImportReviewSaver,
+  foreignRowsAtFaceValue,
   type ImportReviewChanges,
   type ImportReviewChangesStore,
   type ImportReviewRow,
@@ -1185,6 +1186,33 @@ describe("matching the selection to the bank balance", () => {
     expect(rows[0]!.include).toBe(true);
   });
 
+  it("reverses a refund into a plain expense, as the suggestion promised", () => {
+    const refund = reviewRow("refund", {
+      requiresReview: true,
+      reviewReasons: ["inconsistent_direction"],
+      item: { type: "expense", isRefund: true, amount: 4_500 },
+    });
+    const [candidate] = balanceMatchCandidatesForReview({ rows: [refund], edited: {}, defaultAccountId: "acc-main" });
+    expect(candidate).toMatchObject({ effect: 4_500, flippable: true });
+
+    const applied = applyBalanceMatchToReview({
+      rows: [refund],
+      edited: {},
+      defaultAccountId: "acc-main",
+      changes: [{ id: "refund", action: "flip", delta: -9_000 }],
+    });
+    expect(applied.edited[0]).toMatchObject({ type: "expense", isRefund: false, amount: 4_500 });
+  });
+
+  it("keeps rows still in a foreign currency out of the match and counts them for a warning", () => {
+    const foreign = reviewRow("foreign", { requiresReview: true, blockingIssues: ["currency_mismatch"], currency: "EUR" });
+    const rows = [foreign, reviewRow("local", { requiresReview: true })];
+    expect(balanceMatchCandidatesForReview({ rows, edited: {}, defaultAccountId: "acc-main" }).map((candidate) => candidate.id)).toEqual(["local"]);
+    expect(foreignRowsAtFaceValue(rows, {})).toBe(1);
+    // An amount the human entered is in the account currency.
+    expect(foreignRowsAtFaceValue(rows, { 0: editedFor(foreign) })).toBe(0);
+  });
+
   it("reads the bank balance out of a balance line the model kept as interface chrome", () => {
     expect(
       bankBalanceHint([
@@ -1205,6 +1233,25 @@ describe("matching the selection to the bank balance", () => {
 
   it("reads Polish balance labels and decimal separators", () => {
     expect(bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: ["Saldo 125,00 zł"] }])).toBe(12_500);
+  });
+
+  it("reads the figure after the label, never a date or an account number before it", () => {
+    const hint = (lines: string[], currency?: string) => bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: lines }], currency);
+    expect(hint(["Saldo na dzień 28.08.2031: 1 234,56 zł"])).toBe(123_456);
+    expect(hint(["Balance as of 12 Nov 2031: $1,234.56"])).toBe(123_456);
+    expect(hint(["Checking ••4821  Balance $500.00"])).toBe(50_000);
+    expect(hint(["Available balance: −842.16"])).toBe(-84_216);
+    expect(hint(["Available balance: 842,16-"])).toBe(-84_216);
+  });
+
+  it("skips opening, reward and other-currency figures, and prefills nothing when figures disagree", () => {
+    const hint = (lines: string[], currency?: string) => bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: lines }], currency);
+    expect(hint(["Opening balance 1,000.00", "Balance 1,250.00"])).toBe(125_000);
+    expect(hint(["Rewards balance 1,250 pts", "Balance $90.10"])).toBe(9_010);
+    expect(hint(["EUR balance 300.00", "USD balance 90.10"], "USD")).toBe(9_010);
+    // With a credit line, "available" includes the limit and is not the balance.
+    expect(hint(["Balance: -200.00", "Available: 1,800.00", "Credit limit 2,000.00"])).toBe(-20_000);
+    expect(hint(["Balance 1,250.00", "Balance 1,300.00"])).toBeNull();
   });
 });
 

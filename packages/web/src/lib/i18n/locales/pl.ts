@@ -133,13 +133,13 @@ export const pl: Dict = {
   "Reconcile the account to {amount} now": "Wyrównaj teraz konto do {amount}",
   "May repeat a row from another screenshot": "Może powtarzać wiersz z innego zrzutu ekranu",
   "Repeats a row from another screenshot": "Powtarza wiersz z innego zrzutu ekranu",
+  "Read from the screenshot. Check it against your bank.": "Odczytane ze zrzutu ekranu. Sprawdź z bankiem.",
+  "Rows in a foreign currency count at face value here, so the difference is not exact until you enter their amounts in the account currency.":
+    "Wiersze w obcej walucie liczą się tu według kwoty nominalnej, więc różnica nie jest dokładna, dopóki nie wpiszesz ich kwot w walucie konta.",
   Date: "Data",
   "Date taken from the neighbouring screenshot": "Data z sąsiedniego zrzutu ekranu",
   "Text looks like an attempt to manipulate the import": "Tekst wygląda na próbę manipulacji importem",
   "Amount taken from the exchange line": "Kwota z wiersza wymiany",
-  "Closest fit": "Najbliższe dopasowanie",
-  "Still unexplained": "Nadal niewyjaśnione",
-  "Apply the closest fit": "Zastosuj najbliższe",
   "Entered by hand in this period, worth a second look:": "Wpisane ręcznie w tym okresie, warto sprawdzić:",
   "No name": "Bez nazwy",
   "The uncertain rows could explain at most {amount}. A transaction is probably missing from the screenshots, or the app already differed from the bank before this import.":

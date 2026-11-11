@@ -14,6 +14,9 @@ import {
   parseDisplayAmount,
   type ReconciledImportProposal,
   type ReconciledImportRecognitionResult,
+  SUPPORTED_CURRENCIES,
+  type SupportedCurrency,
+  UNAMBIGUOUS_CURRENCY_SYMBOLS,
 } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem, ImportApplyResponse, ImportItem } from "./api";
 import { type Message, msg } from "./i18n";
@@ -685,6 +688,8 @@ export function balanceMatchCandidatesForReview(args: {
     const edit = args.edited[index];
     if (!row.item && !edit) return;
     if (edit && row.include) return;
+    // A foreign amount is not an account-currency effect; it stays out until the human enters one.
+    if (!edit && countsAtFaceValue(row)) return;
     const doubtful = row.requiresReview || row.duplicateStatus === "probable";
     if (!doubtful && row.include) return;
     const item = reviewApplyItem(row, edit);
@@ -701,6 +706,14 @@ export function balanceMatchCandidatesForReview(args: {
     });
   });
   return candidates.sort((left, right) => Number(right.doubtful) - Number(left.doubtful) || left.index - right.index);
+}
+
+const countsAtFaceValue = (row: ImportReviewRow): boolean => row.blockingIssues.includes("currency_mismatch");
+
+/** Selected rows still in a foreign currency: the balance after import counts them at face value,
+ *  so the difference to the bank is not exact until the human enters their account-currency amount. */
+export function foreignRowsAtFaceValue(rows: readonly ImportReviewRow[], edited: Record<number, EditedImportItem>): number {
+  return rows.filter((row, index) => row.include && row.duplicateStatus !== "exists" && !edited[index] && countsAtFaceValue(row)).length;
 }
 
 export function applyBalanceMatchToReview(args: {
@@ -722,8 +735,10 @@ export function applyBalanceMatchToReview(args: {
     rows[index] = { ...row, include: true };
     if (change.action === "flip") {
       const current = reviewApplyItem(row, edited[index])!;
+      // Money in (income, or a refund) becomes a plain expense; money out becomes income.
+      const credit = current.type === "income" || current.isRefund === true;
       edited[index] = {
-        type: current.type === "income" ? "expense" : "income",
+        type: credit ? "expense" : "income",
         accountId: current.accountId ?? args.defaultAccountId,
         toAccountId: null,
         isRefund: false,
@@ -740,33 +755,76 @@ export function applyBalanceMatchToReview(args: {
   return { rows, edited };
 }
 
-const BALANCE_LABEL = /saldo|balance|dost[eę]pn|available|stan konta|kontostand|solde|saldo disponible/i;
-const NUMBER_TOKEN = /-?\d[\d\s\u00a0.,]*\d|-?\d/g;
+const CLOSING_BALANCE_LABEL = /closing balance|saldo (końcowe|zamknięcia)/i;
+const AVAILABLE_BALANCE_LABEL = /dost[eę]pn|available|saldo disponible/i;
+const BALANCE_LABEL = /saldo|balance|dost[eę]pn|available|stan konta|kontostand|solde/i;
+/** Labelled figures that are not the account's own current balance. */
+const OTHER_FIGURE_LABEL = /opening|pocz[aą]tkow|otwarci|previous|poprzedni|reward|points|\bpts\b|\bpkt\b|punkt/i;
+/** With a credit line the "available" figure includes the limit, so it is not the balance. */
+const CREDIT_LINE = /credit limit|credit line|limit kredyt|\blimit\b/i;
+const DATE_TEXT = /\b\d{1,4}[./-]\d{1,2}[./-]\d{1,4}\b|\b\d{1,2}\s+\p{L}{3,}\.?\s+\d{4}\b|\b\p{L}{3,}\.?\s+\d{1,2},?\s+\d{4}\b/gu;
+const SIGNED_FIGURE = /(-?)(\d[\d\s\u00a0.,]*\d|\d)(-(?![\d]))?/g;
 
-export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLines: string[] }>): number | null {
-  for (const label of [CLOSING_BALANCE_LABEL, BALANCE_LABEL]) {
-    for (const row of rows) {
-      if (row.rowRole !== "ui_metadata") continue;
-      const index = row.rawTextLines.findIndex((text) => label.test(text));
-      if (index === -1) continue;
-      const found = balanceFigure(row.rawTextLines[index]!, row.rawTextLines[index + 1], label);
-      if (found !== null) return found;
+const firstFigure = (text: string): number | null => {
+  for (const match of text
+    .replace(/[\u2212\u2012\u2013\u2014]/g, "-")
+    .replace(DATE_TEXT, " ")
+    .matchAll(SIGNED_FIGURE)) {
+    const value = parseDisplayAmount(match[2]!);
+    if (value !== null) return match[1] || match[3] ? -value : value;
+  }
+  return null;
+};
+
+const currencyMark = (code: string): RegExp =>
+  new RegExp(
+    [
+      `(?<![A-Za-z])${code}(?![A-Za-z])`,
+      ...(UNAMBIGUOUS_CURRENCY_SYMBOLS[code as SupportedCurrency] ?? []).map((symbol) => symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    ].join("|"),
+  );
+/** A line that names another currency and not the account's is another account's figure. */
+const otherCurrencyOnly = (text: string, currency: string | undefined): boolean =>
+  currency !== undefined && !currencyMark(currency).test(text) && SUPPORTED_CURRENCIES.some((code) => code !== currency && currencyMark(code).test(text));
+
+/**
+ * The balance a screenshot or statement header shows, to prefill "Bank shows". Only a figure that
+ * follows its label counts (a date or an account number before it is not the balance), opening,
+ * reward and other-currency figures are skipped, and a closing label beats an available one, which
+ * beats any other balance. Two different figures at the same rank prefill nothing: the human types it.
+ */
+export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLines: string[] }>, currency?: string): number | null {
+  const chrome = rows.filter((row) => row.rowRole === "ui_metadata");
+  const creditLine = chrome.some((row) => row.rawTextLines.some((text) => CREDIT_LINE.test(text)));
+  const ranks = [CLOSING_BALANCE_LABEL, AVAILABLE_BALANCE_LABEL, BALANCE_LABEL];
+  for (const label of ranks) {
+    const figures = new Set<number>();
+    for (const row of chrome) {
+      for (const [index, text] of row.rawTextLines.entries()) {
+        if (creditLine && AVAILABLE_BALANCE_LABEL.test(text)) continue;
+        const found = balanceFigure(text, row.rawTextLines[index + 1], label, currency);
+        if (found !== null) figures.add(found);
+      }
     }
+    if (figures.size === 1) return [...figures][0]!;
+    if (figures.size > 1) return null;
   }
   return null;
 }
 
-const CLOSING_BALANCE_LABEL = /closing balance|saldo (końcowe|zamknięcia|dostępne)|dost[eę]pn|available/i;
-
-function balanceFigure(line: string, next: string | undefined, label: RegExp): number | null {
-  const own = (line.replace(label, "").match(NUMBER_TOKEN) ?? []).map(parseDisplayAmount).find((value) => value !== null);
-  if (own !== undefined) return own;
-  if (!next) return null;
+function balanceFigure(line: string, next: string | undefined, label: RegExp, currency: string | undefined): number | null {
+  const labelled = label.exec(line);
+  if (!labelled) return null;
   const cells = line.split(/\s{2,}/);
   const column = cells.findIndex((cell) => label.test(cell));
+  if (OTHER_FIGURE_LABEL.test(cells[column] ?? line)) return null;
+  const after = line.slice(labelled.index + labelled[0].length);
+  const own = firstFigure(after);
+  if (own !== null) return otherCurrencyOnly(line, currency) ? null : own;
+  if (!next) return null;
   const below = next.split(/\s{2,}/);
-  const cell = below[column] ?? below[below.length - 1];
-  return (cell?.match(NUMBER_TOKEN) ?? []).map(parseDisplayAmount).find((value) => value !== null) ?? null;
+  const cell = below[column] ?? below[below.length - 1] ?? "";
+  return otherCurrencyOnly(cell, currency) ? null : firstFigure(cell);
 }
 
 export interface ImportBalanceDiagnosis {
