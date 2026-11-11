@@ -646,6 +646,23 @@ describe("screenshot import proposal reconciliation", () => {
     expect(bothBooked.map((row) => row.duplicateStatus)).toEqual(["exists", "exists"]);
   });
 
+  it("keeps an entry cut off at the screenshot edge visible as a possible repeat, never hidden", () => {
+    const rows = [
+      extractRow({ rowId: "cafe-0", imageIndex: 0, visualOrder: 0, rawTextLines: ["CORNER CAFE", "0.62"], amount: 940 }),
+      extractRow({ rowId: "shop-0", imageIndex: 0, visualOrder: 1, rawTextLines: ["PINE HARDWARE"], amount: 915 }),
+      extractRow({ rowId: "fuel-0", imageIndex: 0, visualOrder: 2, rawTextLines: ["CITY FUEL"], amount: 4200 }),
+      extractRow({ rowId: "cut", imageIndex: 1, visualOrder: 0, rawTextLines: ["0.62"], amount: null, currency: null }),
+      extractRow({ rowId: "shop-1", imageIndex: 1, visualOrder: 1, rawTextLines: ["PINE HARDWARE"], amount: 915 }),
+      extractRow({ rowId: "fuel-1", imageIndex: 1, visualOrder: 2, rawTextLines: ["CITY FUEL"], amount: 4200 }),
+    ];
+    const { proposals } = validateImportExtraction({ batch: { rows }, budgetCurrency: "USD" });
+    const by = Object.fromEntries(proposals.map((proposal) => [proposal.rowId, proposal]));
+
+    expect(by["shop-1"]!.relation).toEqual({ kind: "duplicate_of", rowId: "shop-0" });
+    expect(by.cut).toMatchObject({ disposition: "unresolved", selected: false });
+    expect(by.cut!.reviewReasons).toContain("possible_duplicate");
+  });
+
   it("reaches the same verdict when a result is reconciled again, a declined repeat never taking a recorded row", () => {
     const rows = [
       extractRow({ rowId: "cafe-0", imageIndex: 0, visualOrder: 0, rawTextLines: ["CORNER CAFE"], amount: 940 }),

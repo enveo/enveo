@@ -454,7 +454,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     const mapping = mappingFor(row.semanticKind, row.direction);
     const relation = acceptedRelations.get(row.rowId) ?? null;
 
-    if (row.rowRole !== "financial_event" || foreign.exchangeLines.has(row.rowId) || duplicates.fragments.has(row.rowId)) {
+    if (row.rowRole !== "financial_event" || foreign.exchangeLines.has(row.rowId)) {
       return proposalFrom(row, { disposition: "supporting", type: null, relation, reviewReasons: [], selected: false });
     }
     // A pending entry has already left the account: the bank shows it and the money is spent, so
@@ -507,7 +507,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     // Suspicious content never blocks a row (the facts may still be right) but it is never
     // pre-selected: whatever the text asked for, the human decides with the flag in view.
     if (row.suspiciousText) reasons = addReasons(reasons, "suspicious_text");
-    if (possibleDuplicates.has(row.rowId)) reasons = addReasons(reasons, "possible_duplicate");
+    if (possibleDuplicates.has(row.rowId) || duplicates.fragments.has(row.rowId)) reasons = addReasons(reasons, "possible_duplicate");
 
     return proposalFrom(row, {
       disposition,
