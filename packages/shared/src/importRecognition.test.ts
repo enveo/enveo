@@ -658,7 +658,9 @@ describe("screenshot import proposal reconciliation", () => {
     const { proposals } = validateImportExtraction({ batch: { rows }, budgetCurrency: "USD" });
     const by = Object.fromEntries(proposals.map((proposal) => [proposal.rowId, proposal]));
 
-    expect(by["shop-1"]!.relation).toEqual({ kind: "duplicate_of", rowId: "shop-0" });
+    expect(by["shop-1"]).toMatchObject({ relation: null, selected: false });
+    expect(by["shop-1"]!.reviewReasons).toContain("possible_duplicate");
+    expect(by["fuel-1"]!.relation).toEqual({ kind: "duplicate_of", rowId: "fuel-0" });
     expect(by.cut).toMatchObject({ disposition: "unresolved", selected: false });
     expect(by.cut!.reviewReasons).toContain("possible_duplicate");
   });
