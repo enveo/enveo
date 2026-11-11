@@ -466,7 +466,7 @@ export interface ImportDuplicateSettlement {
  * (amount, currency, date, direction). A side is compared only when
  * both captures show an entry there (the screenshot edge or a cut-off row hides one); at least
  * one compared side must agree and none may disagree; an unread entry at the screenshot edge (cut
- * off by it) hides its side too, while an unread entry inside the screenshot still disagrees. Anything short of that, including links
+ * off by it) agrees only as a proven piece of the other side's entry (`pieceOf`). Anything short of that, including links
  * proposed by the model, the seam pass or date inference, becomes a `possible_duplicate` for the
  * human instead of a silent decline. A capture is linked at most once per screenshot, so two
  * identical rows of one screenshot can never both collapse onto one earlier row.
@@ -498,13 +498,27 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
     mine.amount === theirs.amount && mine.currency === theirs.currency && mine.date === theirs.date && compatibleDirections(mine, theirs);
   const cutOff = (row: ImportExtractRow): boolean =>
     row.amount === null && (position.get(row.rowId) === 0 || position.get(row.rowId) === entriesByImage.get(row.imageIndex)!.length - 1);
+  // An entry cut off at the screenshot edge shows no amount, only some of its lines. It is the same
+  // entry as a whole one only when every line it shows is printed by that entry and by no other
+  // entry of the whole one's screenshot: a line many entries share (a card suffix) proves nothing.
+  const pieceOf = (piece: ImportExtractRow, whole: ImportExtractRow): boolean => {
+    const lines = piece.rawTextLines.filter((line) => line.length > 0);
+    const carries = (entry: ImportExtractRow) => lines.every((line) => entry.rawTextLines.includes(line));
+    return (
+      cutOff(piece) &&
+      whole.amount !== null &&
+      lines.length > 0 &&
+      carries(whole) &&
+      entriesByImage.get(whole.imageIndex)!.every((entry) => entry === whole || !carries(entry))
+    );
+  };
   const neighboursAgree = (row: ImportExtractRow, other: ImportExtractRow): boolean => {
     let agreeing = 0;
     for (const step of [-1, 1] as const) {
       const mine = neighbour(row, step);
       const theirs = neighbour(other, step);
-      if (!mine || !theirs || cutOff(mine) || cutOff(theirs)) continue;
-      if (!sameNeighbour(mine, theirs)) return false;
+      if (!mine || !theirs) continue;
+      if (!sameNeighbour(mine, theirs) && !pieceOf(mine, theirs) && !pieceOf(theirs, mine)) return false;
       agreeing += 1;
     }
     return agreeing > 0;
@@ -564,8 +578,7 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
       const inner = neighbour(piece, inward)!.rowId;
       const counterpart = links.get(inner) ?? capturesOf.get(inner);
       const whole = counterpart ? neighbour(rowsById.get(counterpart)!, inward === 1 ? -1 : 1) : undefined;
-      const lines = piece.rawTextLines.filter((line) => line.length > 0);
-      if (!whole || whole.amount === null || lines.length === 0 || !lines.every((line) => whole.rawTextLines.includes(line))) continue;
+      if (!whole || !pieceOf(piece, whole)) continue;
       fragments.set(piece.rowId, whole.rowId);
     }
   }

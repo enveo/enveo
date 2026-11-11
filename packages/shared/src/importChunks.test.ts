@@ -535,6 +535,22 @@ describe("settling repeats across screenshots", () => {
     expect(settled.fragments).toEqual(new Map([["cut", "a1"]]));
   });
 
+  it("does not let an unread edge entry that is not a proven piece vouch for a repeat", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY", { amount: 1500, rawTextLines: ["ORCHARD BAKERY", "3779"] }),
+      entry("x1", 0, 1, "CORNER COFFEE", { amount: 500, rawTextLines: ["CORNER COFFEE", "3779"] }),
+      entry("p1", 0, 2, "CITY PARKING", { amount: 1000, rawTextLines: ["CITY PARKING", "3779"] }),
+      // A card suffix every entry prints says nothing about which entry was cut off.
+      entry("cut", 1, 0, "3779", { amount: null, currency: null }),
+      entry("x2", 1, 1, "CORNER COFFEE", { amount: 500, rawTextLines: ["CORNER COFFEE", "3779"] }),
+      entry("p2", 1, 2, "CITY PARKING", { amount: 1000, rawTextLines: ["CITY PARKING", "3779"] }),
+    ]);
+
+    expect(settled.links.has("x2")).toBe(false);
+    expect(settled.possible).toContainEqual({ earlierRowId: "x1", laterRowId: "x2" });
+    expect(settled.fragments.size).toBe(0);
+  });
+
   it("does not hide a side for an unread entry inside the screenshot", () => {
     const settled = settleImportDuplicates([
       entry("a1", 0, 0, "ORCHARD BAKERY", { amount: 1500 }),
