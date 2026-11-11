@@ -1253,7 +1253,9 @@ describe("matching the selection to the bank balance", () => {
     expect(hint(["Balance: -200.00", "Available: 1,800.00", "Credit limit 2,000.00"])).toBe(-20_000);
     expect(hint(["Balance: -200.00", "Available: 1,800.00", "Overdraft: 2,000.00"])).toBe(-20_000);
     expect(hint(["Saldo: -200,00 zł", "Dostępne środki 1 800,00 zł", "Debet 2 000,00 zł"])).toBe(-20_000);
-    // A payment or transfer limit is no credit line.
+    expect(hint(["Saldo: -200,00 zł", "Dostępne środki 1 800,00 zł", "Limit debetowy 2 000,00 zł"])).toBe(-20_000);
+    // A debit card or a payment limit is no credit line.
+    expect(hint(["Dostępne środki 500,00 zł", "Saldo 600,00 zł", "Karta debetowa"])).toBe(50_000);
     expect(hint(["Dostępne środki 500,00 zł", "Dzienny limit przelewów 2 000,00 zł"])).toBe(50_000);
     expect(hint(["Available balance $500.00", "Daily payment limit $2,000.00"])).toBe(50_000);
     expect(hint(["Balance 1,250.00", "Balance 1,300.00"])).toBeNull();
