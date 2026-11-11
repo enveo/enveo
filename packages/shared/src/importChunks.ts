@@ -494,8 +494,15 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
     compatibleDirections(row, other);
   // Neighbours are compared on their posting facts, not their text: a second reading of the same
   // entry may drop a letter, and that must not unmake the proof for the row next to it.
+  // An unread fact agrees with nothing, not even another unread one.
   const sameNeighbour = (mine: ImportExtractRow, theirs: ImportExtractRow): boolean =>
-    mine.amount === theirs.amount && mine.currency === theirs.currency && mine.date === theirs.date && compatibleDirections(mine, theirs);
+    mine.amount !== null &&
+    mine.currency !== null &&
+    mine.date !== null &&
+    mine.amount === theirs.amount &&
+    mine.currency === theirs.currency &&
+    mine.date === theirs.date &&
+    compatibleDirections(mine, theirs);
   const cutOff = (row: ImportExtractRow): boolean =>
     row.amount === null && (position.get(row.rowId) === 0 || position.get(row.rowId) === entriesByImage.get(row.imageIndex)!.length - 1);
   // An entry cut off at the screenshot edge shows no amount, only some of its lines. It may be the

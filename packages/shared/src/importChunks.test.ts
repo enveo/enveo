@@ -547,6 +547,18 @@ describe("settling repeats across screenshots", () => {
     expect(settled.fragments.size).toBe(0);
   });
 
+  it("never counts two unread neighbours as agreeing", () => {
+    const settled = settleImportDuplicates([
+      entry("u1", 0, 0, "RIVER", { amount: null, currency: null }),
+      entry("x1", 0, 1, "CORNER COFFEE", { amount: 500 }),
+      entry("u2", 1, 0, "MAPLE", { amount: null, currency: null }),
+      entry("x2", 1, 1, "CORNER COFFEE", { amount: 500 }),
+    ]);
+
+    expect(settled.links.has("x2")).toBe(false);
+    expect(settled.possible).toContainEqual({ earlierRowId: "x1", laterRowId: "x2" });
+  });
+
   it("does not hide a side for an unread entry inside the screenshot", () => {
     const settled = settleImportDuplicates([
       entry("a1", 0, 0, "ORCHARD BAKERY", { amount: 1500 }),
