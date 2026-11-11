@@ -1,4 +1,5 @@
-export type ImportDupStatus = "new" | "exists" | "probable";
+export const IMPORT_DUP_STATUSES = ["new", "exists", "probable"] as const;
+export type ImportDupStatus = (typeof IMPORT_DUP_STATUSES)[number];
 
 export type ImportMoneyDirection = "in" | "out";
 

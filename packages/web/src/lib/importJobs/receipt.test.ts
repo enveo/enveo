@@ -143,6 +143,9 @@ test("each receipt row records which fields the human corrected, by name only", 
       rowId,
       include: true,
       rawTextLines: ["SAAS VENDOR"],
+      reviewReasons: [],
+      duplicateStatus: "new",
+      relation: null,
       date: "2031-03-14",
       amount: 1650,
       currency: "USD",
@@ -184,4 +187,43 @@ test("each receipt row records which fields the human corrected, by name only", 
   const withFields = (correctionFields: unknown) => ({ ...receipt, rows: [{ ...receipt.rows[0]!, correctionFields }] });
   expect(importReceiptSchema.safeParse(withFields(["amount", "amount"])).success).toBe(false);
   expect(importReceiptSchema.safeParse(withFields(["merchant"])).success).toBe(false);
+});
+
+test("each receipt row records the flags its recognized row carried, by name only", () => {
+  const ledger = {
+    budgets: [{ currency: "USD" }],
+    accounts: [{ id: "a", name: "Bank", initialBalance: 0 }],
+    transactions: [],
+    envelopes: [],
+    groups: [],
+    allocations: [],
+    categories: [],
+    places: [],
+  } as unknown as ClientLedger;
+  const repeat = {
+    rowId: "repeat",
+    include: false,
+    rawTextLines: ["SAAS VENDOR"],
+    reviewReasons: ["relation_changes_ledger_shape"],
+    duplicateStatus: "probable",
+    relation: { kind: "duplicate_of", rowId: "kept" },
+    date: "2031-03-14",
+    amount: 1650,
+    currency: "USD",
+    item: null,
+    draftItem: { name: "Software", type: "expense", amount: 1650, date: "2031-03-14", tag: "", envelopeId: null },
+  } as unknown as ImportReviewRow;
+  const emptyPlan = { dryRun: false, added: 0, skipped: 0, transactions: [], results: [] };
+
+  const receipt = prepareImportReceipt(null, ledger, "a", [{ ...repeat, include: true }], emptyPlan, [], {}, [repeat]);
+  expect(receipt.rows[0]).toMatchObject({
+    reviewReasons: ["relation_changes_ledger_shape"],
+    duplicateStatus: "probable",
+    relationKind: "duplicate_of",
+    correctionFields: ["selection"],
+  });
+  expect(importReceiptSchema.safeParse(receipt).success).toBe(true);
+  expect(prepareImportReceipt(null, ledger, "a", [repeat], emptyPlan, []).rows[0]).not.toHaveProperty("reviewReasons");
+  const withReasons = (reviewReasons: unknown) => ({ ...receipt, rows: [{ ...receipt.rows[0]!, reviewReasons }] });
+  expect(importReceiptSchema.safeParse(withReasons(["made_up_reason"])).success).toBe(false);
 });

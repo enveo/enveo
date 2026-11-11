@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { IMPORT_DUP_STATUSES } from "./importDedupe";
+import { IMPORT_RELATION_KINDS, IMPORT_REVIEW_REASONS } from "./importRecognition";
 
 const money = z.number().int().safe();
 
@@ -53,6 +55,15 @@ export const importReceiptSchema = z
               .max(IMPORT_CORRECTION_FIELDS.length)
               .refine((fields) => new Set(fields).size === fields.length, "duplicate correction field")
               .optional(),
+            /** The recognized row's flags, names only, so how often each flag was right is read from
+             *  receipts. Absent = not recorded (older receipt or no recognized baseline). */
+            reviewReasons: z
+              .array(z.enum(IMPORT_REVIEW_REASONS))
+              .max(IMPORT_REVIEW_REASONS.length)
+              .refine((reasons) => new Set(reasons).size === reasons.length, "duplicate review reason")
+              .optional(),
+            duplicateStatus: z.enum(IMPORT_DUP_STATUSES).optional(),
+            relationKind: z.enum(IMPORT_RELATION_KINDS).nullable().optional(),
           })
           .strict(),
       )

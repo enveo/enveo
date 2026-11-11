@@ -11,6 +11,12 @@ const balances = (ledger: ClientLedger) =>
     ).accounts.map((a) => [a.account.id, a.balance]),
   );
 
+/** The flags the recognized row carried, so the receipt shows which ones the human acted on. */
+const recognizedFlags = (recognized: ImportReviewRow | undefined): Pick<ImportReceipt["rows"][number], "reviewReasons" | "duplicateStatus" | "relationKind"> =>
+  recognized
+    ? { reviewReasons: [...new Set(recognized.reviewReasons)], duplicateStatus: recognized.duplicateStatus, relationKind: recognized.relation?.kind ?? null }
+    : {};
+
 export function prepareImportReceipt(
   previous: ImportReceipt | null,
   ledger: ClientLedger,
@@ -72,6 +78,7 @@ export function prepareImportReceipt(
         note: tx?.payload.note ?? edit?.note ?? null,
         tag: tx?.payload.tag ?? row.item?.tag ?? row.draftItem?.tag ?? "",
         ...(baseline ? { correctionFields: importRowCorrections({ recognized: baseline.get(row.rowId), row, edit, budgetCurrency, accountId }) } : {}),
+        ...recognizedFlags(baseline?.get(row.rowId)),
       };
     }),
   };
