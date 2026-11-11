@@ -688,6 +688,7 @@ export const MESSAGES = [
   "Removing the local copy is the only destructive action here.",
   "Removing…",
   "Repeat password",
+  "Repeats a row from another screenshot",
   "Replaces all current data with the data from the selected file.",
   "Report a fix",
   "Report · Cash flow",

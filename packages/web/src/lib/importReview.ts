@@ -386,6 +386,10 @@ const dispositionBadge = (disposition: ImportReviewDisposition): ImportReviewBad
   }
 };
 
+/** A capture linked as the repeat of an entry on another screenshot: shown unchecked, includable. */
+export const repeatsAnotherCapture = (row: Pick<ImportReviewRow, "relation" | "duplicateStatus">): boolean =>
+  row.relation?.kind === "duplicate_of" && row.duplicateStatus === "probable";
+
 export function reviewBadges(row: ImportReviewRow, edit?: EditedImportItem): ImportReviewBadge[] {
   const badges: ImportReviewBadge[] = [];
   const disposition = row.duplicateStatus === "exists" ? null : dispositionBadge(edit ? "candidate" : row.disposition);
@@ -397,9 +401,12 @@ export function reviewBadges(row: ImportReviewRow, edit?: EditedImportItem): Imp
   if (row.semanticKind === "cashback_or_reward" && (!edit || edit.type === "income")) badges.push({ label: msg("Reward / income"), tone: "positive" });
   if (row.alreadyApplied) badges.push({ label: msg("Already added by this import"), tone: "neutral" });
   else if (row.duplicateStatus === "exists") badges.push({ label: msg("Already exists"), tone: "neutral" });
-  if (row.duplicateStatus === "probable") badges.push({ label: msg("Probable duplicate"), tone: "warning" });
+  const repeat = repeatsAnotherCapture(row);
+  if (repeat) badges.push({ label: msg("Repeats a row from another screenshot"), tone: "warning" });
+  else if (row.duplicateStatus === "probable") badges.push({ label: msg("Probable duplicate"), tone: "warning" });
   if (row.blockingIssues.includes("assignment_unavailable")) badges.push({ label: msg("Saved assignment is unavailable"), tone: "warning" });
   for (const reason of row.reviewReasons) {
+    if (repeat && reason === "relation_changes_ledger_shape") continue;
     if (edit && ["missing_fact", "unknown_kind", "inconsistent_direction", "unknown_transfer_endpoint", "fact_correction"].includes(reason)) continue;
     const label = importReviewReasonMessage(reason);
     badges.push({ label, tone: reason === "pending_or_declined" ? "neutral" : "warning" });
@@ -503,9 +510,13 @@ export function buildImportReviewRows(args: {
     const receivesDryResult =
       proposal.selected && proposal.disposition === "candidate" && proposal.date !== null && proposal.amount !== null && proposal.type !== null;
     const dryResult = receivesDryResult ? args.dryRunResults[dryIndex++] : undefined;
-    const duplicateStatus = alreadyApplied ? "exists" : effectiveDuplicateStatus(proposal.duplicateStatus, dryResult?.status);
+    // A repeat of an entry on another screenshot is a verdict about the screenshots, not about the
+    // ledger: the human may still add it as a separate payment, so it stays a candidate, unchecked.
+    const repeat = !alreadyApplied && proposal.relation?.kind === "duplicate_of" && proposal.duplicateStatus === "exists";
+    const reviewed: ReconciledImportProposal = repeat ? { ...proposal, disposition: "candidate", selected: false } : proposal;
+    const duplicateStatus = alreadyApplied ? "exists" : repeat ? "probable" : effectiveDuplicateStatus(proposal.duplicateStatus, dryResult?.status);
     const item = completeCandidateItem({
-      proposal,
+      proposal: reviewed,
       recognition: args.recognition,
       ledger: args.ledger,
       dryResult,
@@ -518,7 +529,7 @@ export function buildImportReviewRows(args: {
     if (proposal.currency && proposal.currency !== args.budgetCurrency) blockingIssues.push("currency_mismatch");
     return {
       rowId: rawRow.rowId,
-      disposition: proposal.disposition,
+      disposition: reviewed.disposition,
       semanticKind: proposal.semanticKind,
       relation: proposal.relation,
       reviewReasons: proposal.reviewReasons,
@@ -532,7 +543,7 @@ export function buildImportReviewRows(args: {
       amount: proposal.amount,
       currency: proposal.currency,
       include: duplicateStatus === "new" && !skippedRowIds.has(rawRow.rowId) && reviewItem?.include === true,
-      editable: duplicateStatus !== "exists" && (reviewItem !== null || (proposal.disposition === "unresolved" && rawRow.rowRole === "financial_event")),
+      editable: duplicateStatus !== "exists" && (reviewItem !== null || (reviewed.disposition === "unresolved" && rawRow.rowRole === "financial_event")),
       draftItem: {
         ...proposal,
         date: isCalendarDate(proposal.date) ? proposal.date : null,
@@ -619,7 +630,7 @@ export function importBalanceEffect(args: {
 export function importReviewDoneStats(rows: ImportReviewRow[], result: { added: number; skipped: number }): { added: number; dup: number } {
   return {
     added: result.added,
-    dup: rows.filter((row) => row.duplicateStatus === "exists").length + result.skipped,
+    dup: rows.filter((row) => row.duplicateStatus === "exists" || (repeatsAnotherCapture(row) && !row.include)).length + result.skipped,
   };
 }
 

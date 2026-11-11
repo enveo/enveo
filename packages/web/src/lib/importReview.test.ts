@@ -511,6 +511,43 @@ describe("screenshot import review view model", () => {
     expect(importReviewDoneStats(review, { added: 0, skipped: 1 })).toEqual({ added: 0, dup: 2 });
   });
 
+  it("lets the human add a repeat from another screenshot as a separate payment, unchecked by default", () => {
+    const rows = [row("first"), row("again", { imageIndex: 1 })];
+    const proposals = reconcileImportProposals({
+      proposals: [
+        proposal("first"),
+        proposal("again", { relation: { kind: "duplicate_of", rowId: "first" }, reviewReasons: ["relation_changes_ledger_shape"] }),
+      ],
+      transactions: [],
+      accounts: ledger().accounts,
+      envelopes: [],
+      categories: [],
+      selectedAccountId: U(2),
+    });
+    const review = buildImportReviewRows({
+      recognition: { rows, proposals },
+      ledger: ledger(),
+      dryRunResults: [dryResult()],
+      automaticEnvelopeId: null,
+      budgetCurrency: "USD",
+    });
+
+    expect(proposals[1]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
+    expect(review[1]).toMatchObject({ duplicateStatus: "probable", disposition: "candidate", include: false, editable: true });
+    expect(review[1]!.item).not.toBeNull();
+    expect(reviewBadges(review[1]!).map((badge) => badge.label)).toEqual(["Repeats a row from another screenshot"]);
+    expect(reviewRowControlLabels(review[1]!, 1).select).not.toBeNull();
+    expect(importReviewDoneStats(review, { added: 1, skipped: 0 })).toEqual({ added: 1, dup: 1 });
+
+    const included = review.map((reviewRow, index) => (index === 1 ? { ...reviewRow, include: true } : reviewRow));
+    const apply = reviewedImportRowsForApply({ rows: included, edited: {}, editedAutomaticDefaults: {} });
+    expect(apply.map((item) => [item.importRowId, item.force ?? false])).toEqual([
+      ["first", false],
+      ["again", true],
+    ]);
+    expect(importReviewDoneStats(included, { added: 2, skipped: 0 })).toEqual({ added: 2, dup: 0 });
+  });
+
   it("treats a durably applied row as already added even without duplicate evidence", () => {
     const review = buildImportReviewRows({
       recognition: recognition([row("blank", { rawTextLines: [] })], [proposal("blank")]),
