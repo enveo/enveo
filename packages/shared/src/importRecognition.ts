@@ -407,8 +407,10 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
   const shapeChangingRelations = new Set<string>();
   const duplicates = settleImportDuplicates(rows);
   const possibleDuplicates = new Set(duplicates.possible.map((pair) => pair.laterRowId));
+  // A proven repeat is its kept capture, whatever else the model said about it: the kept capture
+  // carries the entry's own relations (and takes any exchange figure seen on this one).
   for (const [rowId, targetRowId] of duplicates.links) {
-    if (rowsById.get(rowId)!.relation) continue;
+    if (rowsById.get(rowId)!.relation?.kind === "duplicate_of") continue;
     acceptedRelations.set(rowId, { kind: "duplicate_of", rowId: targetRowId });
     shapeChangingRelations.add(rowId);
   }
@@ -420,6 +422,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
       continue;
     }
     if (row.relation.kind === "duplicate_of" && duplicates.links.get(row.rowId) !== target.rowId) continue;
+    if (row.relation.kind !== "duplicate_of" && duplicates.links.has(row.rowId)) continue;
     if (!relationSupportedByFacts(row, target)) continue;
     acceptedRelations.set(row.rowId, row.relation);
     shapeChangingRelations.add(row.rowId);

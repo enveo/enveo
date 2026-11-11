@@ -868,6 +868,25 @@ describe("a foreign-currency payment takes the account-currency figure printed f
     expect(proposals.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1782, currency: "USD", reviewReasons: ["fx_converted"] });
   });
 
+  it("for a payment repeated on two screenshots that names its exchange line, booking it once", () => {
+    const capture = (image: number) => [
+      extractRow({ rowId: `cafe-${image}`, imageIndex: image, visualOrder: 0, rawTextLines: ["CORNER CAFE"], amount: 940 }),
+      purchase({ rowId: `store-${image}`, imageIndex: image, relation: { kind: "fx_for", rowId: `fx-${image}` } }),
+      extractRow({
+        rowId: `fx-${image}`,
+        imageIndex: image,
+        visualOrder: 2,
+        rowRole: "supporting_detail",
+        semanticKind: "fx_conversion",
+        rawTextLines: ["16.50 EUR < 17.82 USD"],
+      }),
+      extractRow({ rowId: `books-${image}`, imageIndex: image, visualOrder: 3, rawTextLines: ["BOOK NOOK"], amount: 700 }),
+    ];
+    const proposals = validate([...capture(0), ...capture(1)]);
+    expect(proposals.find((row) => row.rowId === "store-1")).toMatchObject({ relation: { kind: "duplicate_of", rowId: "store-0" } });
+    expect(proposals.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1782, currency: "USD", disposition: "candidate" });
+  });
+
   it("from one exchange line for one payment only, however the line was tied to it", () => {
     const proposals = validate([
       purchase({ rowId: "a", visualOrder: 0, rawTextLines: ["− 16.50 EUR", "STORE A"] }),

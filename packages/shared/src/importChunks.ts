@@ -464,7 +464,7 @@ export interface ImportDuplicateSettlement {
  *
  * Neighbours are the adjacent financial entries of each capture, compared on their posting facts
  * (amount, currency, date, direction). A side is compared only when
- * both captures show an entry there (the screenshot edge or a cut-off row hides one); at least
+ * both captures show an entry there (the screenshot edge hides one); at least
  * one compared side must agree and none may disagree; an unread entry (one cut off by the edge
  * included) shows no facts to agree with, so it disagrees. Anything short of that, including links
  * proposed by the model, the seam pass or date inference, becomes a `possible_duplicate` for the
@@ -547,11 +547,13 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
 
   for (const row of sorted) {
     if (row.rowRole !== "financial_event") continue;
-    if (row.relation && row.relation.kind !== "duplicate_of") continue;
-    const declared = row.relation ? rowsById.get(row.relation.rowId) : undefined;
+    // Any other relation (an exchange line, a refund, a fee) describes the entry, not its identity:
+    // the later capture of a repeated entry is still settled here, or it would be booked twice.
+    const claimsTwin = row.relation?.kind === "duplicate_of";
+    const declared = claimsTwin ? rowsById.get(row.relation!.rowId) : undefined;
     // A claimed twin that does not even share the posting facts (or sits in the same screenshot)
     // is not a repeat at all: the claim is dropped, not surfaced.
-    if (row.relation && !(declared && declared.imageIndex !== row.imageIndex && sameFacts(row, declared))) continue;
+    if (claimsTwin && !(declared && declared.imageIndex !== row.imageIndex && sameFacts(row, declared))) continue;
     const earlier = (candidate: ImportExtractRow) => order.get(candidate.rowId)! < order.get(row.rowId)!;
     const candidates = declared
       ? [declared]
