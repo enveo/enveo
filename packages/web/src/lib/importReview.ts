@@ -761,7 +761,7 @@ const BALANCE_LABEL = /saldo|balance|dost[eę]pn|available|stan konta|kontostand
 /** Labelled figures that are not the account's own current balance. */
 const OTHER_FIGURE_LABEL = /opening|pocz[aą]tkow|otwarci|previous|poprzedni|reward|points|\bpts\b|\bpkt\b|punkt/i;
 /** With a credit line the "available" figure includes the limit, so it is not the balance. */
-const CREDIT_LINE = /credit limit|credit line|limit kredyt|\blimit\b/i;
+const CREDIT_LINE = /credit limit|credit line|limit kredyt|linia kredyt|kredyt odnawialn|kreditlinie|kreditrahmen/i;
 const DATE_TEXT = /\b\d{1,4}[./-]\d{1,2}[./-]\d{1,4}\b|\b\d{1,2}\s+\p{L}{3,}\.?\s+\d{4}\b|\b\p{L}{3,}\.?\s+\d{1,2},?\s+\d{4}\b/gu;
 const SIGNED_FIGURE = /(-?)(\d[\d\s\u00a0.,]*\d|\d)(-(?![\d]))?/g;
 
