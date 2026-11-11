@@ -302,6 +302,16 @@ export function parseImportReviewChanges(json: string): ImportReviewChanges | nu
   return { rows: Object.fromEntries(rows), bankValue: value.bankValue ?? null, reconcileAfter: value.reconcileAfter };
 }
 
+/** What was recognized for a row the review has no item for (already recorded, unresolved): the
+ *  row still shows the recognized name and signed amount instead of a raw text line. */
+export function recognizedImportRowFacts(row: Pick<ImportReviewRow, "draftItem">): {
+  name: string | null;
+  type: ImportReviewDraftItem["type"];
+  isRefund: boolean;
+} {
+  return { name: row.draftItem?.name?.trim() || null, type: row.draftItem?.type ?? null, isRefund: row.draftItem?.isRefund ?? false };
+}
+
 export function visibleImportReviewRows<T extends Pick<ImportReviewRow, "disposition">>(rows: readonly T[]): { row: T; index: number; position: number }[] {
   const visible: { row: T; index: number; position: number }[] = [];
   rows.forEach((row, index) => {

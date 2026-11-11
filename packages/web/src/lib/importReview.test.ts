@@ -28,6 +28,7 @@ import {
   importReviewDoneStats,
   importReviewReasonMessage,
   parseImportReviewChanges,
+  recognizedImportRowFacts,
   reconcileReviewEdits,
   refreshedReviewRows,
   restoreImportReview,
@@ -500,6 +501,11 @@ describe("screenshot import review view model", () => {
     expect(proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
     expect(review[0]).toMatchObject({ duplicateStatus: "exists", include: false, editable: false, item: null });
     expect(reviewBadges(review[0]!).map((badge) => badge.label)).toEqual(["Already exists"]);
+    expect(recognizedImportRowFacts({ ...review[0]!, draftItem: { ...review[0]!.draftItem!, name: " Corner Grocery " } })).toEqual({
+      name: "Corner Grocery",
+      type: "expense",
+      isRefund: false,
+    });
     expect(reviewRowControlLabels(review[0]!, 0)).toEqual({ select: null, edit: null });
     expect(importReviewDoneStats(review, { added: 0, skipped: 0 })).toEqual({ added: 0, dup: 1 });
     expect(importReviewDoneStats(review, { added: 0, skipped: 1 })).toEqual({ added: 0, dup: 2 });

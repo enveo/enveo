@@ -47,6 +47,7 @@ import {
   importPeriodStart,
   importReviewChanges,
   isCompleteImportReviewItem,
+  recognizedImportRowFacts,
   reconcileReviewEdits,
   refreshedReviewRows,
   restoreImportReview,
@@ -1049,11 +1050,14 @@ export function ImportSheet({
               const e = edited[idx] as EditedImportItem | undefined;
               const type = e?.type ?? it?.type ?? null;
               const amount = e?.amount ?? it?.amount ?? row.amount;
-              const name = (e ?? it) ? (e ?? it)!.name?.trim() || t("Unnamed transaction") : row.rawTextLines[0] || t("Unrecognized row");
+              const recognized = recognizedImportRowFacts(row);
+              const name = (e ?? it) ? (e ?? it)!.name?.trim() || t("Unnamed transaction") : recognized.name || row.rawTextLines[0] || t("Unrecognized row");
               const envId = e ? e.envelopeId : it?.envelopeId;
               const env = envId ? envById.get(envId) : null;
               const catName = e ? (e.categoryId ? (state.categories.find((c) => c.id === e.categoryId)?.name ?? null) : null) : (it?.categoryName ?? null);
               const refund = e?.isRefund ?? it?.isRefund ?? false;
+              const shownType = type ?? recognized.type;
+              const shownRefund = e || it ? refund : recognized.isRefund;
               const exists = row.duplicateStatus === "exists";
               const itemAccountId = e?.accountId ?? accountId;
               const itemToAccountId = e?.toAccountId ?? it?.toAccountId ?? null;
@@ -1206,17 +1210,17 @@ export function ImportSheet({
                         </div>
                       )}
                     </div>
-                    {amount !== null && type && (
+                    {amount !== null && shownType && (
                       <span
                         style={{
                           fontSize: 13.5,
                           fontWeight: 600,
                           fontVariantNumeric: "tabular-nums",
-                          color: type === "transfer" ? TRANSFER : type === "income" || refund ? C.pos : C.text,
+                          color: shownType === "transfer" ? TRANSFER : shownType === "income" || shownRefund ? C.pos : C.text,
                           flexShrink: 0,
                         }}
                       >
-                        {type === "transfer" ? "↔ " : type === "income" || refund ? "+" : "-"}
+                        {shownType === "transfer" ? "↔ " : shownType === "income" || shownRefund ? "+" : "-"}
                         {formatMoney(amount, currency, lang)}
                       </span>
                     )}
