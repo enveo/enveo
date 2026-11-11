@@ -6,6 +6,7 @@ import {
   ImportEnrichmentMalformedError,
   type ImportExtractBatch,
   ImportExtractionFailedError,
+  ImportExtractionMisplacedError,
   type ImportJobErrorCode,
   type ImportRecognitionChatMeta,
   type ImportRecognitionResult,
@@ -127,6 +128,7 @@ export function classifyImportJobFailure(error: unknown, attempt: number, now = 
   if (
     reason instanceof ImportJobMalformedResponse ||
     reason instanceof ImportEnrichmentMalformedError ||
+    reason instanceof ImportExtractionMisplacedError ||
     reason instanceof ByokInvalidBodyError ||
     reason instanceof SyntaxError ||
     reason instanceof ZodError

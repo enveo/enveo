@@ -6,6 +6,7 @@ import {
   type ChatMessage,
   cleanImportPlaceName,
   IMPORT_EXTRACT_JSON_SCHEMA,
+  ImportExtractionMisplacedError,
   languageDirectives,
   languageName,
   parseImportEnrichResponse,
@@ -265,9 +266,7 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
       reviewReasons: [],
     });
 
-    expect(() => parseImportExtractResponse(JSON.stringify({ rows: [row("first", 1), row("repeat", 1)] }), 2)).toThrow(
-      "import answer left a supplied image without rows",
-    );
+    expect(() => parseImportExtractResponse(JSON.stringify({ rows: [row("first", 1), row("repeat", 1)] }), 2)).toThrow(ImportExtractionMisplacedError);
     expect(parseImportExtractResponse(JSON.stringify({ rows: [row("first", 0), row("repeat", 1)] }), 2).rows).toHaveLength(2);
   });
 

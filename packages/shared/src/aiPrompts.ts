@@ -289,6 +289,7 @@ export function buildImportStatementExtractPrompt(pages: string[], today: string
     `Today is ${today}; when a year is missing, assume the most recent past date. ` +
     "One output row means one statement entry: a money movement with its amount, or a distinct piece of interface text (page header, column headings, opening/closing balance, totals, footer). Group the lines that belong to one entry — booking date, description, counterparty, card suffix, original-currency amount, running balance — into that row's rawTextLines, one visible line each, verbatim. " +
     "Use imageIndex for the PAGE index (0-based) and visualOrder for the entry's order on that page. Return every entry; never merge, skip or deduplicate entries, even when identical. " +
+    'Return at least one row for EVERY page: a page with no entry gets a single ui_metadata row with amount null whose rawTextLines describe it (e.g. "page footer only"). ' +
     "Statement rows often show TWO dates: the booking (settlement) date and the transaction date. date is the TRANSACTION date when both are visible, else the only date shown. " +
     `amount is the positive integer minor-unit magnitude of the entry's settlement amount in the account currency (${currency}), never the running balance, never an original foreign-currency amount; put the original amount and its currency into rawTextLines only. A settlement line printed in another currency (an exchange entry) keeps that currency in currency. ` +
     "direction is credit for an incoming amount and debit for an outgoing one, following the printed sign or column. postingStatus is posted for every statement entry unless the text says pending or declined. " +
@@ -490,6 +491,14 @@ export function parseImportEnrichResponse(
 export type ImportRecognitionChatMeta = { stage: "extract"; chunk: number } | { stage: "seam" } | { stage: "enrich"; batch: number };
 
 export type ImportRecognitionChat = (request: ChatRequest, timeoutMs?: number, meta?: ImportRecognitionChatMeta) => Promise<string>;
+
+/** An extraction answer that misplaces its rows across the supplied images: retried as malformed. */
+export class ImportExtractionMisplacedError extends Error {
+  constructor(detail: string) {
+    super(`invalid import extraction: ${detail}`);
+    this.name = "ImportExtractionMisplacedError";
+  }
+}
 
 export class ImportEnrichmentMalformedError extends Error {
   constructor(readonly reason: unknown) {
@@ -993,13 +1002,14 @@ export function parseImportExtractResponse(raw: string, imageCount: number): Imp
     currency: row.currency?.trim().toUpperCase() ?? null,
     ...(suspiciousText ? { suspiciousText: true } : {}),
   }));
-  if (rows.some((row) => row.imageIndex >= imageCount)) throw new Error("import row imageIndex is outside the supplied images");
+  if (rows.some((row) => row.imageIndex >= imageCount)) throw new ImportExtractionMisplacedError("a row imageIndex is outside the supplied images");
   // The prompt asks for at least one row per image (a blank one gets a ui_metadata row), so an image
   // without a row means the answer numbered them wrongly; overlapping captures would then collapse
   // into one screenshot, where identical entries are separate payments. Retrying beats a silently
-  // doubled import. Statement pages without text never reach the model.
+  // doubled import. Statement pages without text never reach the model, and both prompts ask for a
+  // row on every page or screenshot.
   const shown = new Set(rows.map((row) => row.imageIndex));
-  if (shown.size < imageCount) throw new Error("import answer left a supplied image without rows");
+  if (shown.size < imageCount) throw new ImportExtractionMisplacedError("the answer left a supplied image without rows");
   const ordered = rows
     .map((row, inputOrder) => ({ row, inputOrder }))
     .sort((left, right) => left.row.imageIndex - right.row.imageIndex || left.row.visualOrder - right.row.visualOrder || left.inputOrder - right.inputOrder);
