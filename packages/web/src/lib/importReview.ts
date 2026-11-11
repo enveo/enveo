@@ -679,7 +679,9 @@ export function balanceMatchCandidatesForReview(args: {
 }): ReviewBalanceMatchCandidate[] {
   const candidates: ReviewBalanceMatchCandidate[] = [];
   args.rows.forEach((row, index) => {
-    if (row.duplicateStatus === "exists" || row.alreadyApplied) return;
+    // A proven repeat is never a balance explanation: re-adding overlap would "fix" a gap that is
+    // really an entry missing between screenshots.
+    if (row.duplicateStatus === "exists" || row.alreadyApplied || repeatsAnotherCapture(row)) return;
     const edit = args.edited[index];
     if (!row.item && !edit) return;
     if (edit && row.include) return;

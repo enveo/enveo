@@ -538,6 +538,7 @@ describe("screenshot import review view model", () => {
     expect(reviewBadges(review[1]!).map((badge) => badge.label)).toEqual(["Repeats a row from another screenshot"]);
     expect(reviewRowControlLabels(review[1]!, 1).select).not.toBeNull();
     expect(importReviewDoneStats(review, { added: 1, skipped: 0 })).toEqual({ added: 1, dup: 1 });
+    expect(balanceMatchCandidatesForReview({ rows: review, edited: {}, defaultAccountId: U(2) }).map((candidate) => candidate.index)).not.toContain(1);
 
     const included = review.map((reviewRow, index) => (index === 1 ? { ...reviewRow, include: true } : reviewRow));
     const apply = reviewedImportRowsForApply({ rows: included, edited: {}, editedAutomaticDefaults: {} });
