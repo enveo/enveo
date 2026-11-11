@@ -250,7 +250,7 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
     `Today is ${today} — resolve relative dates ("today", "yesterday", "5 hours ago", a weekday name meaning the most recent such day, in any language) against this date; when the year is missing, assume the most recent past date. ` +
     "One output row means one coherent transaction-list entry, date divider, balance/summary, or other distinct text block — not each text line inside an entry. " +
     "Group its amount, merchant/payee, card suffix, and secondary text into that row's rawTextLines. Do not create separate rows for icons, loyalty/reward points, card suffixes, exchange-rate text, or status text that belongs to the same entry. " +
-    "Return those coherent rows in visual order. Use imageIndex plus visualOrder to preserve where each appeared. Preserve each visible line in rawTextLines; trim only surrounding whitespace. " +
+    "Return those coherent rows in visual order. Use imageIndex plus visualOrder to preserve where each appeared. imageIndex is the 0-based position of the screenshot the row appears on, as labelled before each screenshot. Screenshots of one list often overlap: an entry visible on two screenshots is returned once for each, with that screenshot's imageIndex, and every screenshot yields at least its interface rows. Preserve each visible line in rawTextLines; trim only surrounding whitespace. " +
     "Rows that are labels, date dividers, balances, summaries, or other interface chrome are still visible evidence: mark them ui_metadata. Use financial_event only for a ledger money movement and supporting_detail for evidence such as a linked FX conversion. " +
     "Return exactly one financial_event for each coherent entry with a primary ledger amount, regardless of whether its meaning is uncertain. Count the visible primary ledger amounts before answering, then verify that each has its own financial_event row. A reward, refund, top-up, deposit, or transfer entry is still a financial_event. Repeated entries remain separate even when their text and amount are identical; never deduplicate entries within one screenshot. Numbers in secondary text never create another financial_event. " +
     "A visible date divider applies to the transaction entries below it until the next divider; the divider itself remains ui_metadata. " +
@@ -272,7 +272,10 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
         role: "user",
         content: [
           { type: "text", text: "Extract all transactions from these screenshots." },
-          ...images.map((url) => ({ type: "image_url", image_url: { url, detail: "high" } })),
+          ...images.flatMap((url, imageIndex) => [
+            { type: "text", text: `imageIndex ${imageIndex}` },
+            { type: "image_url", image_url: { url, detail: "high" } },
+          ]),
         ],
       },
     ],
@@ -991,6 +994,11 @@ export function parseImportExtractResponse(raw: string, imageCount: number): Imp
     ...(suspiciousText ? { suspiciousText: true } : {}),
   }));
   if (rows.some((row) => row.imageIndex >= imageCount)) throw new Error("import row imageIndex is outside the supplied images");
+  // Every page or screenshot shows at least its interface text, so one without a row means the
+  // answer numbered them wrongly; overlapping captures would then collapse into one screenshot,
+  // where identical entries are separate payments. Retrying beats a silently doubled import.
+  const shown = new Set(rows.map((row) => row.imageIndex));
+  if (shown.size < imageCount) throw new Error("import answer left a supplied image without rows");
   const ordered = rows
     .map((row, inputOrder) => ({ row, inputOrder }))
     .sort((left, right) => left.row.imageIndex - right.row.imageIndex || left.row.visualOrder - right.row.visualOrder || left.inputOrder - right.inputOrder);

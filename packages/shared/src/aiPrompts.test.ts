@@ -105,9 +105,23 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect(sys).toContain("do not translate data values");
     const content = req.messages[1]!.content as Array<Record<string, unknown>>;
     expect(content[0]).toEqual({ type: "text", text: "Extract all transactions from these screenshots." });
-    expect(content[1]).toEqual({ type: "image_url", image_url: { url: "data:image/png;base64,AAA", detail: "high" } });
+    expect(content[1]).toEqual({ type: "text", text: "imageIndex 0" });
+    expect(content[2]).toEqual({ type: "image_url", image_url: { url: "data:image/png;base64,AAA", detail: "high" } });
     expect((req.responseFormat as { type: string; json_schema: { name: string } }).type).toBe("json_schema");
     expect((req.responseFormat as { type: string; json_schema: { name: string } }).json_schema.name).toBe("extracted_transactions");
+  });
+
+  it("labels every screenshot with the imageIndex the answer must use", () => {
+    const req = buildImportExtractPrompt(["data:image/png;base64,AAA", "data:image/png;base64,BBB"], refs, "2026-07-07", "en", "USD");
+    const content = req.messages[1]!.content as Array<Record<string, unknown>>;
+
+    expect(content.slice(1).map((part) => (part.type === "text" ? part.text : (part.image_url as { url: string }).url))).toEqual([
+      "imageIndex 0",
+      "data:image/png;base64,AAA",
+      "imageIndex 1",
+      "data:image/png;base64,BBB",
+    ]);
+    expect(sysOf(req.messages)).toContain("imageIndex is the 0-based position of the screenshot the row appears on");
   });
 
   it("binds the structured-output image index to the supplied screenshot count", () => {
@@ -231,6 +245,30 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
       ["third", 0, 2],
       ["next-image", 1, 0],
     ]);
+  });
+
+  it("rejects an answer that puts overlapping screenshots under one imageIndex", () => {
+    const row = (rowId: string, imageIndex: number) => ({
+      rowId,
+      imageIndex,
+      visualOrder: 0,
+      rawTextLines: ["12.34 USD", "Corner Grocery"],
+      date: "2026-08-07",
+      amount: 1234,
+      currency: "USD",
+      direction: "debit",
+      postingStatus: "posted",
+      rowRole: "financial_event",
+      semanticKind: "card_purchase",
+      relation: null,
+      confidence: "high",
+      reviewReasons: [],
+    });
+
+    expect(() => parseImportExtractResponse(JSON.stringify({ rows: [row("first", 1), row("repeat", 1)] }), 2)).toThrow(
+      "import answer left a supplied image without rows",
+    );
+    expect(parseImportExtractResponse(JSON.stringify({ rows: [row("first", 0), row("repeat", 1)] }), 2).rows).toHaveLength(2);
   });
 
   it("normalizes a zero model amount to an unknown fact instead of rejecting the whole screenshot", () => {
