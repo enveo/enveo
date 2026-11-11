@@ -1,3 +1,5 @@
+import { type SupportedCurrency, UNAMBIGUOUS_CURRENCY_SYMBOLS } from "./currency";
+
 export function parseDisplayAmount(token: string): number | null {
   const compact = token.replace(/[\s ]/g, "");
   const decimal = /[.,](\d{2})$/.exec(compact);
@@ -6,23 +8,6 @@ export function parseDisplayAmount(token: string): number | null {
   const minor = Number.parseInt(integerPart, 10) * 100 + (decimal ? Number.parseInt(decimal[1]!, 10) * (integerPart.startsWith("-") ? -1 : 1) : 0);
   return Number.isSafeInteger(minor) ? minor : null;
 }
-
-/**
- * Symbols that name exactly one supported currency. `$`, `kr` or `R` are shared by several
- * currencies and never identify one on their own; the ISO code always does.
- */
-const CURRENCY_SYMBOLS: Readonly<Record<string, readonly string[]>> = {
-  CZK: ["Kč"],
-  EUR: ["€"],
-  GBP: ["£"],
-  ILS: ["₪"],
-  INR: ["₹"],
-  PHP: ["₱"],
-  PLN: ["zł"],
-  THB: ["฿"],
-  TRY: ["₺"],
-  UAH: ["₴"],
-};
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // A money figure: grouped or plain integer part, at most two decimals. A rate such as
@@ -41,7 +26,7 @@ export function printedAmountIn(lines: readonly string[], currency: string): num
 
 /** Every distinct amount printed in `currency`, rate expressions excluded. */
 export function printedAmountsIn(lines: readonly string[], currency: string): number[] {
-  const marks = [currency, ...(CURRENCY_SYMBOLS[currency] ?? [])].map(escapeRegExp).join("|");
+  const marks = [currency, ...(UNAMBIGUOUS_CURRENCY_SYMBOLS[currency as SupportedCurrency] ?? [])].map(escapeRegExp).join("|");
   const pattern = new RegExp(`(?<![\\d.,])(?:(${FIGURE})\\s*(?:${marks})(?![\\p{L}])|(?<![\\p{L}])(?:${marks})\\s*(${FIGURE})(?![\\d]|[.,]\\d))`, "giu");
   const figures = new Set<number>();
   for (const [index, line] of lines.entries()) {
