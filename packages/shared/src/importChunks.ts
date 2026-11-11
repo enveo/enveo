@@ -451,6 +451,8 @@ export interface ImportDuplicateSettlement {
   links: Map<string, string>;
   /** Captures that look like a repeat but could not be proven one: shown, unselected. */
   possible: Array<{ earlierRowId: string; laterRowId: string }>;
+  /** Cut-off pieces at a screenshot edge → the whole entry on the screenshot it overlaps: evidence only. */
+  fragments: Map<string, string>;
 }
 
 /**
@@ -463,7 +465,8 @@ export interface ImportDuplicateSettlement {
  * Neighbours are the adjacent financial entries of each capture, compared on their posting facts
  * (amount, currency, date, direction). A side is compared only when
  * both captures show an entry there (the screenshot edge or a cut-off row hides one); at least
- * one compared side must agree and none may disagree. Anything short of that, including links
+ * one compared side must agree and none may disagree; a neighbour whose amount was not read (a
+ * row cut off at the edge) hides its side too. Anything short of that, including links
  * proposed by the model, the seam pass or date inference, becomes a `possible_duplicate` for the
  * human instead of a silent decline. A capture is linked at most once per screenshot, so two
  * identical rows of one screenshot can never both collapse onto one earlier row.
@@ -498,7 +501,7 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
     for (const step of [-1, 1] as const) {
       const mine = neighbour(row, step);
       const theirs = neighbour(other, step);
-      if (!mine || !theirs) continue;
+      if (!mine || !theirs || mine.amount === null || theirs.amount === null) continue;
       if (!sameNeighbour(mine, theirs)) return false;
       agreeing += 1;
     }
@@ -542,5 +545,26 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
     const nearest = candidates.at(-1)!;
     possible.push(seamPair(row, nearest));
   }
-  return { links, possible };
+
+  // An entry cut off by the screenshot edge shows only some of its lines and no amount. When the
+  // entry next to it is a proven repeat, the entry beside that repeat's earlier capture is the
+  // whole one; if it carries every line of the piece, the piece is that entry again, not a payment.
+  const fragments = new Map<string, string>();
+  const capturesOf = new Map<string, string>();
+  for (const [later, earlier] of links) if (!capturesOf.has(earlier)) capturesOf.set(earlier, later);
+  for (const entries of entriesByImage.values()) {
+    for (const [piece, inward] of [
+      [entries[0], 1],
+      [entries.at(-1), -1],
+    ] as const) {
+      if (!piece || piece.amount !== null || entries.length < 2) continue;
+      const inner = neighbour(piece, inward)!.rowId;
+      const counterpart = links.get(inner) ?? capturesOf.get(inner);
+      const whole = counterpart ? neighbour(rowsById.get(counterpart)!, inward === 1 ? -1 : 1) : undefined;
+      const lines = piece.rawTextLines.filter((line) => line.length > 0);
+      if (!whole || whole.amount === null || lines.length === 0 || !lines.every((line) => whole.rawTextLines.includes(line))) continue;
+      fragments.set(piece.rowId, whole.rowId);
+    }
+  }
+  return { links, possible, fragments };
 }

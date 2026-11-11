@@ -513,6 +513,28 @@ describe("settling repeats across screenshots", () => {
     expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
   });
 
+  it("reads an entry cut off at the screenshot edge as a hidden side and as evidence of the whole entry", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY", { rawTextLines: ["12.34 USD", "ORCHARD BAKERY", "0.62"] }),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b1", 0, 2, "PINE HARDWARE", { amount: 915 }),
+      entry("cut", 1, 0, "0.62", { amount: null, currency: null }),
+      entry("x2", 1, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b2", 1, 2, "PINE HARDWARE", { amount: 915 }),
+      entry("cut-below", 1, 3, "RIVER", { amount: null, currency: null }),
+    ]);
+
+    expect(settled.links).toEqual(
+      new Map([
+        ["x2", "x1"],
+        ["b2", "b1"],
+      ]),
+    );
+    expect(settled.possible).toEqual([]);
+    // Only a piece whose every line the whole entry carries is that entry; the bottom piece has no counterpart.
+    expect(settled.fragments).toEqual(new Map([["cut", "a1"]]));
+  });
+
   it("treats a model link with different text or another date as a possible duplicate, and drops a link inside one screenshot", () => {
     const settled = settleImportDuplicates([
       entry("a1", 0, 0, "ORCHARD BAKERY"),

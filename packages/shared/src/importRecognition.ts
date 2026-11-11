@@ -454,7 +454,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     const mapping = mappingFor(row.semanticKind, row.direction);
     const relation = acceptedRelations.get(row.rowId) ?? null;
 
-    if (row.rowRole !== "financial_event" || foreign.exchangeLines.has(row.rowId)) {
+    if (row.rowRole !== "financial_event" || foreign.exchangeLines.has(row.rowId) || duplicates.fragments.has(row.rowId)) {
       return proposalFrom(row, { disposition: "supporting", type: null, relation, reviewReasons: [], selected: false });
     }
     // A pending entry has already left the account: the bank shows it and the money is spent, so
