@@ -457,6 +457,27 @@ function completeCandidateItem(args: {
   return { ...item, include: proposal.selected && item.include };
 }
 
+/** A repeat's read facts equal its kept capture's, so it books what the kept one books: the
+ *  account-currency figure printed for a foreign payment goes to the kept capture alone. */
+function repeatAsCandidate(repeat: ReconciledImportProposal, proposals: ReadonlyMap<string, ReconciledImportProposal>): ReconciledImportProposal {
+  let kept = repeat;
+  const seen = new Set([repeat.rowId]);
+  for (let next = kept.relation?.kind === "duplicate_of" ? proposals.get(kept.relation.rowId) : undefined; next && !seen.has(next.rowId); ) {
+    kept = next;
+    seen.add(next.rowId);
+    next = kept.relation?.kind === "duplicate_of" ? proposals.get(kept.relation.rowId) : undefined;
+  }
+  const fx = kept.reviewReasons.includes("fx_converted") && !repeat.reviewReasons.includes("fx_converted");
+  return {
+    ...repeat,
+    amount: kept.amount,
+    currency: kept.currency,
+    reviewReasons: fx ? [...repeat.reviewReasons, "fx_converted"] : repeat.reviewReasons,
+    disposition: "candidate",
+    selected: false,
+  };
+}
+
 const effectiveDuplicateStatus = (
   recognitionStatus: ImportDupStatus,
   dryRunStatus: ImportApplyResponse["results"][number]["status"] | undefined,
@@ -513,7 +534,7 @@ export function buildImportReviewRows(args: {
     // A repeat of an entry on another screenshot is a verdict about the screenshots, not about the
     // ledger: the human may still add it as a separate payment, so it stays a candidate, unchecked.
     const repeat = !alreadyApplied && proposal.relation?.kind === "duplicate_of" && proposal.duplicateStatus === "exists";
-    const reviewed: ReconciledImportProposal = repeat ? { ...proposal, disposition: "candidate", selected: false } : proposal;
+    const reviewed: ReconciledImportProposal = repeat ? repeatAsCandidate(proposal, proposals) : proposal;
     const duplicateStatus = alreadyApplied ? "exists" : repeat ? "probable" : effectiveDuplicateStatus(proposal.duplicateStatus, dryResult?.status);
     const item = completeCandidateItem({
       proposal: reviewed,
@@ -524,31 +545,31 @@ export function buildImportReviewRows(args: {
       automaticEnvelopeId: args.automaticEnvelopeId,
     });
     const reviewItem = duplicateStatus === "exists" ? null : item;
-    const blockingIssues: ImportBlockingIssue[] = importProposalBlockingReasons(proposal);
-    if ((proposal as ReconciledImportProposal & { assignmentUnavailable?: boolean }).assignmentUnavailable) blockingIssues.push("assignment_unavailable");
-    if (proposal.currency && proposal.currency !== args.budgetCurrency) blockingIssues.push("currency_mismatch");
+    const blockingIssues: ImportBlockingIssue[] = importProposalBlockingReasons(reviewed);
+    if ((reviewed as ReconciledImportProposal & { assignmentUnavailable?: boolean }).assignmentUnavailable) blockingIssues.push("assignment_unavailable");
+    if (reviewed.currency && reviewed.currency !== args.budgetCurrency) blockingIssues.push("currency_mismatch");
     return {
       rowId: rawRow.rowId,
       disposition: reviewed.disposition,
-      semanticKind: proposal.semanticKind,
-      relation: proposal.relation,
-      reviewReasons: proposal.reviewReasons,
-      requiresReview: proposal.reviewReasons.length > 0 || duplicateStatus === "probable" || blockingIssues.length > 0,
+      semanticKind: reviewed.semanticKind,
+      relation: reviewed.relation,
+      reviewReasons: reviewed.reviewReasons,
+      requiresReview: reviewed.reviewReasons.length > 0 || duplicateStatus === "probable" || blockingIssues.length > 0,
       blockingIssues,
       duplicateStatus,
       alreadyApplied,
       sourceRef,
       rawTextLines: rawRow.rawTextLines,
-      date: proposal.date,
-      amount: proposal.amount,
-      currency: proposal.currency,
+      date: reviewed.date,
+      amount: reviewed.amount,
+      currency: reviewed.currency,
       include: duplicateStatus === "new" && !skippedRowIds.has(rawRow.rowId) && reviewItem?.include === true,
       editable: duplicateStatus !== "exists" && (reviewItem !== null || (reviewed.disposition === "unresolved" && rawRow.rowRole === "financial_event")),
       draftItem: {
-        ...proposal,
-        date: isCalendarDate(proposal.date) ? proposal.date : null,
+        ...reviewed,
+        date: isCalendarDate(reviewed.date) ? reviewed.date : null,
         rawPlace: sourceRef || null,
-        currency: proposal.currency ?? undefined,
+        currency: reviewed.currency ?? undefined,
       },
       item: reviewItem ? { ...reviewItem, include: reviewItem.include } : null,
     };

@@ -548,6 +548,39 @@ describe("screenshot import review view model", () => {
     expect(importReviewDoneStats(included, { added: 2, skipped: 0 })).toEqual({ added: 2, dup: 0 });
   });
 
+  it("books a repeat of a foreign payment at the account-currency figure printed for its kept capture", () => {
+    const rows = [row("paid", { currency: "EUR", amount: 1000 }), row("paid again", { imageIndex: 1, currency: "EUR", amount: 1000 })];
+    const proposals = reconcileImportProposals({
+      proposals: [
+        proposal("paid", { amount: 1100, currency: "USD", reviewReasons: ["fx_converted"] }),
+        proposal("paid again", {
+          amount: 1000,
+          currency: "EUR",
+          relation: { kind: "duplicate_of", rowId: "paid" },
+          reviewReasons: ["relation_changes_ledger_shape"],
+        }),
+      ],
+      transactions: [],
+      accounts: ledger().accounts,
+      envelopes: [],
+      categories: [],
+      selectedAccountId: U(2),
+    });
+    const review = buildImportReviewRows({
+      recognition: { rows, proposals },
+      ledger: ledger(),
+      dryRunResults: [dryResult({ amount: 1100 })],
+      automaticEnvelopeId: null,
+      budgetCurrency: "USD",
+    });
+
+    expect(review[1]).toMatchObject({ amount: 1100, currency: "USD", blockingIssues: [] });
+    expect(review[1]!.reviewReasons).toContain("fx_converted");
+    const included = review.map((reviewRow, index) => (index === 1 ? { ...reviewRow, include: true } : reviewRow));
+    const apply = reviewedImportRowsForApply({ rows: included, edited: {}, editedAutomaticDefaults: {} });
+    expect(apply.find((item) => item.importRowId === "paid again")).toMatchObject({ amount: 1100, force: true });
+  });
+
   it("treats a durably applied row as already added even without duplicate evidence", () => {
     const review = buildImportReviewRows({
       recognition: recognition([row("blank", { rawTextLines: [] })], [proposal("blank")]),
