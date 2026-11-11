@@ -271,6 +271,41 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect(parseImportExtractResponse(JSON.stringify({ rows: [row("first", 0), row("repeat", 1)] }), 2).rows).toHaveLength(2);
   });
 
+  it("accepts a blank screenshot reported as one interface row", () => {
+    const blank = {
+      rowId: "blank",
+      imageIndex: 1,
+      visualOrder: 0,
+      rawTextLines: ["blank screenshot"],
+      date: null,
+      amount: null,
+      currency: null,
+      direction: "unknown",
+      postingStatus: "unknown",
+      rowRole: "ui_metadata",
+      semanticKind: "unknown",
+      relation: null,
+      confidence: "high",
+      reviewReasons: [],
+    };
+    const entry = {
+      ...blank,
+      rowId: "entry",
+      imageIndex: 0,
+      rawTextLines: ["12.34 USD", "Corner Grocery"],
+      date: "2026-08-07",
+      amount: 1234,
+      currency: "USD",
+      direction: "debit",
+      postingStatus: "posted",
+      rowRole: "financial_event",
+      semanticKind: "card_purchase",
+    };
+
+    expect(parseImportExtractResponse(JSON.stringify({ rows: [entry, blank] }), 2).rows.map((r) => r.rowId)).toEqual(["entry", "blank"]);
+    expect(buildImportExtractPrompt([], refs, "2026-07-07", "en", "USD").messages[0]!.content).toContain("Return at least one row for EVERY screenshot");
+  });
+
   it("normalizes a zero model amount to an unknown fact instead of rejecting the whole screenshot", () => {
     const parsed = parseImportExtractResponse(
       JSON.stringify({
