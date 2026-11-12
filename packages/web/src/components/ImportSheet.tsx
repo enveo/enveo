@@ -46,15 +46,16 @@ import {
   importMissingDetails,
   importPeriodStart,
   importReviewChanges,
+  importReviewListing,
   isCompleteImportReviewItem,
   recognizedImportRowFacts,
   reconcileReviewEdits,
   refreshedReviewRows,
+  repeatsAnotherCapture,
   restoreImportReview,
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
-  visibleImportReviewRows,
   withEditedAssignment,
 } from "../lib/importReview";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
@@ -163,6 +164,7 @@ export function ImportSheet({
   const [edited, setEdited] = useState<Record<number, EditedImportItem>>({});
   const [editedAutomaticDefaults, setEditedAutomaticDefaults] = useState<Record<number, boolean>>({});
   const [editorIdx, setEditorIdx] = useState<number | null>(null);
+  const [showRepeats, setShowRepeats] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const [reviewSaver] = useState(() => createImportReviewSaver(importReviewStore, (ok) => setSaveFailed(!ok)));
@@ -628,6 +630,7 @@ export function ImportSheet({
     setItems((prev) => prev.map((row, i) => (i === idx ? { ...row, include: !row.include } : row)));
   };
 
+  const listing = importReviewListing(items, showRepeats);
   const selectedCount = items.filter((row, i) => (row.item || edited[i]) && row.include && row.duplicateStatus !== "exists").length;
   const reviewChanges =
     phase === "review"
@@ -1002,6 +1005,20 @@ export function ImportSheet({
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Review recognized rows")}</div>
             <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 12 }}>{t("Only checked transactions will be added.")}</div>
+            {listing.repeats && (
+              <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginTop: -6, marginBottom: 12 }}>
+                {tp("{n} repeat from overlapping screenshots | {n} repeats from overlapping screenshots", listing.repeats.count)}
+                {listing.repeats.selected > 0 && ` · ${tp("{n} selected | {n} selected", listing.repeats.selected)}`} ·{" "}
+                <button
+                  type="button"
+                  aria-expanded={showRepeats}
+                  onClick={() => setShowRepeats((open) => !open)}
+                  style={{ border: "none", background: "none", font: "inherit", padding: 0, cursor: "pointer", color: TEAL, fontWeight: 650 }}
+                >
+                  {showRepeats ? t("Hide") : t("Show")}
+                </button>
+              </div>
+            )}
             {job?.partialFailure && (
               <div
                 role="note"
@@ -1073,7 +1090,8 @@ export function ImportSheet({
               </button>
             </details>
 
-            {visibleImportReviewRows(items).map(({ row, index: idx, position }) => {
+            {listing.rows.map((entry) => {
+              const { row, index: idx, position, nested } = entry;
               const it = row.item;
 
               const e = edited[idx] as EditedImportItem | undefined;
@@ -1088,6 +1106,8 @@ export function ImportSheet({
               const shownType = type ?? recognized.type;
               const shownRefund = e || it ? refund : recognized.isRefund;
               const exists = row.duplicateStatus === "exists";
+              // A repeat left out asks nothing of the human: its missing details matter only once it is checked.
+              const quiet = exists || (repeatsAnotherCapture(row) && !row.include);
               const itemAccountId = e?.accountId ?? accountId;
               const itemToAccountId = e?.toAccountId ?? it?.toAccountId ?? null;
               const automaticPreview =
@@ -1110,7 +1130,7 @@ export function ImportSheet({
               const fxMismatch = !!row.currency && row.currency !== currency;
               const badges = reviewBadges(row, e);
               const onBudget = state.accounts.find((account) => account.id === itemAccountId)?.onBudget ?? true;
-              if (!exists && row.editable) {
+              if (!quiet && row.editable) {
                 for (const label of importMissingDetails(e ?? it ?? row.draftItem, onBudget)) badges.push({ label, tone: "warning" });
               }
               const controlLabels = reviewRowControlLabels(row, position);
@@ -1119,7 +1139,17 @@ export function ImportSheet({
                 ? { type: "button" as const, onClick: () => setEditorIdx(idx), "aria-label": t(controlLabels.edit!.message, controlLabels.edit!.values) }
                 : {};
               return (
-                <div key={row.rowId} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 2px", opacity: exists ? 0.55 : 1 }}>
+                <div
+                  key={row.rowId}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    padding: "9px 2px",
+                    opacity: exists ? 0.55 : 1,
+                    ...(nested ? { marginLeft: 14, paddingLeft: 12, borderLeft: `2px solid ${C.line}`, marginTop: -4 } : {}),
+                  }}
+                >
                   {controlLabels.select ? (
                     <input
                       type="checkbox"
@@ -1233,7 +1263,7 @@ export function ImportSheet({
                         </div>
                       )}
                       {automaticEffect && <AutomaticEnvelopeEffect data={automaticEffect} compact />}
-                      {!exists && type === "expense" && onBudget && !env && (
+                      {!quiet && type === "expense" && onBudget && !env && (
                         <div style={{ fontSize: 11, color: C.warn, marginTop: 5 }}>
                           {t("Without an envelope, this transaction changes Ready to assign. Choose an envelope to show where it belongs.")}
                         </div>

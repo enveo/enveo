@@ -315,12 +315,58 @@ export function recognizedImportRowFacts(row: Pick<ImportReviewRow, "draftItem">
   return { name: row.draftItem?.name?.trim() || null, type: row.draftItem?.type ?? null, isRefund: row.draftItem?.isRefund ?? false };
 }
 
-export function visibleImportReviewRows<T extends Pick<ImportReviewRow, "disposition">>(rows: readonly T[]): { row: T; index: number; position: number }[] {
-  const visible: { row: T; index: number; position: number }[] = [];
-  rows.forEach((row, index) => {
-    if (row.disposition !== "supporting") visible.push({ row, index, position: visible.length });
-  });
-  return visible;
+export interface ImportReviewListedRow<T> {
+  row: T;
+  index: number;
+  position: number;
+  /** Listed under the capture it repeats. */
+  nested: boolean;
+}
+
+export interface ImportReviewListing<T> {
+  rows: ImportReviewListedRow<T>[];
+  repeats: { count: number; selected: number } | null;
+}
+
+/** What the review lists, in order. Supporting detail is not listed. Proven repeats of an entry on
+ *  another screenshot are folded away (owner, 2026-11): they are the overlap of the screenshots,
+ *  not decisions. Opened, each one is listed under the capture it repeats so the pairing is
+ *  visible, or at the end when that capture is not listed. Positions number the listed rows for
+ *  their control labels. */
+export function importReviewListing<T extends Pick<ImportReviewRow, "rowId" | "disposition" | "relation" | "duplicateStatus" | "include">>(
+  rows: readonly T[],
+  showRepeats: boolean,
+): ImportReviewListing<T> {
+  const listed = rows.flatMap((row, index) => (row.disposition === "supporting" ? [] : [{ row, index }]));
+  const main = listed.filter(({ row }) => !repeatsAnotherCapture(row));
+  const repeats = listed.filter(({ row }) => repeatsAnotherCapture(row));
+  const byId = new Map(rows.map((row) => [row.rowId, row]));
+  const keptOf = (row: T): string => {
+    const seen = new Set([row.rowId]);
+    let kept = row;
+    for (let next = kept.relation?.kind === "duplicate_of" ? byId.get(kept.relation.rowId) : undefined; next && !seen.has(next.rowId); ) {
+      kept = next;
+      seen.add(next.rowId);
+      next = kept.relation?.kind === "duplicate_of" ? byId.get(kept.relation.rowId) : undefined;
+    }
+    return kept.rowId;
+  };
+  const shown = new Set(main.map(({ row }) => row.rowId));
+  const under = new Map<string, typeof repeats>();
+  const unplaced: typeof repeats = [];
+  for (const entry of showRepeats ? repeats : []) {
+    const kept = keptOf(entry.row);
+    if (shown.has(kept)) under.set(kept, [...(under.get(kept) ?? []), entry]);
+    else unplaced.push(entry);
+  }
+  const ordered = [
+    ...main.flatMap((entry) => [{ ...entry, nested: false }, ...(under.get(entry.row.rowId) ?? []).map((repeat) => ({ ...repeat, nested: true }))]),
+    ...unplaced.map((entry) => ({ ...entry, nested: false })),
+  ];
+  return {
+    rows: ordered.map((entry, position) => ({ ...entry, position })),
+    repeats: repeats.length ? { count: repeats.length, selected: repeats.filter(({ row }) => row.include).length } : null,
+  };
 }
 
 export type ImportBlockingIssue = ImportReviewReason | "currency_mismatch" | "assignment_unavailable";
@@ -405,7 +451,7 @@ export function reviewBadges(row: ImportReviewRow, edit?: EditedImportItem): Imp
   if (row.alreadyApplied) badges.push({ label: msg("Already added by this import"), tone: "neutral" });
   else if (row.duplicateStatus === "exists") badges.push({ label: msg("Already exists"), tone: "neutral" });
   const repeat = repeatsAnotherCapture(row);
-  if (repeat) badges.push({ label: msg("Repeats a row from another screenshot"), tone: "warning" });
+  if (repeat) badges.push({ label: msg("Repeats a row from another screenshot"), tone: "neutral" });
   else if (row.duplicateStatus === "probable") badges.push({ label: msg("Probable duplicate"), tone: "warning" });
   if (row.blockingIssues.includes("assignment_unavailable")) badges.push({ label: msg("Saved assignment is unavailable"), tone: "warning" });
   for (const reason of row.reviewReasons) {
@@ -414,8 +460,10 @@ export function reviewBadges(row: ImportReviewRow, edit?: EditedImportItem): Imp
     const label = importReviewReasonMessage(reason);
     badges.push({ label, tone: reason === "pending_or_declined" ? "neutral" : "warning" });
   }
+  // A repeat left out asks nothing of the human: its kept capture carries the same warnings.
+  const quiet = repeat && !row.include;
   const unique = new Map<Message, ImportReviewBadge>();
-  for (const badge of badges) unique.set(badge.label, badge);
+  for (const badge of badges) if (!quiet || badge.tone !== "warning") unique.set(badge.label, badge);
   return [...unique.values()];
 }
 

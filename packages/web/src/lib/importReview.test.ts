@@ -27,6 +27,7 @@ import {
   importPeriodStart,
   importReviewChanges,
   importReviewDoneStats,
+  importReviewListing,
   importReviewReasonMessage,
   parseImportReviewChanges,
   recognizedImportRowFacts,
@@ -37,12 +38,21 @@ import {
   reviewedImportRowsForApply,
   reviewRowControlLabels,
   reviewSelectionAfterRefresh,
-  visibleImportReviewRows,
   withEditedAssignment,
 } from "./importReview";
 import { type LocalImportReviewItem, recognitionCandidatesForDryRun } from "./localImport";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+type ListedRow = Pick<ReturnType<typeof buildImportReviewRows>[number], "rowId" | "disposition" | "relation" | "duplicateStatus" | "include">;
+const listed = (rowId: string, overrides: Partial<ListedRow> = {}): ListedRow => ({
+  rowId,
+  disposition: "candidate",
+  relation: null,
+  duplicateStatus: "new",
+  include: true,
+  ...overrides,
+});
 
 const ledger = (): ClientLedger => ({
   budgets: [{ id: U(1), name: "Budget", currency: "USD", preferences: createDefaultBudgetPreferences() }],
@@ -409,17 +419,44 @@ describe("screenshot import review view model", () => {
   });
 
   it("hides supporting evidence from review while preserving original row indexes", () => {
+    const rows = [listed("first"), listed("heading", { disposition: "supporting" }), listed("second", { disposition: "unresolved" })];
+
+    const listing = importReviewListing(rows, false);
+
+    expect(listing).toEqual({
+      rows: [
+        { row: rows[0]!, index: 0, position: 0, nested: false },
+        { row: rows[2]!, index: 2, position: 1, nested: false },
+      ],
+      repeats: null,
+    });
+  });
+
+  it("folds proven repeats away and lists each one under the capture it repeats when opened", () => {
+    const repeat = (rowId: string, of: string, include = false) =>
+      listed(rowId, { relation: { kind: "duplicate_of", rowId: of }, duplicateStatus: "probable", include });
     const rows = [
-      { rowId: "first", disposition: "candidate" },
-      { rowId: "heading", disposition: "supporting" },
-      { rowId: "second", disposition: "unresolved" },
-    ] as Pick<ReturnType<typeof buildImportReviewRows>[number], "rowId" | "disposition">[];
+      repeat("again", "first", true),
+      listed("first"),
+      listed("maybe", { duplicateStatus: "probable" }),
+      repeat("chained", "again"),
+      repeat("orphan", "heading"),
+      listed("heading", { disposition: "supporting" }),
+    ];
 
-    const visible = visibleImportReviewRows(rows);
-
-    expect(visible).toEqual([
-      { row: rows[0]!, index: 0, position: 0 },
-      { row: rows[2]!, index: 2, position: 1 },
+    expect(importReviewListing(rows, false)).toEqual({
+      rows: [
+        { row: rows[1]!, index: 1, position: 0, nested: false },
+        { row: rows[2]!, index: 2, position: 1, nested: false },
+      ],
+      repeats: { count: 3, selected: 1 },
+    });
+    expect(importReviewListing(rows, true).rows).toEqual([
+      { row: rows[1]!, index: 1, position: 0, nested: false },
+      { row: rows[0]!, index: 0, position: 1, nested: true },
+      { row: rows[3]!, index: 3, position: 2, nested: true },
+      { row: rows[2]!, index: 2, position: 3, nested: false },
+      { row: rows[4]!, index: 4, position: 4, nested: false },
     ]);
   });
 
@@ -537,6 +574,9 @@ describe("screenshot import review view model", () => {
     expect(review[1]).toMatchObject({ duplicateStatus: "probable", disposition: "candidate", include: false, editable: true });
     expect(review[1]!.item).not.toBeNull();
     expect(reviewBadges(review[1]!).map((badge) => badge.label)).toEqual(["Repeats a row from another screenshot"]);
+    const flagged = { ...review[1]!, reviewReasons: [...review[1]!.reviewReasons, "possible_transfer" as const] };
+    expect(reviewBadges(flagged).map((badge) => badge.label)).toEqual(["Repeats a row from another screenshot"]);
+    expect(reviewBadges({ ...flagged, include: true }).map((badge) => badge.label)).toContain("Possible transfer");
     expect(reviewRowControlLabels(review[1]!, 1).select).not.toBeNull();
     expect(importReviewDoneStats(review, { added: 1, skipped: 0 })).toEqual({ added: 1, dup: 1 });
     expect(balanceMatchCandidatesForReview({ rows: review, edited: {}, defaultAccountId: U(2) }).map((candidate) => candidate.index)).not.toContain(1);
