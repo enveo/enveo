@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { type ClientLedger, type ImportReceipt, importReceiptSchema } from "@enveo/shared";
 import type { ImportReviewRow } from "../importReview";
 import { planLocalImport } from "../localImport";
-import { finishImportReceipt, prepareImportReceipt } from "./receipt";
+import { emptyImportBalanceTally, finishImportReceipt, importBalanceCheck, prepareImportReceipt } from "./receipt";
 
 test("completion freezes the actual applied rows and account balances, including a resumed import", () => {
   const draft = {
@@ -226,4 +226,66 @@ test("each receipt row records the flags its recognized row carried, by name onl
   expect(prepareImportReceipt(null, ledger, "a", [repeat], emptyPlan, []).rows[0]).not.toHaveProperty("reviewReasons");
   const withReasons = (reviewReasons: unknown) => ({ ...receipt, rows: [{ ...receipt.rows[0]!, reviewReasons }] });
   expect(importReceiptSchema.safeParse(withReasons(["made_up_reason"])).success).toBe(false);
+});
+
+test("the receipt records what the bank-balance check did, without any amount", () => {
+  const check = (overrides: Partial<Parameters<typeof importBalanceCheck>[0]>) =>
+    importBalanceCheck({
+      bankValue: "",
+      recognizedBankValue: "",
+      difference: null,
+      foreignRows: 0,
+      reconcileAfter: false,
+      tally: emptyImportBalanceTally(),
+      ...overrides,
+    });
+
+  // when: a figure read from the screenshot is kept and the selection leaves no difference
+  const kept = check({
+    bankValue: "1250.40",
+    recognizedBankValue: "1250.40",
+    difference: 0,
+    tally: { ...emptyImportBalanceTally(), suggested: 1, applied: 1, appliedChanges: 2 },
+  });
+
+  expect(kept).toEqual({
+    screenshotFigure: "kept",
+    difference: "zero",
+    foreignAtFaceValue: false,
+    suggested: 1,
+    declined: 0,
+    unmatched: 0,
+    applied: 1,
+    appliedChanges: 2,
+    reconcileAfter: false,
+  });
+  expect(check({ bankValue: "1300", recognizedBankValue: "1250.40", difference: -1200, foreignRows: 1, reconcileAfter: true })).toMatchObject({
+    screenshotFigure: "changed",
+    difference: "nonzero",
+    foreignAtFaceValue: true,
+    reconcileAfter: true,
+  });
+  expect(check({ recognizedBankValue: "1250.40" })).toMatchObject({ screenshotFigure: "changed", difference: "none" });
+  expect(check({ bankValue: "90", difference: 5 })).toMatchObject({ screenshotFigure: "none", difference: "nonzero" });
+  expect(check({ tally: { ...emptyImportBalanceTally(), unmatched: 20_000 } }).unmatched).toBe(10_000);
+
+  const ledger = {
+    budgets: [{ currency: "USD" }],
+    accounts: [{ id: "a", name: "Bank", initialBalance: 0 }],
+    transactions: [],
+    envelopes: [],
+    groups: [],
+    allocations: [],
+    categories: [],
+    places: [],
+  } as unknown as ClientLedger;
+  const emptyPlan = { dryRun: false, added: 0, skipped: 0, transactions: [], results: [] };
+  const receipt = prepareImportReceipt(null, ledger, "a", [], emptyPlan, [], {}, [], kept);
+  expect(receipt.balanceCheck).toEqual(kept);
+  expect(importReceiptSchema.safeParse(receipt).success).toBe(true);
+  // A resumed Add without a fresh check keeps the one the first attempt recorded.
+  expect(prepareImportReceipt(receipt, ledger, "a", [], emptyPlan, []).balanceCheck).toEqual(kept);
+  expect(prepareImportReceipt(null, ledger, "a", [], emptyPlan, [])).not.toHaveProperty("balanceCheck");
+  expect(importReceiptSchema.safeParse({ ...receipt, balanceCheck: { ...kept, bankFigure: 1250 } }).success).toBe(false);
+  expect(importReceiptSchema.safeParse({ ...receipt, balanceCheck: { ...kept, suggested: -1 } }).success).toBe(false);
 });

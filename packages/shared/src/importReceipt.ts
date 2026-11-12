@@ -22,6 +22,27 @@ export const IMPORT_CORRECTION_FIELDS = [
 ] as const;
 export type ImportCorrectionField = (typeof IMPORT_CORRECTION_FIELDS)[number];
 const label = z.string();
+const tally = z.number().int().min(0).max(10_000);
+/** What the bank-balance check of the review did, without any amount, so whether the balance match
+ *  helps is read from receipts. The counts cover the review since it was last opened on this device. */
+export const importBalanceCheckSchema = z
+  .object({
+    /** A bank figure read from the screenshot: none, kept as read, or changed (cleared included). */
+    screenshotFigure: z.enum(["none", "kept", "changed"]),
+    /** The bank figure against the account after the import: none = no figure to compare. */
+    difference: z.enum(["none", "zero", "nonzero"]),
+    /** Selected rows still counted at their foreign face value, so the difference is not exact. */
+    foreignAtFaceValue: z.boolean(),
+    suggested: tally,
+    declined: tally,
+    unmatched: tally,
+    /** Suggestions the human applied, and the row changes they made. */
+    applied: tally,
+    appliedChanges: tally,
+    reconcileAfter: z.boolean(),
+  })
+  .strict();
+export type ImportBalanceCheck = z.infer<typeof importBalanceCheckSchema>;
 export const importReceiptSchema = z
   .object({
     completedAt: z.string().datetime({ offset: true }).nullable(),
@@ -68,6 +89,8 @@ export const importReceiptSchema = z
           .strict(),
       )
       .max(5000),
+    /** Absent = not recorded (older receipt). */
+    balanceCheck: importBalanceCheckSchema.optional(),
   })
   .strict()
   .superRefine((receipt, ctx) => {

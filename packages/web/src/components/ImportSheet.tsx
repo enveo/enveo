@@ -28,7 +28,7 @@ import { storageMode } from "../lib/idb";
 import type { ImportApplyProgress } from "../lib/importJobStorage";
 import { importApplyErrorMessage } from "../lib/importJobs/applyError";
 import { importJobManager } from "../lib/importJobs/manager";
-import { finishImportReceipt, prepareImportReceipt } from "../lib/importJobs/receipt";
+import { emptyImportBalanceTally, finishImportReceipt, importBalanceCheck, prepareImportReceipt } from "../lib/importJobs/receipt";
 import { importReviewStore } from "../lib/importJobs/reviewStore";
 import type { ImportActivityItem } from "../lib/importJobs/store";
 import {
@@ -144,6 +144,8 @@ export function ImportSheet({
   const [recognizedBankValue, setRecognizedBankValue] = useState("");
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
   const [match, setMatch] = useState<ImportBalanceMatchState>({ kind: "idle" });
+  // What the balance check did in this review, for the receipt; counts since the review was opened here.
+  const balanceTally = useRef(emptyImportBalanceTally());
   const [diagnosis, setDiagnosis] = useState<ImportBalanceDiagnosis | null>(null);
   const [reconcileAfter, setReconcileAfter] = useState(false);
   // Frozen when adding starts: the job leaves the sheet's state once it is applied, and the
@@ -236,6 +238,7 @@ export function ImportSheet({
     setEdited(checked.edited);
     setEditedAutomaticDefaults(restored.editedAutomaticDefaults);
     setMatch({ kind: "idle" });
+    if (restore) balanceTally.current = emptyImportBalanceTally();
     setRecognizedBankValue(recognizedBank);
     setBankValue(changes?.bankValue ?? recognizedBank);
     setReconcileAfter(changes?.reconcileAfter ?? false);
@@ -309,6 +312,7 @@ export function ImportSheet({
     storedChanges.current = null;
     setPad(null);
     setMatch({ kind: "idle" });
+    balanceTally.current = emptyImportBalanceTally();
     setReconcileAfter(false);
     setReconcileOpen(false);
     setBusy(false);
@@ -529,6 +533,14 @@ export function ImportSheet({
           currentEdited,
           // The state captured when this handler ran, before the rebuild above replaced it.
           recognized,
+          importBalanceCheck({
+            bankValue,
+            recognizedBankValue,
+            difference,
+            foreignRows: foreignRowsAtFaceValue(items, edited),
+            reconcileAfter,
+            tally: balanceTally.current,
+          }),
         );
         await importJobManager.receiptDraft(job.id, receiptDraft);
         await importJobManager.recordSkipped(
@@ -693,8 +705,15 @@ export function ImportSheet({
     const asked = matchGeneration.current;
     const candidates = balanceMatchCandidatesForReview({ rows: items, edited, defaultAccountId: accountId });
     const solutions = findBalanceMatches(candidates, difference);
+    const settle = (state: Exclude<ImportBalanceMatchState, { kind: "idle" | "searching" }>) => {
+      const tally = balanceTally.current;
+      if (state.kind === "proposal") tally.suggested++;
+      else if (state.kind === "declined") tally.declined++;
+      else tally.unmatched++;
+      setMatch(state);
+    };
     if (solutions.length === 0) {
-      setMatch({ kind: "none" });
+      settle({ kind: "none" });
       setDiagnosis(
         importBalanceDiagnosis({
           candidates,
@@ -706,7 +725,7 @@ export function ImportSheet({
       return;
     }
     if (solutions.length === 1) {
-      setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: 0 });
+      settle({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: 0 });
       return;
     }
 
@@ -745,11 +764,11 @@ export function ImportSheet({
       );
       const answer = parseImportBalanceArbiterResponse(await provider.complete(request), solutions.length);
       if (generation !== viewGeneration.current || asked !== matchGeneration.current) return;
-      if (answer.choice === null) setMatch({ kind: "declined", rationale: answer.rationale });
-      else setMatch({ kind: "proposal", changes: solutions[answer.choice]!, rationale: answer.rationale, alternatives: solutions.length - 1 });
+      if (answer.choice === null) settle({ kind: "declined", rationale: answer.rationale });
+      else settle({ kind: "proposal", changes: solutions[answer.choice]!, rationale: answer.rationale, alternatives: solutions.length - 1 });
     } catch {
       if (generation === viewGeneration.current && asked === matchGeneration.current)
-        setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: solutions.length - 1 });
+        settle({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: solutions.length - 1 });
     }
   };
   const applyBalanceChanges = (changes: readonly BalanceMatchChange[]) => {
@@ -759,7 +778,10 @@ export function ImportSheet({
     setMatch({ kind: "idle" });
   };
   const applyBalanceMatch = () => {
-    if (match.kind === "proposal") applyBalanceChanges(match.changes);
+    if (match.kind !== "proposal") return;
+    balanceTally.current.applied++;
+    balanceTally.current.appliedChanges += match.changes.length;
+    applyBalanceChanges(match.changes);
   };
   const reconcileAccount = currentReconciliationAccount(accountsNow, reconcileOpen ? accountId : null);
   const deviceWarning = sharedDeviceImportWarning(e2ee.getTierMeta().tier, storageMode());

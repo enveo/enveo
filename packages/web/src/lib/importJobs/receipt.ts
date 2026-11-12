@@ -1,4 +1,4 @@
-import { type ClientLedger, computeBudgetState, type ImportReceipt } from "@enveo/shared";
+import { type ClientLedger, computeBudgetState, type ImportBalanceCheck, type ImportReceipt } from "@enveo/shared";
 import type { EditedImportItem } from "../api";
 import { type ImportReviewRow, importRowCorrections } from "../importReview";
 import type { LocalImportPlan } from "../localImport";
@@ -17,6 +17,29 @@ const recognizedFlags = (recognized: ImportReviewRow | undefined): Pick<ImportRe
     ? { reviewReasons: [...new Set(recognized.reviewReasons)], duplicateStatus: recognized.duplicateStatus, relationKind: recognized.relation?.kind ?? null }
     : {};
 
+export type ImportBalanceTally = Pick<ImportBalanceCheck, "suggested" | "declined" | "unmatched" | "applied" | "appliedChanges">;
+export const emptyImportBalanceTally = (): ImportBalanceTally => ({ suggested: 0, declined: 0, unmatched: 0, applied: 0, appliedChanges: 0 });
+
+/** The review's bank-balance check at the moment of Add, names and counts only. */
+export function importBalanceCheck(args: {
+  bankValue: string;
+  /** The figure read from the screenshot, "" when none was read. */
+  recognizedBankValue: string;
+  difference: number | null;
+  foreignRows: number;
+  reconcileAfter: boolean;
+  tally: ImportBalanceTally;
+}): ImportBalanceCheck {
+  return {
+    screenshotFigure: args.recognizedBankValue === "" ? "none" : args.bankValue === args.recognizedBankValue ? "kept" : "changed",
+    difference: args.difference === null ? "none" : args.difference === 0 ? "zero" : "nonzero",
+    foreignAtFaceValue: args.foreignRows > 0,
+    // The schema caps each count; a receipt the server refuses would fail the whole Add.
+    ...(Object.fromEntries(Object.entries(args.tally).map(([key, count]) => [key, Math.min(count, 10_000)])) as ImportBalanceTally),
+    reconcileAfter: args.reconcileAfter,
+  };
+}
+
 export function prepareImportReceipt(
   previous: ImportReceipt | null,
   ledger: ClientLedger,
@@ -27,6 +50,7 @@ export function prepareImportReceipt(
   edited: Record<number, EditedImportItem> = {},
   /** The rows as recognized before the human's review: the baseline for `correctionFields`. */
   recognized?: readonly ImportReviewRow[],
+  balanceCheck?: ImportBalanceCheck,
 ): ImportReceipt {
   if (previous?.completedAt) return previous;
   const planned = new Map(plan.transactions.map((tx) => [tx.rowId, tx]));
@@ -81,6 +105,7 @@ export function prepareImportReceipt(
         ...recognizedFlags(baseline?.get(row.rowId)),
       };
     }),
+    ...((balanceCheck ?? previous?.balanceCheck) ? { balanceCheck: balanceCheck ?? previous?.balanceCheck } : {}),
   };
 }
 
