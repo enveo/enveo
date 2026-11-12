@@ -240,6 +240,22 @@ const isFinancialTwinCandidate = (row: ImportExtractRow): boolean =>
  *  captures. The sign is NOT part of it: a pending entry often shows none, and the same entry
  *  can be read with and without one; a visible contradiction is filtered out separately. */
 const twinKey = (row: ImportExtractRow): string => `${seamText(row)}|${row.amount}|${row.currency}`;
+const ELLIPSIS = /(?:…|\.\.\.)$/;
+/** The same printed line, allowing for the app cutting it with an ellipsis at a different width
+ *  on each screenshot (owner, 2026-11): a line ending in "…" or "..." agrees with any line that
+ *  starts with what it shows. At least three characters must remain, so a bare ellipsis proves
+ *  nothing. */
+const sameLine = (left: string, right: string): boolean => {
+  const [a, b] = [left.trim().toLowerCase(), right.trim().toLowerCase()];
+  if (a === b) return true;
+  const shown = (line: string): string | null => (ELLIPSIS.test(line) ? line.replace(ELLIPSIS, "").trimEnd() : null);
+  const startOf = (prefix: string | null, line: string): boolean => prefix !== null && prefix.length >= 3 && line.startsWith(prefix);
+  return startOf(shown(a), shown(b) ?? b) || startOf(shown(b), shown(a) ?? a);
+};
+const sameText = (left: ImportExtractRow, right: ImportExtractRow): boolean => {
+  const [a, b] = [left.rawTextLines, right.rawTextLines].map((lines) => lines.filter((line) => line.trim().length > 0));
+  return a!.length === b!.length && a!.every((line, index) => sameLine(line, b![index]!));
+};
 const compatibleDirections = (left: ImportExtractRow, right: ImportExtractRow): boolean =>
   left.direction === "unknown" || right.direction === "unknown" || left.direction === right.direction;
 
@@ -489,7 +505,9 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
   const sameEntry = (row: ImportExtractRow, other: ImportExtractRow): boolean =>
     row.imageIndex !== other.imageIndex &&
     isFinancialTwinCandidate(row) &&
-    twinKey(row) === twinKey(other) &&
+    row.amount === other.amount &&
+    row.currency === other.currency &&
+    sameText(row, other) &&
     row.date === other.date &&
     compatibleDirections(row, other);
   // Neighbours are compared on their posting facts, not their text: a second reading of the same
@@ -533,7 +551,6 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
 
   const rowsById = new Map(rows.map((row) => [row.rowId, row]));
   const order = new Map(sorted.map((row, index) => [row.rowId, index]));
-  const twins = twinIndex(rows);
   const links = new Map<string, string>();
   const possible: Array<{ earlierRowId: string; laterRowId: string }> = [];
   const claimedFrom = new Map<string, Set<number>>();
@@ -558,7 +575,7 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
     const candidates = declared
       ? [declared]
       : isFinancialTwinCandidate(row)
-        ? (twins.get(twinKey(row)) ?? []).filter((twin) => earlier(twin) && sameEntry(row, twin) && !links.has(twin.rowId))
+        ? sorted.filter((twin) => earlier(twin) && sameEntry(row, twin) && !links.has(twin.rowId))
         : [];
     if (candidates.length === 0) continue;
     const proven = candidates.filter((target) => sameEntry(row, target) && neighboursAgree(row, target));
@@ -580,7 +597,7 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
     if (settled.has(row.rowId) || row.relation?.kind === "duplicate_of" || !isFinancialTwinCandidate(row)) continue;
     const earlier = financial
       .slice(0, index)
-      .filter((other) => other.imageIndex !== row.imageIndex && twinKey(other) !== twinKey(row) && sameNeighbour(row, other) && neighboursAgree(row, other))
+      .filter((other) => other.imageIndex !== row.imageIndex && !sameText(other, row) && sameNeighbour(row, other) && neighboursAgree(row, other))
       .at(-1);
     if (earlier) possible.push(seamPair(row, earlier));
   }

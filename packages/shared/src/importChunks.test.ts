@@ -506,6 +506,39 @@ describe("settling repeats across screenshots", () => {
     expect(alone.possible).toEqual([]);
   });
 
+  it("reads a line the app cut with an ellipsis at another width as the same text", () => {
+    const lines = (second: string) => ({ rawTextLines: ["STREAMFLIX", second, "-$11.99"], amount: 1199 });
+    const rows = [
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      row("x1", 0, { visualOrder: 1, ...lines("Monthly subscr...") }),
+      entry("a2", 1, 0, "ORCHARD BAKERY"),
+      row("x2", 1, { visualOrder: 1, ...lines("Monthly subscri…") }),
+    ];
+    expect(settleImportDuplicates(rows).links).toEqual(
+      new Map([
+        ["a2", "a1"],
+        ["x2", "x1"],
+      ]),
+    );
+
+    // Only a cut line stretches: two full lines that differ, or a cut that keeps under three
+    // characters, stay different text.
+    const different = settleImportDuplicates([
+      rows[0]!,
+      row("x1", 0, { visualOrder: 1, ...lines("Monthly subscription") }),
+      rows[2]!,
+      row("x2", 1, { visualOrder: 1, ...lines("Monthly subscription plus") }),
+    ]);
+    expect(different.links.has("x2")).toBe(false);
+    const bare = settleImportDuplicates([
+      rows[0]!,
+      row("x1", 0, { visualOrder: 1, ...lines("Mo...") }),
+      rows[2]!,
+      row("x2", 1, { visualOrder: 1, ...lines("Monthly plan") }),
+    ]);
+    expect(bare.links.has("x2")).toBe(false);
+  });
+
   it("keeps two identical entries of one screenshot as two, even when an earlier screenshot shows one", () => {
     const settled = settleImportDuplicates([
       entry("a1", 0, 0, "ORCHARD BAKERY"),
