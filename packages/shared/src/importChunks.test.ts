@@ -521,8 +521,8 @@ describe("settling repeats across screenshots", () => {
       ]),
     );
 
-    // Only a cut line stretches: two full lines that differ, or a cut that keeps under three
-    // characters, stay different text.
+    // Only two cut lines stretch: two full lines that differ, a cut line against a full one, or
+    // a cut that keeps under three characters stay different text.
     const different = settleImportDuplicates([
       rows[0]!,
       row("x1", 0, { visualOrder: 1, ...lines("Monthly subscription") }),
@@ -537,6 +537,14 @@ describe("settling repeats across screenshots", () => {
       row("x2", 1, { visualOrder: 1, ...lines("Monthly plan") }),
     ]);
     expect(bare.links.has("x2")).toBe(false);
+    const full = settleImportDuplicates([
+      rows[0]!,
+      row("x1", 0, { visualOrder: 1, ...lines("Transfer to Alex…") }),
+      rows[2]!,
+      row("x2", 1, { visualOrder: 1, ...lines("Transfer to Alexandra") }),
+    ]);
+    expect(full.links.has("x2")).toBe(false);
+    expect(full.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
   });
 
   it("keeps two identical entries of one screenshot as two, even when an earlier screenshot shows one", () => {

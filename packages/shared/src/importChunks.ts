@@ -242,15 +242,16 @@ const isFinancialTwinCandidate = (row: ImportExtractRow): boolean =>
 const twinKey = (row: ImportExtractRow): string => `${seamText(row)}|${row.amount}|${row.currency}`;
 const ELLIPSIS = /(?:…|\.\.\.)$/;
 /** The same printed line, allowing for the app cutting it with an ellipsis at a different width
- *  on each screenshot (owner, 2026-11): a line ending in "…" or "..." agrees with any line that
- *  starts with what it shows. At least three characters must remain, so a bare ellipsis proves
- *  nothing. */
+ *  on each screenshot (owner, 2026-11): two lines that BOTH end in "…" or "..." agree when the
+ *  longer one starts with what the shorter one shows, at least three characters of it. A cut
+ *  line never agrees with a full one: "Transfer to Alex…" may be "Transfer to Alexandra" or
+ *  another payee, and the same app cuts the same descriptor on every screenshot. */
 const sameLine = (left: string, right: string): boolean => {
   const [a, b] = [left.trim().toLowerCase(), right.trim().toLowerCase()];
   if (a === b) return true;
-  const shown = (line: string): string | null => (ELLIPSIS.test(line) ? line.replace(ELLIPSIS, "").trimEnd() : null);
-  const startOf = (prefix: string | null, line: string): boolean => prefix !== null && prefix.length >= 3 && line.startsWith(prefix);
-  return startOf(shown(a), shown(b) ?? b) || startOf(shown(b), shown(a) ?? a);
+  if (!ELLIPSIS.test(a) || !ELLIPSIS.test(b)) return false;
+  const [shorter, longer] = [a, b].map((line) => line.replace(ELLIPSIS, "").trimEnd()).sort((x, y) => x.length - y.length) as [string, string];
+  return shorter.length >= 3 && longer.startsWith(shorter);
 };
 const sameText = (left: ImportExtractRow, right: ImportExtractRow): boolean => {
   const [a, b] = [left.rawTextLines, right.rawTextLines].map((lines) => lines.filter((line) => line.trim().length > 0));
