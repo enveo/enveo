@@ -133,12 +133,17 @@ export function ImportBalanceReceipt({
       )}
       {difference !== null &&
         line(
-          difference === 0 ? t("Matches the bank") : t("Difference"),
-          difference === 0 ? <span style={{ color: TEAL }}>✓</span> : figure(difference, difference > 0 ? "pos" : "neg"),
+          // Rows still counted at their foreign face value cannot confirm a match, even at zero.
+          difference === 0 && foreignRows === 0 ? t("Matches the bank") : t("Difference"),
+          difference === 0 && foreignRows === 0 ? (
+            <span style={{ color: TEAL }}>✓</span>
+          ) : (
+            figure(difference, difference > 0 ? "pos" : difference < 0 ? "neg" : "text")
+          ),
           { strong: true, testId: "import-bank-difference" },
         )}
 
-      {difference !== null && difference !== 0 && foreignRows > 0 && (
+      {difference !== null && foreignRows > 0 && (
         <div data-testid="import-bank-foreign" style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.45, color: C.warn }}>
           {t("Rows in a foreign currency count at face value here, so the difference is not exact until you enter their amounts in the account currency.")}
         </div>
