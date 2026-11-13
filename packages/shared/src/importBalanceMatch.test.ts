@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { balanceMatchOptions, findBalanceMatches, findNearestBalanceMatch } from "./importBalanceMatch";
+import { type BalanceMatchCandidate, balanceMatchOptions, findBalanceMatches } from "./importBalanceMatch";
 
 const candidate = (id: string, effect: number, included: boolean, flippable = false) => ({ id, effect, included, flippable });
 
@@ -54,47 +54,67 @@ describe("finding a selection that matches the bank balance", () => {
     const many = Array.from({ length: 12 }, (_, index) => candidate(`r${index}`, -100, false));
     expect(findBalanceMatches(many, -300, { maxSolutions: 3 })).toHaveLength(3);
     expect(findBalanceMatches(many, -600)).toEqual([]);
+    // Four changes already fit by coincidence too often to be offered.
+    expect(findBalanceMatches(many, -400)).toEqual([]);
+    expect(findBalanceMatches(many, -400, { maxChanges: 4 })).not.toEqual([]);
     expect(findBalanceMatches(many, -300, { maxCandidates: 2 })).toEqual([]);
   });
 });
 
-describe("the closest fit when nothing is exact", () => {
-  const candidate = (id: string, effect: number, included = true, flippable = false): BalanceMatchCandidate => ({ id, effect, included, flippable });
+describe("how often the match is right on a simulated review", () => {
+  // A seeded generator, so the rates are a fixed fence a later change cannot quietly worsen.
+  const random = (seed: number) => () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  // Mostly card payments of 1–99, some of 100–499, a few larger; 85% of them expenses.
+  const entry = (next: () => number) => {
+    const size = next();
+    const magnitude = size < 0.6 ? 100 + Math.floor(next() * 9900) : size < 0.9 ? 10000 + Math.floor(next() * 40000) : 50000 + Math.floor(next() * 200000);
+    return (next() < 0.85 ? -1 : 1) * magnitude;
+  };
+  const doubtfulRows = (next: () => number, count: number): BalanceMatchCandidate[] =>
+    Array.from({ length: count }, (_, index) => ({ id: `row${index}`, effect: entry(next), included: next() < 0.5, flippable: next() < 0.3 }));
+  const TRIALS = 200;
+  const simulate = () => {
+    const next = random(40);
+    let coincidences = 0;
+    let causesFound = 0;
+    for (let trial = 0; trial < TRIALS; trial += 1) {
+      const rows = doubtfulRows(next, 40);
+      // An entry missing between screenshots: no row of the review explains it.
+      if (findBalanceMatches(rows, entry(next)).length > 0) coincidences += 1;
+      // One to three doubtful rows the human should have treated the other way.
+      const cause = new Set<number>();
+      const size = 1 + Math.floor(next() * 3);
+      while (cause.size < size) cause.add(Math.floor(next() * rows.length));
+      const difference = [...cause].reduce((sum, index) => sum + (rows[index]!.included ? -rows[index]!.effect : rows[index]!.effect), 0);
+      const expected = [...cause]
+        .map((index) => `row${index}`)
+        .sort()
+        .join();
+      if (
+        findBalanceMatches(rows, difference).some(
+          (changes) =>
+            changes
+              .map((change) => change.id)
+              .sort()
+              .join() === expected,
+        )
+      )
+        causesFound += 1;
+    }
+    return { coincidences: coincidences / TRIALS, causesFound: causesFound / TRIALS };
+  };
 
-  it("returns the change set with the smallest residual, then the fewest changes", () => {
-    const nearest = findNearestBalanceMatch([candidate("dup-credit", 74218), candidate("cancelled", 91863), candidate("pending", -36529, false)], -166822);
+  it("finds a real cause among 40 doubtful rows and rarely invents one for an entry missing from the screenshots", () => {
+    // given: 200 reviews of 40 doubtful rows (observed: 11% coincidences, 100% causes found;
+    // the former cap of five changes per suggestion fits 97% of the missing entries by coincidence)
+    const rates = simulate();
 
-    expect(nearest).toEqual({
-      changes: [
-        { id: "dup-credit", action: "exclude", delta: -74218 },
-        { id: "cancelled", action: "exclude", delta: -91863 },
-      ],
-      residual: -741,
-    });
-  });
-
-  it("prefers one large plausible change over several small ones that fit a few cents better", () => {
-    const nearest = findNearestBalanceMatch(
-      [
-        candidate("cancelled", 91863),
-        candidate("example-grocer", -12944),
-        candidate("topup-a", 60000),
-        candidate("example-market", -35322),
-        candidate("topup-b", 80137),
-      ],
-      -92604,
-    );
-
-    expect(nearest).toEqual({ changes: [{ id: "cancelled", action: "exclude", delta: -91863 }], residual: -741 });
-  });
-
-  it("leaves a difference of a few units alone rather than unchecking rows to chase it", () => {
-    expect(findNearestBalanceMatch([candidate("a", -20000), candidate("b", -3400), candidate("c", 15000, false)], -317)).toBeNull();
-  });
-
-  it("offers nothing when no change brings the difference closer, or when it is already zero", () => {
-    expect(findNearestBalanceMatch([candidate("a", -500)], -700)).toBeNull();
-    expect(findNearestBalanceMatch([candidate("a", -500)], 0)).toBeNull();
-    expect(findNearestBalanceMatch([], -700)).toBeNull();
+    expect(rates.coincidences).toBeLessThan(0.2);
+    expect(rates.causesFound).toBeGreaterThan(0.95);
   });
 });

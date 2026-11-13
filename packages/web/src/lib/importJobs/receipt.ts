@@ -1,6 +1,6 @@
-import { type ClientLedger, computeBudgetState, type ImportReceipt } from "@enveo/shared";
+import { type ClientLedger, computeBudgetState, type ImportBalanceCheck, type ImportReceipt } from "@enveo/shared";
 import type { EditedImportItem } from "../api";
-import type { ImportReviewRow } from "../importReview";
+import { type ImportReviewRow, importRowCorrections } from "../importReview";
 import type { LocalImportPlan } from "../localImport";
 
 const balances = (ledger: ClientLedger) =>
@@ -11,6 +11,35 @@ const balances = (ledger: ClientLedger) =>
     ).accounts.map((a) => [a.account.id, a.balance]),
   );
 
+/** The flags the recognized row carried, so the receipt shows which ones the human acted on. */
+const recognizedFlags = (recognized: ImportReviewRow | undefined): Pick<ImportReceipt["rows"][number], "reviewReasons" | "duplicateStatus" | "relationKind"> =>
+  recognized
+    ? { reviewReasons: [...new Set(recognized.reviewReasons)], duplicateStatus: recognized.duplicateStatus, relationKind: recognized.relation?.kind ?? null }
+    : {};
+
+export type ImportBalanceTally = Pick<ImportBalanceCheck, "suggested" | "declined" | "unmatched" | "applied" | "appliedChanges">;
+export const emptyImportBalanceTally = (): ImportBalanceTally => ({ suggested: 0, declined: 0, unmatched: 0, applied: 0, appliedChanges: 0 });
+
+/** The review's bank-balance check at the moment of Add, names and counts only. */
+export function importBalanceCheck(args: {
+  bankValue: string;
+  /** The figure read from the screenshot, "" when none was read. */
+  recognizedBankValue: string;
+  difference: number | null;
+  foreignRows: number;
+  reconcileAfter: boolean;
+  tally: ImportBalanceTally;
+}): ImportBalanceCheck {
+  return {
+    screenshotFigure: args.recognizedBankValue === "" ? "none" : args.bankValue === args.recognizedBankValue ? "kept" : "changed",
+    difference: args.difference === null ? "none" : args.difference === 0 ? "zero" : "nonzero",
+    foreignAtFaceValue: args.foreignRows > 0,
+    // The schema caps each count; a receipt the server refuses would fail the whole Add.
+    ...(Object.fromEntries(Object.entries(args.tally).map(([key, count]) => [key, Math.min(count, 10_000)])) as ImportBalanceTally),
+    reconcileAfter: args.reconcileAfter,
+  };
+}
+
 export function prepareImportReceipt(
   previous: ImportReceipt | null,
   ledger: ClientLedger,
@@ -19,6 +48,9 @@ export function prepareImportReceipt(
   plan: LocalImportPlan,
   applied: readonly string[],
   edited: Record<number, EditedImportItem> = {},
+  /** The rows as recognized before the human's review: the baseline for `correctionFields`. */
+  recognized?: readonly ImportReviewRow[],
+  balanceCheck?: ImportBalanceCheck,
 ): ImportReceipt {
   if (previous?.completedAt) return previous;
   const planned = new Map(plan.transactions.map((tx) => [tx.rowId, tx]));
@@ -30,6 +62,8 @@ export function prepareImportReceipt(
     if (tx.payload.toAccountId) accountIds.add(tx.payload.toAccountId);
   }
   const current = balances(ledger);
+  const budgetCurrency = previous?.currency ?? ledger.budgets[0]?.currency ?? "EUR";
+  const baseline = recognized ? new Map(recognized.map((row) => [row.rowId, row])) : null;
   return {
     completedAt: null,
     currency: previous?.currency ?? ledger.budgets[0]?.currency ?? "EUR",
@@ -67,8 +101,17 @@ export function prepareImportReceipt(
         placeName: tx?.placeName ?? (tx ? name(ledger.places, tx.payload.placeId) : (edit?.placeName ?? row.item?.placeName ?? null)),
         note: tx?.payload.note ?? edit?.note ?? null,
         tag: tx?.payload.tag ?? row.item?.tag ?? row.draftItem?.tag ?? "",
+        // Supporting detail (a date divider, an exchange line) is never listed for a decision, so
+        // it is not measured: counted as unflagged it would read as rows the flags let through.
+        ...(baseline && row.disposition !== "supporting"
+          ? {
+              correctionFields: importRowCorrections({ recognized: baseline.get(row.rowId), row, edit, budgetCurrency, accountId }),
+              ...recognizedFlags(baseline.get(row.rowId)),
+            }
+          : {}),
       };
     }),
+    ...((balanceCheck ?? previous?.balanceCheck) ? { balanceCheck: balanceCheck ?? previous?.balanceCheck } : {}),
   };
 }
 

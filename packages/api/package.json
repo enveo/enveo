@@ -11,7 +11,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun src/db/migrate.ts",
     "db:seed": "bun src/db/seed.ts",
-    "auth:reset-password": "bun src/auth-reset-password.ts"
+    "auth:reset-password": "bun src/auth-reset-password.ts",
+    "import:stats": "bun src/import-receipt-stats.ts"
   },
   "dependencies": {
     "@enveo/shared": "workspace:*",

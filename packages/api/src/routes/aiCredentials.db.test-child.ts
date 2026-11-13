@@ -1,6 +1,27 @@
 import { assertThrowawayDb, emitChildResult } from "../api.test-support";
 
 export const SENTINEL = "__AI_CREDENTIAL_ROUTES_CHILD__";
+// The extraction contract asks for a row on every screenshot; a blank one is a single interface row.
+const BLANK_SCREENSHOT_ANSWER = JSON.stringify({
+  rows: [
+    {
+      rowId: "blank",
+      imageIndex: 0,
+      visualOrder: 0,
+      rawTextLines: ["blank screenshot"],
+      date: null,
+      amount: null,
+      currency: null,
+      direction: "unknown",
+      postingStatus: "unknown",
+      rowRole: "ui_metadata",
+      semanticKind: "unknown",
+      relation: null,
+      confidence: "high",
+      reviewReasons: [],
+    },
+  ],
+});
 export interface AiCredentialsRoutesOutput {
   lifecycle: { saveStatus: number; configured: boolean; testStatus: number; probeSawKey: boolean; responseLeaked: boolean; databaseLeaked: boolean };
   mismatch: { status: number; error: string | null; rowUnchanged: boolean; probeCallsUnchanged: boolean };
@@ -127,7 +148,7 @@ async function main() {
       sentChosenModel ||= (payload as { model?: string }).model === "gpt-5.6-luna";
       const messages = (payload as { messages?: Array<{ content?: unknown }> }).messages;
       const vision = Array.isArray(messages?.[1]?.content);
-      return Response.json({ choices: [{ message: { content: vision ? '{"rows":[]}' : "byok-answer" } }], model: "gpt-5.6-luna" });
+      return Response.json({ choices: [{ message: { content: vision ? BLANK_SCREENSHOT_ANSWER : "byok-answer" } }], model: "gpt-5.6-luna" });
     };
     const chatResponse = await app.request("/api/ai/byok/chat", {
       method: "POST",

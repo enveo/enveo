@@ -5,7 +5,6 @@ import {
   computeStateResponse,
   decodeImportTextPage,
   findBalanceMatches,
-  findNearestBalanceMatch,
   IMPORT_JOB_MAX_IMAGES,
   isImportTextPage,
   parseImportBalanceArbiterResponse,
@@ -29,7 +28,7 @@ import { storageMode } from "../lib/idb";
 import type { ImportApplyProgress } from "../lib/importJobStorage";
 import { importApplyErrorMessage } from "../lib/importJobs/applyError";
 import { importJobManager } from "../lib/importJobs/manager";
-import { finishImportReceipt, prepareImportReceipt } from "../lib/importJobs/receipt";
+import { emptyImportBalanceTally, finishImportReceipt, importBalanceCheck, prepareImportReceipt } from "../lib/importJobs/receipt";
 import { importReviewStore } from "../lib/importJobs/reviewStore";
 import type { ImportActivityItem } from "../lib/importJobs/store";
 import {
@@ -38,6 +37,7 @@ import {
   bankBalanceHint,
   buildImportReviewRows,
   createImportReviewSaver,
+  foreignRowsAtFaceValue,
   type ImportBalanceDiagnosis,
   type ImportReviewChanges,
   type ImportReviewRow,
@@ -46,14 +46,16 @@ import {
   importMissingDetails,
   importPeriodStart,
   importReviewChanges,
+  importReviewListing,
   isCompleteImportReviewItem,
+  recognizedImportRowFacts,
   reconcileReviewEdits,
   refreshedReviewRows,
+  repeatsAnotherCapture,
   restoreImportReview,
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
-  visibleImportReviewRows,
   withEditedAssignment,
 } from "../lib/importReview";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
@@ -143,6 +145,8 @@ export function ImportSheet({
   const [recognizedBankValue, setRecognizedBankValue] = useState("");
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
   const [match, setMatch] = useState<ImportBalanceMatchState>({ kind: "idle" });
+  // What the balance check did in this review, for the receipt; counts since the review was opened here.
+  const balanceTally = useRef(emptyImportBalanceTally());
   const [diagnosis, setDiagnosis] = useState<ImportBalanceDiagnosis | null>(null);
   const [reconcileAfter, setReconcileAfter] = useState(false);
   // Frozen when adding starts: the job leaves the sheet's state once it is applied, and the
@@ -160,6 +164,7 @@ export function ImportSheet({
   const [edited, setEdited] = useState<Record<number, EditedImportItem>>({});
   const [editedAutomaticDefaults, setEditedAutomaticDefaults] = useState<Record<number, boolean>>({});
   const [editorIdx, setEditorIdx] = useState<number | null>(null);
+  const [showRepeats, setShowRepeats] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const [reviewSaver] = useState(() => createImportReviewSaver(importReviewStore, (ok) => setSaveFailed(!ok)));
@@ -225,7 +230,7 @@ export function ImportSheet({
     });
     const restored = changes ? restoreImportReview(rebuilt, changes) : { rows: rebuilt, edited: {}, editedAutomaticDefaults: {} };
     const checked = reconcileReviewEdits({ rows: restored.rows, edited: restored.edited, ledger, defaultAccountId: importAccountId });
-    const hint = bankBalanceHint(result.rows);
+    const hint = bankBalanceHint(result.rows, ledger.budgets[0]?.currency ?? currency);
     const recognizedBank = hint === null ? "" : fmtSignedTrim(hint);
     // A reset leaves the stored changes in place for the autosave to clear.
     if (restore) storedChanges.current = readable ? changes && JSON.stringify(changes) : null;
@@ -235,6 +240,7 @@ export function ImportSheet({
     setEdited(checked.edited);
     setEditedAutomaticDefaults(restored.editedAutomaticDefaults);
     setMatch({ kind: "idle" });
+    if (restore) balanceTally.current = emptyImportBalanceTally();
     setRecognizedBankValue(recognizedBank);
     setBankValue(changes?.bankValue ?? recognizedBank);
     setReconcileAfter(changes?.reconcileAfter ?? false);
@@ -308,6 +314,7 @@ export function ImportSheet({
     storedChanges.current = null;
     setPad(null);
     setMatch({ kind: "idle" });
+    balanceTally.current = emptyImportBalanceTally();
     setReconcileAfter(false);
     setReconcileOpen(false);
     setBusy(false);
@@ -526,6 +533,16 @@ export function ImportSheet({
           plan,
           previouslyApplied.appliedRowIds,
           currentEdited,
+          // The state captured when this handler ran, before the rebuild above replaced it.
+          recognized,
+          importBalanceCheck({
+            bankValue,
+            recognizedBankValue,
+            difference,
+            foreignRows: foreignRowsAtFaceValue(items, edited),
+            reconcileAfter,
+            tally: balanceTally.current,
+          }),
         );
         await importJobManager.receiptDraft(job.id, receiptDraft);
         await importJobManager.recordSkipped(
@@ -613,6 +630,7 @@ export function ImportSheet({
     setItems((prev) => prev.map((row, i) => (i === idx ? { ...row, include: !row.include } : row)));
   };
 
+  const listing = importReviewListing(items, showRepeats);
   const selectedCount = items.filter((row, i) => (row.item || edited[i]) && row.include && row.duplicateStatus !== "exists").length;
   const reviewChanges =
     phase === "review"
@@ -676,13 +694,29 @@ export function ImportSheet({
 
     return edit?.name || row?.item?.name || row?.item?.tag || row?.rawTextLines[0] || rowId;
   };
+  // A suggestion or diagnosis answers one selection and one bank figure: any change retires it,
+  // and an answer still on its way for the old state is dropped.
+  const matchGeneration = useRef(0);
+  useEffect(() => {
+    matchGeneration.current++;
+    setMatch({ kind: "idle" });
+    setDiagnosis(null);
+  }, [items, edited, bankValue]);
   const runBalanceMatch = async () => {
     if (difference === null || difference === 0 || !job?.result) return;
     const generation = viewGeneration.current;
+    const asked = matchGeneration.current;
     const candidates = balanceMatchCandidatesForReview({ rows: items, edited, defaultAccountId: accountId });
     const solutions = findBalanceMatches(candidates, difference);
+    const settle = (state: Exclude<ImportBalanceMatchState, { kind: "idle" | "searching" }>) => {
+      const tally = balanceTally.current;
+      if (state.kind === "proposal") tally.suggested++;
+      else if (state.kind === "declined") tally.declined++;
+      else tally.unmatched++;
+      setMatch(state);
+    };
     if (solutions.length === 0) {
-      setMatch({ kind: "none", nearest: findNearestBalanceMatch(candidates, difference) });
+      settle({ kind: "none" });
       setDiagnosis(
         importBalanceDiagnosis({
           candidates,
@@ -694,7 +728,7 @@ export function ImportSheet({
       return;
     }
     if (solutions.length === 1) {
-      setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: 0 });
+      settle({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: 0 });
       return;
     }
 
@@ -732,11 +766,12 @@ export function ImportSheet({
         lang,
       );
       const answer = parseImportBalanceArbiterResponse(await provider.complete(request), solutions.length);
-      if (generation !== viewGeneration.current) return;
-      if (answer.choice === null) setMatch({ kind: "declined", rationale: answer.rationale });
-      else setMatch({ kind: "proposal", changes: solutions[answer.choice]!, rationale: answer.rationale, alternatives: solutions.length - 1 });
+      if (generation !== viewGeneration.current || asked !== matchGeneration.current) return;
+      if (answer.choice === null) settle({ kind: "declined", rationale: answer.rationale });
+      else settle({ kind: "proposal", changes: solutions[answer.choice]!, rationale: answer.rationale, alternatives: solutions.length - 1 });
     } catch {
-      if (generation === viewGeneration.current) setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: solutions.length - 1 });
+      if (generation === viewGeneration.current && asked === matchGeneration.current)
+        settle({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: solutions.length - 1 });
     }
   };
   const applyBalanceChanges = (changes: readonly BalanceMatchChange[]) => {
@@ -746,10 +781,10 @@ export function ImportSheet({
     setMatch({ kind: "idle" });
   };
   const applyBalanceMatch = () => {
-    if (match.kind === "proposal") applyBalanceChanges(match.changes);
-  };
-  const applyNearestBalanceMatch = () => {
-    if (match.kind === "none" && match.nearest) applyBalanceChanges(match.nearest.changes);
+    if (match.kind !== "proposal") return;
+    balanceTally.current.applied++;
+    balanceTally.current.appliedChanges += match.changes.length;
+    applyBalanceChanges(match.changes);
   };
   const reconcileAccount = currentReconciliationAccount(accountsNow, reconcileOpen ? accountId : null);
   const deviceWarning = sharedDeviceImportWarning(e2ee.getTierMeta().tier, storageMode());
@@ -970,6 +1005,20 @@ export function ImportSheet({
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Review recognized rows")}</div>
             <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 12 }}>{t("Only checked transactions will be added.")}</div>
+            {listing.repeats && (
+              <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginTop: -6, marginBottom: 12 }}>
+                {tp("{n} repeat from overlapping screenshots | {n} repeats from overlapping screenshots", listing.repeats.count)}
+                {listing.repeats.selected > 0 && ` · ${tp("{n} selected | {n} selected", listing.repeats.selected)}`} ·{" "}
+                <button
+                  type="button"
+                  aria-expanded={showRepeats}
+                  onClick={() => setShowRepeats((open) => !open)}
+                  style={{ border: "none", background: "none", font: "inherit", padding: 0, cursor: "pointer", color: TEAL, fontWeight: 650 }}
+                >
+                  {showRepeats ? t("Hide") : t("Show")}
+                </button>
+              </div>
+            )}
             {job?.partialFailure && (
               <div
                 role="note"
@@ -1041,18 +1090,24 @@ export function ImportSheet({
               </button>
             </details>
 
-            {visibleImportReviewRows(items).map(({ row, index: idx, position }) => {
+            {listing.rows.map((entry) => {
+              const { row, index: idx, position, nested } = entry;
               const it = row.item;
 
               const e = edited[idx] as EditedImportItem | undefined;
               const type = e?.type ?? it?.type ?? null;
               const amount = e?.amount ?? it?.amount ?? row.amount;
-              const name = (e ?? it) ? (e ?? it)!.name?.trim() || t("Unnamed transaction") : row.rawTextLines[0] || t("Unrecognized row");
+              const recognized = recognizedImportRowFacts(row);
+              const name = (e ?? it) ? (e ?? it)!.name?.trim() || t("Unnamed transaction") : recognized.name || row.rawTextLines[0] || t("Unrecognized row");
               const envId = e ? e.envelopeId : it?.envelopeId;
               const env = envId ? envById.get(envId) : null;
               const catName = e ? (e.categoryId ? (state.categories.find((c) => c.id === e.categoryId)?.name ?? null) : null) : (it?.categoryName ?? null);
               const refund = e?.isRefund ?? it?.isRefund ?? false;
+              const shownType = type ?? recognized.type;
+              const shownRefund = e || it ? refund : recognized.isRefund;
               const exists = row.duplicateStatus === "exists";
+              // A repeat left out asks nothing of the human: its missing details matter only once it is checked.
+              const quiet = exists || (repeatsAnotherCapture(row) && !row.include);
               const itemAccountId = e?.accountId ?? accountId;
               const itemToAccountId = e?.toAccountId ?? it?.toAccountId ?? null;
               const automaticPreview =
@@ -1075,7 +1130,7 @@ export function ImportSheet({
               const fxMismatch = !!row.currency && row.currency !== currency;
               const badges = reviewBadges(row, e);
               const onBudget = state.accounts.find((account) => account.id === itemAccountId)?.onBudget ?? true;
-              if (!exists && row.editable) {
+              if (!quiet && row.editable) {
                 for (const label of importMissingDetails(e ?? it ?? row.draftItem, onBudget)) badges.push({ label, tone: "warning" });
               }
               const controlLabels = reviewRowControlLabels(row, position);
@@ -1084,7 +1139,17 @@ export function ImportSheet({
                 ? { type: "button" as const, onClick: () => setEditorIdx(idx), "aria-label": t(controlLabels.edit!.message, controlLabels.edit!.values) }
                 : {};
               return (
-                <div key={row.rowId} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 2px", opacity: exists ? 0.55 : 1 }}>
+                <div
+                  key={row.rowId}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    padding: "9px 2px",
+                    opacity: exists ? 0.55 : 1,
+                    ...(nested ? { marginLeft: 14, paddingLeft: 12, borderLeft: `2px solid ${C.line}`, marginTop: -4 } : {}),
+                  }}
+                >
                   {controlLabels.select ? (
                     <input
                       type="checkbox"
@@ -1198,23 +1263,23 @@ export function ImportSheet({
                         </div>
                       )}
                       {automaticEffect && <AutomaticEnvelopeEffect data={automaticEffect} compact />}
-                      {!exists && type === "expense" && onBudget && !env && (
+                      {!quiet && type === "expense" && onBudget && !env && (
                         <div style={{ fontSize: 11, color: C.warn, marginTop: 5 }}>
                           {t("Without an envelope, this transaction changes Ready to assign. Choose an envelope to show where it belongs.")}
                         </div>
                       )}
                     </div>
-                    {amount !== null && type && (
+                    {amount !== null && shownType && (
                       <span
                         style={{
                           fontSize: 13.5,
                           fontWeight: 600,
                           fontVariantNumeric: "tabular-nums",
-                          color: type === "transfer" ? TRANSFER : type === "income" || refund ? C.pos : C.text,
+                          color: shownType === "transfer" ? TRANSFER : shownType === "income" || shownRefund ? C.pos : C.text,
                           flexShrink: 0,
                         }}
                       >
-                        {type === "transfer" ? "↔ " : type === "income" || refund ? "+" : "-"}
+                        {shownType === "transfer" ? "↔ " : shownType === "income" || shownRefund ? "+" : "-"}
                         {formatMoney(amount, currency, lang)}
                       </span>
                     )}
@@ -1259,7 +1324,8 @@ export function ImportSheet({
               onReconcileAfter={setReconcileAfter}
               onMatch={() => void runBalanceMatch()}
               onApply={applyBalanceMatch}
-              onApplyNearest={applyNearestBalanceMatch}
+              fromScreenshot={bankValue !== "" && bankValue === recognizedBankValue}
+              foreignRows={foreignRowsAtFaceValue(items, edited)}
               onDismiss={() => setMatch({ kind: "idle" })}
             />
 

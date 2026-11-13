@@ -16,6 +16,7 @@ import {
   partitionImportSeamPairs,
   rebaseChunkBatch,
   repairImportRelations,
+  settleImportDuplicates,
 } from "./importChunks";
 import type { ImportExtractRow } from "./importRecognition";
 
@@ -368,6 +369,57 @@ describe("correcting a leading block dated from the wrong neighbour", () => {
     expect(byId.get("i8-t1")).toMatchObject({ date: "2031-09-05" });
     expect(byId.get("i8-t1")!.dateInferred).toBeUndefined();
   });
+
+  it("keeps a leading block's date when the screenshots overlap past the divider the neighbour ends with", () => {
+    const topUp = {
+      amount: 50000,
+      direction: "credit" as const,
+      semanticKind: "account_topup" as const,
+      rawTextLines: ["$500.00 +", "EXAMPLE SAVINGS TOP-UP"],
+    };
+    const fare = { amount: 275, rawTextLines: ["$2.75", "METRO TRANSIT"] };
+    const rows = [
+      divider("i0-m1", 0, 0, "2031-09-10"),
+      row("i0-t1", 0, { visualOrder: 1, date: "2031-09-10", amount: 1299, rawTextLines: ["$12.99", "CEDAR BAKERY"] }),
+      row("i0-t2", 0, { visualOrder: 2, date: "2031-09-10", amount: 4410, rawTextLines: ["$44.10", "WILLOW GARDEN"] }),
+      row("i1-t1", 1, { visualOrder: 0, date: "2031-09-10", amount: 4410, rawTextLines: ["$44.10", "WILLOW GARDEN"] }),
+      row("i1-t2", 1, { visualOrder: 1, date: "2031-09-10", ...topUp }),
+      divider("i1-m1", 1, 2, "2031-09-09"),
+      row("i1-t3", 1, { visualOrder: 3, date: "2031-09-09", ...fare }),
+      // the top of the next screenshot repeats the top-up from ABOVE the 09-09 divider
+      row("i2-t1", 2, { visualOrder: 0, date: null, ...topUp }),
+      divider("i2-m1", 2, 1, "2031-09-09"),
+      row("i2-t2", 2, { visualOrder: 2, date: "2031-09-09", ...fare }),
+      divider("i2-m2", 2, 3, "2031-09-08"),
+      row("i2-t3", 2, { visualOrder: 4, date: "2031-09-08", amount: 6020, rawTextLines: ["$60.20", "PINECONE GROCERY"] }),
+      // a screenshot from elsewhere in the list, ending on the same day the top-up was made
+      divider("i3-m1", 3, 0, "2031-09-13"),
+      row("i3-t1", 3, { visualOrder: 1, date: "2031-09-13", amount: 1875, rawTextLines: ["$18.75", "STARTRAIL FUEL"] }),
+      divider("i3-m2", 3, 2, "2031-09-10"),
+      row("i3-t2", 3, { visualOrder: 3, date: "2031-09-10", amount: 1299, rawTextLines: ["$12.99", "CEDAR BAKERY"] }),
+    ];
+
+    const dated = inferImportDates({ rows }).rows;
+
+    expect(dated.find((r) => r.rowId === "i2-t1")).toMatchObject({ date: "2031-09-10", relation: { kind: "duplicate_of", rowId: "i1-t2" } });
+    expect(settleImportDuplicates(dated).links.get("i2-t1")).toBe("i1-t2");
+  });
+
+  it("leaves a row above the shared divider undated rather than guessing that divider's day", () => {
+    const rows = [
+      divider("i0-m1", 0, 0, "2031-09-10"),
+      row("i0-t1", 0, { visualOrder: 1, date: "2031-09-10", amount: 4410, rawTextLines: ["$44.10", "WILLOW GARDEN"] }),
+      row("i1-t1", 1, { visualOrder: 0, date: "2031-09-10", amount: 4410, rawTextLines: ["$44.10", "WILLOW GARDEN"] }),
+      divider("i1-m1", 1, 1, "2031-09-09"),
+      row("i1-t2", 1, { visualOrder: 2, date: "2031-09-09", amount: 275, rawTextLines: ["$2.75", "METRO TRANSIT"] }),
+      // read only on this screenshot: nothing says which earlier day it belongs to
+      row("i2-t1", 2, { visualOrder: 0, date: null, amount: 1960, rawTextLines: ["$19.60", "LARKSPUR BEAUTY"] }),
+      divider("i2-m1", 2, 1, "2031-09-09"),
+      row("i2-t2", 2, { visualOrder: 2, date: "2031-09-09", amount: 275, rawTextLines: ["$2.75", "METRO TRANSIT"] }),
+    ];
+
+    expect(inferImportDates({ rows }).rows.find((r) => r.rowId === "i2-t1")!.date).toBeNull();
+  });
 });
 
 describe("the same entry captured in non-adjacent screenshots", () => {
@@ -452,5 +504,256 @@ describe("the same entry captured in non-adjacent screenshots", () => {
     const out = inferImportDates({ rows }).rows;
     expect(out.map((r) => r.relation)).toEqual([null, null, null, null]);
     expect(out.map((r) => r.date)).toEqual(["2031-09-01", "2031-09-01", "2031-09-04", "2031-09-04"]);
+  });
+});
+
+describe("settling repeats across screenshots", () => {
+  const entry = (rowId: string, imageIndex: number, visualOrder: number, text: string, over: Partial<ImportExtractRow> = {}) =>
+    row(rowId, imageIndex, { visualOrder, rawTextLines: [text], ...over });
+
+  it("links a capture whose facts and neighbouring entries match the earlier screenshot", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("x2", 1, 0, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b2", 1, 1, "PINE HARDWARE"),
+    ]);
+    // The screenshot edge hides one side of each capture; the side both show must agree.
+    expect(settled.links).toEqual(new Map());
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
+
+    const overlapping = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b1", 0, 2, "PINE HARDWARE"),
+      entry("x2", 1, 0, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b2", 1, 1, "PINE HARDWARE"),
+    ]);
+    expect(overlapping.links).toEqual(
+      new Map([
+        ["x2", "x1"],
+        ["b2", "b1"],
+      ]),
+    );
+    expect(overlapping.possible).toEqual([]);
+  });
+
+  it("flags a capture with the same facts and agreeing neighbours but other text as a possible repeat", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b1", 0, 2, "PINE HARDWARE", { amount: 1200 }),
+      entry("x2", 1, 0, "TRANSFER TO SAV", { amount: 50000 }),
+      entry("b2", 1, 1, "PINE HARDWARE", { amount: 1200 }),
+    ]);
+    expect(settled.links).toEqual(new Map([["b2", "b1"]]));
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
+
+    // Without an agreeing neighbour the same facts alone prove nothing and flag nothing.
+    const alone = settleImportDuplicates([
+      entry("x1", 0, 0, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("x2", 1, 0, "TRANSFER TO SAV", { amount: 50000 }),
+    ]);
+    expect(alone.possible).toEqual([]);
+  });
+
+  it("reads a line the app cut with an ellipsis at another width as the same text", () => {
+    const lines = (second: string) => ({ rawTextLines: ["STREAMFLIX", second, "-$11.99"], amount: 1199 });
+    const rows = [
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      row("x1", 0, { visualOrder: 1, ...lines("Monthly subscr...") }),
+      entry("a2", 1, 0, "ORCHARD BAKERY"),
+      row("x2", 1, { visualOrder: 1, ...lines("Monthly subscri…") }),
+    ];
+    expect(settleImportDuplicates(rows).links).toEqual(
+      new Map([
+        ["a2", "a1"],
+        ["x2", "x1"],
+      ]),
+    );
+
+    // Only two cut lines stretch: two full lines that differ, a cut line against a full one, or
+    // a cut that keeps under three characters stay different text.
+    const different = settleImportDuplicates([
+      rows[0]!,
+      row("x1", 0, { visualOrder: 1, ...lines("Monthly subscription") }),
+      rows[2]!,
+      row("x2", 1, { visualOrder: 1, ...lines("Monthly subscription plus") }),
+    ]);
+    expect(different.links.has("x2")).toBe(false);
+    const bare = settleImportDuplicates([
+      rows[0]!,
+      row("x1", 0, { visualOrder: 1, ...lines("Mo...") }),
+      rows[2]!,
+      row("x2", 1, { visualOrder: 1, ...lines("Monthly plan") }),
+    ]);
+    expect(bare.links.has("x2")).toBe(false);
+    const full = settleImportDuplicates([
+      rows[0]!,
+      row("x1", 0, { visualOrder: 1, ...lines("Transfer to Alex…") }),
+      rows[2]!,
+      row("x2", 1, { visualOrder: 1, ...lines("Transfer to Alexandra") }),
+    ]);
+    expect(full.links.has("x2")).toBe(false);
+    expect(full.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
+  });
+
+  it("keeps the first capture when the model's repeat claims go round three screenshots", () => {
+    const rows = [0, 1, 2].flatMap((image) => [
+      entry(`a${image}`, image, 0, "ORCHARD BAKERY"),
+      entry(`x${image}`, image, 1, "CITY PARKING", { amount: 1200, relation: { kind: "duplicate_of", rowId: `x${(image + 1) % 3}` } }),
+    ]);
+    const settled = settleImportDuplicates(rows);
+    expect(settled.links.get("x1")).toBe("x0");
+    expect(settled.links.get("x2")).toBe("x0");
+    expect(settled.links.has("x0")).toBe(false);
+  });
+
+  it("keeps two identical entries of one screenshot as two, even when an earlier screenshot shows one", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("a2", 1, 0, "ORCHARD BAKERY"),
+      entry("x2", 1, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("y2", 1, 2, "TRANSFER TO SAVINGS", { amount: 50000 }),
+    ]);
+    expect(settled.links.get("x2")).toBe("x1");
+    expect(settled.links.has("y2")).toBe(false);
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "y2" }]);
+  });
+
+  it("does not hide an identical payment on a screenshot whose neighbours differ", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b1", 0, 2, "PINE HARDWARE"),
+      entry("c2", 1, 0, "RIVER CINEMA", { amount: 2400 }),
+      entry("x2", 1, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("d2", 1, 2, "MAPLE PHARMACY", { amount: 915 }),
+    ]);
+    expect(settled.links).toEqual(new Map());
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
+  });
+
+  it("lets an entry cut off at the screenshot edge vouch for nothing, and flags it as a possible repeat of the whole entry", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY", { rawTextLines: ["12.34 USD", "ORCHARD BAKERY", "0.62"] }),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b1", 0, 2, "PINE HARDWARE", { amount: 915 }),
+      entry("cut", 1, 0, "0.62", { amount: null, currency: null }),
+      entry("x2", 1, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b2", 1, 2, "PINE HARDWARE", { amount: 915 }),
+      entry("cut-below", 1, 3, "RIVER", { amount: null, currency: null }),
+    ]);
+
+    // The piece shows no facts, so the repeat beside it is only possible; the one below is proven.
+    expect(settled.links).toEqual(new Map([["b2", "b1"]]));
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
+    // Only a piece whose every line the whole entry carries is flagged; the bottom piece has no counterpart.
+    expect(settled.fragments).toEqual(new Map([["cut", "a1"]]));
+  });
+
+  it("does not let an unread edge entry that is not a proven piece vouch for a repeat", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY", { amount: 1500, rawTextLines: ["ORCHARD BAKERY", "3779"] }),
+      entry("x1", 0, 1, "CORNER COFFEE", { amount: 500, rawTextLines: ["CORNER COFFEE", "3779"] }),
+      entry("p1", 0, 2, "CITY PARKING", { amount: 1000, rawTextLines: ["CITY PARKING", "3779"] }),
+      // A card suffix every entry prints says nothing about which entry was cut off.
+      entry("cut", 1, 0, "3779", { amount: null, currency: null }),
+      entry("x2", 1, 1, "CORNER COFFEE", { amount: 500, rawTextLines: ["CORNER COFFEE", "3779"] }),
+      entry("p2", 1, 2, "CITY PARKING", { amount: 1000, rawTextLines: ["CITY PARKING", "3779"] }),
+    ]);
+
+    expect(settled.links.has("x2")).toBe(false);
+    expect(settled.possible).toContainEqual({ earlierRowId: "x1", laterRowId: "x2" });
+    expect(settled.fragments.size).toBe(0);
+  });
+
+  it("never counts two unread neighbours as agreeing", () => {
+    const settled = settleImportDuplicates([
+      entry("u1", 0, 0, "RIVER", { amount: null, currency: null }),
+      entry("x1", 0, 1, "CORNER COFFEE", { amount: 500 }),
+      entry("u2", 1, 0, "MAPLE", { amount: null, currency: null }),
+      entry("x2", 1, 1, "CORNER COFFEE", { amount: 500 }),
+    ]);
+
+    expect(settled.links.has("x2")).toBe(false);
+    expect(settled.possible).toContainEqual({ earlierRowId: "x1", laterRowId: "x2" });
+  });
+
+  it("does not hide a side for an unread entry inside the screenshot", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY", { amount: 1500 }),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b1", 0, 2, "PINE HARDWARE", { amount: 915 }),
+      entry("c2", 1, 0, "RIVER CINEMA", { amount: 2400 }),
+      entry("u2", 1, 1, "MAPLE PHARMACY", { amount: null, currency: null }),
+      entry("x2", 1, 2, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("b2", 1, 3, "PINE HARDWARE", { amount: 915 }),
+    ]);
+
+    expect(settled.links.has("x2")).toBe(false);
+    expect(settled.possible).toContainEqual({ earlierRowId: "x1", laterRowId: "x2" });
+  });
+
+  it("treats a model link with different text or another date as a possible duplicate, and drops a link inside one screenshot", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("a2", 1, 0, "ORCHARD BAKERY"),
+      entry("x2", 1, 1, "TRANSFER TO SAVINGS LTD", { amount: 50000, relation: { kind: "duplicate_of", rowId: "x1" } }),
+      entry("z2", 1, 2, "ORCHARD BAKERY", { relation: { kind: "duplicate_of", rowId: "a2" } }),
+    ]);
+    // The text differs, so x2 is not proven the same entry; its posting facts still vouch for a2.
+    expect(settled.links).toEqual(new Map([["a2", "a1"]]));
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
+  });
+
+  it("surfaces a claim on the same printed entry under another date only on the adjacent screenshot", () => {
+    const later = { date: "2031-08-06", amount: 50000 };
+    const settled = settleImportDuplicates([
+      entry("x0", 0, 0, "TRANSFER TO SAVINGS", { date: "2031-08-05", amount: 50000 }),
+      entry("x1", 1, 0, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("x2", 2, 0, "TRANSFER TO SAVINGS", { ...later, relation: { kind: "duplicate_of", rowId: "x1" } }),
+      entry("x4", 4, 0, "TRANSFER TO SAVINGS", { ...later, relation: { kind: "duplicate_of", rowId: "x0" } }),
+      entry("y2", 2, 1, "TRANSFER TO CHECKING", { ...later, relation: { kind: "duplicate_of", rowId: "x1" } }),
+    ]);
+
+    expect(settled.links.has("x2")).toBe(false);
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
+  });
+
+  it("never settles a charged capture onto one the bank declined", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000, postingStatus: "declined" }),
+      entry("b1", 0, 2, "PINE HARDWARE"),
+      entry("a2", 1, 0, "ORCHARD BAKERY"),
+      entry("x2", 1, 1, "TRANSFER TO SAVINGS", { amount: 50000, relation: { kind: "duplicate_of", rowId: "x1" } }),
+      entry("b2", 1, 2, "PINE HARDWARE"),
+    ]);
+
+    expect(settled.links.has("x2")).toBe(false);
+    expect(settled.possible.map((pair) => pair.laterRowId)).not.toContain("x2");
+  });
+
+  it("lets one screenshot settle onto an entry once, whichever of its captures it names", () => {
+    const settled = settleImportDuplicates([
+      entry("p0", 0, 0, "ORCHARD BAKERY"),
+      entry("a", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("q0", 0, 2, "PINE HARDWARE"),
+      entry("p1", 1, 0, "ORCHARD BAKERY"),
+      entry("b", 1, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("q1", 1, 2, "PINE HARDWARE"),
+      // two separate payments on one screenshot, each naming another capture of the same entry
+      entry("c", 2, 0, "TRANSFER TO SAVINGS", { amount: 50000, relation: { kind: "duplicate_of", rowId: "a" } }),
+      entry("r", 2, 1, "CEDAR BAKERY"),
+      entry("d", 2, 2, "TRANSFER TO SAVINGS", { amount: 50000, relation: { kind: "duplicate_of", rowId: "b" } }),
+    ]);
+
+    expect(settled.links.get("b")).toBe("a");
+    expect(settled.links.get("c")).toBe("a");
+    expect(settled.links.has("d")).toBe(false);
+    expect(settled.possible).toContainEqual({ earlierRowId: "b", laterRowId: "d" });
   });
 });

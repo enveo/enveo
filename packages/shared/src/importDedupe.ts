@@ -1,4 +1,5 @@
-export type ImportDupStatus = "new" | "exists" | "probable";
+export const IMPORT_DUP_STATUSES = ["new", "exists", "probable"] as const;
+export type ImportDupStatus = (typeof IMPORT_DUP_STATUSES)[number];
 
 export type ImportMoneyDirection = "in" | "out";
 
@@ -40,45 +41,62 @@ const weakKey = (date: string, amount: number): string => `${date}|${amount}`;
 const transferKey = (date: string, amount: number, direction: ImportMoneyDirection): string => `${date}|${amount}|${direction}`;
 
 export interface ImportDupIndex {
-  strong: Set<string>;
-  weak: Set<string>;
-
-  transfers: Set<string>;
-
+  /**
+   * Classifies one candidate and, on an exact match, CLAIMS the existing row it matched: every
+   * recorded transaction stands for exactly one imported entry, so a second identical entry of
+   * the same day is not hidden behind the first one's booking.
+   */
+  claim(item: ImportCandidate): ImportDupStatus;
+  /** Legacy batch callers without review identities: identical later items count as this one. */
   markSeen(item: ImportCandidate): void;
 }
 
 export function buildImportDupIndex(rows: ExistingImportRow[]): ImportDupIndex {
-  const strong = new Set<string>();
+  const strong = new Map<string, number[]>();
+  const transfers = new Map<string, number[]>();
   const weak = new Set<string>();
-  const transfers = new Set<string>();
-  for (const row of rows) {
+  const seen = new Set<string>();
+  const claimed = new Set<number>();
+  const add = (index: Map<string, number[]>, key: string, position: number) => index.set(key, [...(index.get(key) ?? []), position]);
+  rows.forEach((row, position) => {
     if (row.transferDirection) {
-      transfers.add(transferKey(row.date, row.amount, row.transferDirection));
+      add(transfers, transferKey(row.date, row.amount, row.transferDirection), position);
       // The receiving side has no text of its own to match; it is identified by the transfer set
       // alone and must not turn every unrelated same-day amount into a "probable" duplicate.
-      if (row.transferDirection === "in") continue;
+      if (row.transferDirection === "in") return;
     }
     const ref = norm(row.sourceRef);
-    if (ref) strong.add(strongKey(row.date, row.amount, ref));
+    if (ref) add(strong, strongKey(row.date, row.amount, ref), position);
     weak.add(weakKey(row.date, row.amount));
-  }
+  });
+  const claimFrom = (positions: readonly number[] | undefined): boolean => {
+    const free = positions?.find((position) => !claimed.has(position));
+    if (free === undefined) return false;
+    claimed.add(free);
+    return true;
+  };
   return {
-    strong,
-    weak,
-    transfers,
+    claim(item) {
+      const keys = candidateRefs(item.rawPlace).map((ref) => strongKey(item.date, item.amount, ref));
+      if (keys.some((key) => seen.has(key))) return "exists";
+      if (keys.some((key) => claimFrom(strong.get(key)))) return "exists";
+      const transfer = item.direction ? transferKey(item.date, item.amount, item.direction) : null;
+      if (transfer !== null && claimFrom(transfers.get(transfer))) return "exists";
+      // Every exact counterpart is already taken by an earlier identical entry: this one may be
+      // a genuine repeat, so it is shown for review instead of being hidden.
+      if (keys.some((key) => strong.has(key)) || (transfer !== null && transfers.has(transfer))) return "probable";
+      if (weak.has(weakKey(item.date, item.amount))) return "probable";
+      return "new";
+    },
     markSeen(item) {
       const ref = norm(item.rawPlace);
-      if (ref) strong.add(strongKey(item.date, item.amount, ref));
+      if (ref) seen.add(strongKey(item.date, item.amount, ref));
     },
   };
 }
 
 export function classifyImportDup(item: ImportCandidate, index: ImportDupIndex): ImportDupStatus {
-  if (candidateRefs(item.rawPlace).some((ref) => index.strong.has(strongKey(item.date, item.amount, ref)))) return "exists";
-  if (item.direction && index.transfers.has(transferKey(item.date, item.amount, item.direction))) return "exists";
-  if (index.weak.has(weakKey(item.date, item.amount))) return "probable";
-  return "new";
+  return index.claim(item);
 }
 
 export function existingImportRowsForAccount(

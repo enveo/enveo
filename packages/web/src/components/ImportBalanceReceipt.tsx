@@ -1,4 +1,4 @@
-import type { BalanceMatchChange, BalanceMatchNearest } from "@enveo/shared";
+import type { BalanceMatchChange } from "@enveo/shared";
 import type { ReactNode } from "react";
 import { useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
@@ -11,7 +11,7 @@ export type ImportBalanceMatchState =
   | { kind: "idle" }
   | { kind: "searching" }
   | { kind: "proposal"; changes: BalanceMatchChange[]; rationale: string | null; alternatives: number }
-  | { kind: "none"; nearest: BalanceMatchNearest | null }
+  | { kind: "none" }
   | { kind: "declined"; rationale: string };
 
 export function ImportBalanceReceipt({
@@ -30,8 +30,9 @@ export function ImportBalanceReceipt({
   onReconcileAfter,
   onMatch,
   onApply,
-  onApplyNearest,
   onDismiss,
+  fromScreenshot,
+  foreignRows,
 }: {
   source: ImportBalanceEffect | null;
 
@@ -51,9 +52,11 @@ export function ImportBalanceReceipt({
   onReconcileAfter: (value: boolean) => void;
   onMatch: () => void;
   onApply: () => void;
-
-  onApplyNearest: () => void;
   onDismiss: () => void;
+  /** The bank figure is the one read from the screenshot, not typed by the human. */
+  fromScreenshot: boolean;
+  /** Selected rows still counted at their foreign face value. */
+  foreignRows: number;
 }) {
   const C = useTheme();
   const { t, tp } = useT();
@@ -123,12 +126,28 @@ export function ImportBalanceReceipt({
           externalPad={pad}
         />
       </div>
+      {fromScreenshot && (
+        <div data-testid="import-bank-from-screenshot" style={{ fontSize: 12, color: C.mute, marginTop: -2 }}>
+          {t("Read from the screenshot. Check it against your bank.")}
+        </div>
+      )}
       {difference !== null &&
         line(
-          difference === 0 ? t("Matches the bank") : t("Difference"),
-          difference === 0 ? <span style={{ color: TEAL }}>✓</span> : figure(difference, difference > 0 ? "pos" : "neg"),
+          // Rows still counted at their foreign face value cannot confirm a match, even at zero.
+          difference === 0 && foreignRows === 0 ? t("Matches the bank") : t("Difference"),
+          difference === 0 && foreignRows === 0 ? (
+            <span style={{ color: TEAL }}>✓</span>
+          ) : (
+            figure(difference, difference > 0 ? "pos" : difference < 0 ? "neg" : "text")
+          ),
           { strong: true, testId: "import-bank-difference" },
         )}
+
+      {difference !== null && foreignRows > 0 && (
+        <div data-testid="import-bank-foreign" style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.45, color: C.warn }}>
+          {t("Rows in a foreign currency count at face value here, so the difference is not exact until you enter their amounts in the account currency.")}
+        </div>
+      )}
 
       {difference !== null && difference !== 0 && match.kind !== "proposal" && (
         <button
@@ -221,31 +240,6 @@ export function ImportBalanceReceipt({
                 : t("No combination of uncertain rows explains the difference.")}
           </div>
           {match.kind === "declined" && match.rationale && <div style={{ marginTop: 4, color: C.soft }}>{match.rationale}</div>}
-          {match.kind === "none" && match.nearest && (
-            <div data-testid="import-bank-nearest" style={{ marginTop: 10, paddingLeft: 12, borderLeft: `2px solid ${C.line}` }}>
-              <div style={{ fontSize: 13, fontWeight: 650, color: C.text, marginBottom: 2 }}>{t("Closest fit")}</div>
-              {match.nearest.changes.map(changeLine)}
-              {line(t("Still unexplained"), figure(match.nearest.residual, match.nearest.residual > 0 ? "pos" : "neg"), { strong: true, rule: true })}
-              <button
-                type="button"
-                onClick={onApplyNearest}
-                style={{
-                  marginTop: 8,
-                  width: "100%",
-                  padding: "10px 8px",
-                  borderRadius: 10,
-                  border: `1px solid ${C.line}`,
-                  background: C.bg,
-                  color: C.text,
-                  fontWeight: 650,
-                  fontSize: 13,
-                  cursor: "pointer",
-                }}
-              >
-                {t("Apply the closest fit")}
-              </button>
-            </div>
-          )}
           {diagnosis && diagnosis.manualEntries.length > 0 && (
             <div data-testid="import-manual-entries" style={{ marginTop: 8 }}>
               <div style={{ color: C.soft }}>{t("Entered by hand in this period, worth a second look:")}</div>

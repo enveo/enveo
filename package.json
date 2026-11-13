@@ -40,7 +40,8 @@
     "db:generate": "bun run --cwd packages/api db:generate",
     "db:migrate": "bun run --cwd packages/api db:migrate",
     "db:seed": "bun run --cwd packages/api db:seed",
-    "auth:reset-password": "bun run --cwd packages/api auth:reset-password"
+    "auth:reset-password": "bun run --cwd packages/api auth:reset-password",
+    "import:stats": "bun run --cwd packages/api import:stats"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

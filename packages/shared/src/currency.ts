@@ -80,3 +80,20 @@ export const SUPPORTED_CURRENCIES = [
 export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 
 export const isSupportedCurrency = (code: string): code is SupportedCurrency => (SUPPORTED_CURRENCIES as readonly string[]).includes(code);
+
+/**
+ * Symbols that name exactly one supported currency. `$`, `kr` or `R` are shared by several
+ * currencies and never identify one on their own; the ISO code always does.
+ */
+export const UNAMBIGUOUS_CURRENCY_SYMBOLS: Readonly<Partial<Record<SupportedCurrency, readonly string[]>>> = {
+  CZK: ["Kč"],
+  EUR: ["€"],
+  GBP: ["£"],
+  ILS: ["₪"],
+  INR: ["₹"],
+  PHP: ["₱"],
+  PLN: ["zł"],
+  THB: ["฿"],
+  TRY: ["₺"],
+  UAH: ["₴"],
+};

@@ -247,10 +247,10 @@ const importExtractResponseFormat = (imageCount: number): Record<string, unknown
 export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRefs, today: string, locale: AiLocale, currency: string): ChatRequest {
   const sysExtract =
     "You extract facts from screenshots (Apple Wallet, bank account history, payment confirmations), not hypotheses. " +
-    `Today is ${today} — resolve relative dates ("today", "yesterday") against this date; when the year is missing, assume the most recent past date. ` +
+    `Today is ${today} — resolve relative dates ("today", "yesterday", "5 hours ago", a weekday name meaning the most recent such day, in any language) against this date; when the year is missing, assume the most recent past date. ` +
     "One output row means one coherent transaction-list entry, date divider, balance/summary, or other distinct text block — not each text line inside an entry. " +
     "Group its amount, merchant/payee, card suffix, and secondary text into that row's rawTextLines. Do not create separate rows for icons, loyalty/reward points, card suffixes, exchange-rate text, or status text that belongs to the same entry. " +
-    "Return those coherent rows in visual order. Use imageIndex plus visualOrder to preserve where each appeared. Preserve each visible line in rawTextLines; trim only surrounding whitespace. " +
+    'Return those coherent rows in visual order. Use imageIndex plus visualOrder to preserve where each appeared. imageIndex is the 0-based position of the screenshot the row appears on, as labelled before each screenshot. Screenshots of one list often overlap: an entry visible on two screenshots is returned once for each, with that screenshot\'s imageIndex. Return at least one row for EVERY screenshot: one that shows no readable entry or interface text gets a single ui_metadata row with amount null whose rawTextLines describe it (e.g. "blank screenshot"). Preserve each visible line in rawTextLines; trim only surrounding whitespace. ' +
     "Rows that are labels, date dividers, balances, summaries, or other interface chrome are still visible evidence: mark them ui_metadata. Use financial_event only for a ledger money movement and supporting_detail for evidence such as a linked FX conversion. " +
     "Return exactly one financial_event for each coherent entry with a primary ledger amount, regardless of whether its meaning is uncertain. Count the visible primary ledger amounts before answering, then verify that each has its own financial_event row. A reward, refund, top-up, deposit, or transfer entry is still a financial_event. Repeated entries remain separate even when their text and amount are identical; never deduplicate entries within one screenshot. Numbers in secondary text never create another financial_event. " +
     "A visible date divider applies to the transaction entries below it until the next divider; the divider itself remains ui_metadata. " +
@@ -272,7 +272,10 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
         role: "user",
         content: [
           { type: "text", text: "Extract all transactions from these screenshots." },
-          ...images.map((url) => ({ type: "image_url", image_url: { url, detail: "high" } })),
+          ...images.flatMap((url, imageIndex) => [
+            { type: "text", text: `imageIndex ${imageIndex}` },
+            { type: "image_url", image_url: { url, detail: "high" } },
+          ]),
         ],
       },
     ],
@@ -286,6 +289,7 @@ export function buildImportStatementExtractPrompt(pages: string[], today: string
     `Today is ${today}; when a year is missing, assume the most recent past date. ` +
     "One output row means one statement entry: a money movement with its amount, or a distinct piece of interface text (page header, column headings, opening/closing balance, totals, footer). Group the lines that belong to one entry — booking date, description, counterparty, card suffix, original-currency amount, running balance — into that row's rawTextLines, one visible line each, verbatim. " +
     "Use imageIndex for the PAGE index (0-based) and visualOrder for the entry's order on that page. Return every entry; never merge, skip or deduplicate entries, even when identical. " +
+    'Return at least one row for EVERY page: a page with no entry gets a single ui_metadata row with amount null whose rawTextLines describe it (e.g. "page footer only"). ' +
     "Statement rows often show TWO dates: the booking (settlement) date and the transaction date. date is the TRANSACTION date when both are visible, else the only date shown. " +
     `amount is the positive integer minor-unit magnitude of the entry's settlement amount in the account currency (${currency}), never the running balance, never an original foreign-currency amount; put the original amount and its currency into rawTextLines only. A settlement line printed in another currency (an exchange entry) keeps that currency in currency. ` +
     "direction is credit for an incoming amount and debit for an outgoing one, following the printed sign or column. postingStatus is posted for every statement entry unless the text says pending or declined. " +
@@ -487,6 +491,14 @@ export function parseImportEnrichResponse(
 export type ImportRecognitionChatMeta = { stage: "extract"; chunk: number } | { stage: "seam" } | { stage: "enrich"; batch: number };
 
 export type ImportRecognitionChat = (request: ChatRequest, timeoutMs?: number, meta?: ImportRecognitionChatMeta) => Promise<string>;
+
+/** An extraction answer that misplaces its rows across the supplied images: retried as malformed. */
+export class ImportExtractionMisplacedError extends Error {
+  constructor(detail: string) {
+    super(`invalid import extraction: ${detail}`);
+    this.name = "ImportExtractionMisplacedError";
+  }
+}
 
 export class ImportEnrichmentMalformedError extends Error {
   constructor(readonly reason: unknown) {
@@ -845,10 +857,13 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     const annotations = new Map(merged.proposals.map((proposal) => [proposal.rowId, proposal]));
     const finalRows = result.rows.map((row) => {
       const annotation = annotations.get(row.rowId)!;
+      // A link to a printed exchange figure is read evidence, not an annotation: cycle two may
+      // add links but never drops the one the amount was converted from.
+      const keepsExchange = row.relation?.kind === "fx_for";
       return {
         ...row,
-        semanticKind: annotation.semanticKind,
-        relation: annotation.relation,
+        semanticKind: keepsExchange && row.semanticKind === "fx_conversion" ? row.semanticKind : annotation.semanticKind,
+        relation: keepsExchange ? row.relation : annotation.relation,
         reviewReasons: mergeReviewReasons(row.reviewReasons, annotation.reviewReasons),
       };
     });
@@ -871,7 +886,11 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       const row = finalRowById.get(proposal.rowId)!;
       const actionableAnnotationReasons =
         row.rowRole === "financial_event" && row.postingStatus !== "declined"
-          ? annotation.reviewReasons.filter((reason) => !["unknown_kind", "inconsistent_direction"].includes(reason) || proposal.reviewReasons.includes(reason))
+          ? annotation.reviewReasons.filter(
+              // Fact-derived reasons come from the final validation alone, or a conversion that
+              // no longer holds would keep claiming its amount came from an exchange line.
+              (reason) => !["unknown_kind", "inconsistent_direction", "fx_converted"].includes(reason) || proposal.reviewReasons.includes(reason),
+            )
           : [];
       return {
         ...proposal,
@@ -983,7 +1002,14 @@ export function parseImportExtractResponse(raw: string, imageCount: number): Imp
     currency: row.currency?.trim().toUpperCase() ?? null,
     ...(suspiciousText ? { suspiciousText: true } : {}),
   }));
-  if (rows.some((row) => row.imageIndex >= imageCount)) throw new Error("import row imageIndex is outside the supplied images");
+  if (rows.some((row) => row.imageIndex >= imageCount)) throw new ImportExtractionMisplacedError("a row imageIndex is outside the supplied images");
+  // The prompt asks for at least one row per image (a blank one gets a ui_metadata row), so an image
+  // without a row means the answer numbered them wrongly; overlapping captures would then collapse
+  // into one screenshot, where identical entries are separate payments. Retrying beats a silently
+  // doubled import. Statement pages without text never reach the model, and both prompts ask for a
+  // row on every page or screenshot.
+  const shown = new Set(rows.map((row) => row.imageIndex));
+  if (shown.size < imageCount) throw new ImportExtractionMisplacedError("the answer left a supplied image without rows");
   const ordered = rows
     .map((row, inputOrder) => ({ row, inputOrder }))
     .sort((left, right) => left.row.imageIndex - right.row.imageIndex || left.row.visualOrder - right.row.visualOrder || left.inputOrder - right.inputOrder);

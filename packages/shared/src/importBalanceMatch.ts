@@ -14,7 +14,10 @@
  */
 
 export const BALANCE_MATCH_MAX_CANDIDATES = 40;
-export const BALANCE_MATCH_MAX_CHANGES = 5;
+/** Deeper sets fit by coincidence: over 30–40 uncertain rows almost any difference has an exact
+ *  4–5-change "explanation" even when the real cause (an entry missing between screenshots) is
+ *  not among them, while a real cause inside the pool is nearly always 1–3 changes. */
+export const BALANCE_MATCH_MAX_CHANGES = 3;
 export const BALANCE_MATCH_MAX_SOLUTIONS = 8;
 
 export interface BalanceMatchCandidate {
@@ -84,67 +87,4 @@ export function findBalanceMatches(
     if (solutions.length > 0) return solutions;
   }
   return [];
-}
-
-export interface BalanceMatchNearest {
-  changes: BalanceMatchChange[];
-  /** What the difference becomes after these changes (bank minus balance after); never zero here. */
-  residual: number;
-}
-
-/** Each extra change costs this share of the difference, and never less than
- *  `BALANCE_MATCH_MIN_CHANGE_PENALTY` minor units: four small tweaks that shave a few cents more
- *  than one cancelled top-up are over-fitting, and a difference of a few units is not worth
- *  unchecking anything for. */
-export const BALANCE_MATCH_CHANGE_PENALTY = 0.02;
-export const BALANCE_MATCH_MIN_CHANGE_PENALTY = 500;
-
-/**
- * When nothing explains the difference exactly, the change set that comes CLOSEST is still
- * useful: applied, it leaves a residual small enough to name (a single missing row, a fee) and to
- * settle with a balance adjustment. "Closest" weighs the remaining difference against the number
- * of changes (`BALANCE_MATCH_CHANGE_PENALTY` of the difference per change), so one large, plausible
- * change beats several small ones that fit marginally better. Bounded like the exact search but
- * one change shallower, since every combination must be visited.
- */
-export function findNearestBalanceMatch(
-  candidates: ReadonlyArray<BalanceMatchCandidate>,
-  difference: number,
-  limits: { maxChanges?: number; maxCandidates?: number } = {},
-): BalanceMatchNearest | null {
-  const maxChanges = limits.maxChanges ?? BALANCE_MATCH_MAX_CHANGES - 1;
-  const maxCandidates = limits.maxCandidates ?? BALANCE_MATCH_MAX_CANDIDATES;
-  if (!Number.isInteger(difference) || difference === 0) return null;
-  const pool = candidates
-    .slice(0, maxCandidates)
-    .map(balanceMatchOptions)
-    .filter((options) => options.length > 0);
-  if (pool.length === 0) return null;
-
-  let best: BalanceMatchNearest | null = null;
-  let bestCost = Number.POSITIVE_INFINITY;
-  const penalty = Math.max(BALANCE_MATCH_MIN_CHANGE_PENALTY, Math.round(Math.abs(difference) * BALANCE_MATCH_CHANGE_PENALTY));
-  const chosen: BalanceMatchChange[] = [];
-  const consider = (sum: number) => {
-    const residual = difference - sum;
-    const cost = Math.abs(residual) + chosen.length * penalty;
-    if (cost < bestCost) {
-      bestCost = cost;
-      best = { changes: [...chosen], residual };
-    }
-  };
-  const search = (from: number, sum: number): void => {
-    if (chosen.length > 0) consider(sum);
-    if (chosen.length >= maxChanges) return;
-    for (let index = from; index < pool.length; index += 1) {
-      for (const option of pool[index]!) {
-        chosen.push(option);
-        search(index + 1, sum + option.delta);
-        chosen.pop();
-      }
-    }
-  };
-  search(0, 0);
-
-  return best !== null && bestCost < Math.abs(difference) ? best : null;
 }

@@ -3,6 +3,8 @@ import {
   type BalanceMatchChange,
   balanceMatchOptions,
   type ClientLedger,
+  IMPORT_CORRECTION_FIELDS,
+  type ImportCorrectionField,
   type ImportDupStatus,
   type ImportProposal,
   type ImportReviewReason,
@@ -12,6 +14,9 @@ import {
   parseDisplayAmount,
   type ReconciledImportProposal,
   type ReconciledImportRecognitionResult,
+  SUPPORTED_CURRENCIES,
+  type SupportedCurrency,
+  UNAMBIGUOUS_CURRENCY_SYMBOLS,
 } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem, ImportApplyResponse, ImportItem } from "./api";
 import { type Message, msg } from "./i18n";
@@ -118,6 +123,43 @@ export function importReviewChanges(args: {
   const bankValue = args.bankValue === args.recognizedBankValue ? null : args.bankValue;
   if (Object.keys(rows).length === 0 && bankValue === null && !args.reconcileAfter) return null;
   return { rows, bankValue, reconcileAfter: args.reconcileAfter };
+}
+
+/**
+ * The fields of one row the human changed against what was recognized, for the import receipt.
+ * Final difference only: an edit undone is no correction. A row read in a foreign currency and
+ * booked from an edit is recorded in the budget currency, so its currency counts as corrected.
+ * undefined when the row has no recognized baseline to compare with.
+ */
+export function importRowCorrections(args: {
+  recognized: ImportReviewRow | undefined;
+  row: ImportReviewRow;
+  edit: EditedImportItem | undefined;
+  budgetCurrency: string;
+  accountId: string;
+}): ImportCorrectionField[] | undefined {
+  const { recognized, row, edit } = args;
+  if (!recognized) return undefined;
+  const fields = new Set<ImportCorrectionField>();
+  if (row.include !== recognized.include) fields.add("selection");
+  if (edit) {
+    const base = recognized.item ?? recognized.draftItem;
+    const text = (value: string | null | undefined) => value?.trim() ?? "";
+    const id = (value: string | null | undefined) => value || null;
+    if (edit.type !== base?.type) fields.add("type");
+    if (edit.isRefund !== (base?.isRefund ?? false)) fields.add("isRefund");
+    if (edit.amount !== base?.amount) fields.add("amount");
+    if (recognized.currency !== null && recognized.currency !== args.budgetCurrency) fields.add("currency");
+    if (edit.date !== base?.date) fields.add("date");
+    if (edit.accountId !== args.accountId) fields.add("accountId");
+    if (id(edit.toAccountId) !== id(base?.toAccountId)) fields.add("toAccountId");
+    if (id(edit.envelopeId) !== id(base?.envelopeId)) fields.add("envelopeId");
+    if (id(edit.categoryId) !== id(base?.categoryId)) fields.add("categoryId");
+    if (text(edit.name) !== text(base?.name)) fields.add("name");
+    if (text(edit.placeName) !== text(base?.placeName)) fields.add("placeName");
+    if (text(edit.note) !== "") fields.add("note");
+  }
+  return IMPORT_CORRECTION_FIELDS.filter((field) => fields.has(field));
 }
 
 /** An edit chooses the row's assignment itself, so a saved assignment that is unavailable no
@@ -263,12 +305,68 @@ export function parseImportReviewChanges(json: string): ImportReviewChanges | nu
   return { rows: Object.fromEntries(rows), bankValue: value.bankValue ?? null, reconcileAfter: value.reconcileAfter };
 }
 
-export function visibleImportReviewRows<T extends Pick<ImportReviewRow, "disposition">>(rows: readonly T[]): { row: T; index: number; position: number }[] {
-  const visible: { row: T; index: number; position: number }[] = [];
-  rows.forEach((row, index) => {
-    if (row.disposition !== "supporting") visible.push({ row, index, position: visible.length });
-  });
-  return visible;
+/** What was recognized for a row the review has no item for (already recorded, unresolved): the
+ *  row still shows the recognized name and signed amount instead of a raw text line. */
+export function recognizedImportRowFacts(row: Pick<ImportReviewRow, "draftItem">): {
+  name: string | null;
+  type: ImportReviewDraftItem["type"];
+  isRefund: boolean;
+} {
+  return { name: row.draftItem?.name?.trim() || null, type: row.draftItem?.type ?? null, isRefund: row.draftItem?.isRefund ?? false };
+}
+
+export interface ImportReviewListedRow<T> {
+  row: T;
+  index: number;
+  position: number;
+  /** Listed under the capture it repeats. */
+  nested: boolean;
+}
+
+export interface ImportReviewListing<T> {
+  rows: ImportReviewListedRow<T>[];
+  repeats: { count: number; selected: number } | null;
+}
+
+/** What the review lists, in order. Supporting detail is not listed. Proven repeats of an entry on
+ *  another screenshot are folded away (owner, 2026-11): they are the overlap of the screenshots,
+ *  not decisions. Opened, each one is listed under the capture it repeats so the pairing is
+ *  visible, or at the end when that capture is not listed. Positions number the listed rows for
+ *  their control labels. */
+export function importReviewListing<T extends Pick<ImportReviewRow, "rowId" | "disposition" | "relation" | "duplicateStatus" | "include">>(
+  rows: readonly T[],
+  showRepeats: boolean,
+): ImportReviewListing<T> {
+  const listed = rows.flatMap((row, index) => (row.disposition === "supporting" ? [] : [{ row, index }]));
+  const main = listed.filter(({ row }) => !repeatsAnotherCapture(row));
+  const repeats = listed.filter(({ row }) => repeatsAnotherCapture(row));
+  const byId = new Map(rows.map((row) => [row.rowId, row]));
+  const keptOf = (row: T): string => {
+    const seen = new Set([row.rowId]);
+    let kept = row;
+    for (let next = kept.relation?.kind === "duplicate_of" ? byId.get(kept.relation.rowId) : undefined; next && !seen.has(next.rowId); ) {
+      kept = next;
+      seen.add(next.rowId);
+      next = kept.relation?.kind === "duplicate_of" ? byId.get(kept.relation.rowId) : undefined;
+    }
+    return kept.rowId;
+  };
+  const shown = new Set(main.map(({ row }) => row.rowId));
+  const under = new Map<string, typeof repeats>();
+  const unplaced: typeof repeats = [];
+  for (const entry of showRepeats ? repeats : []) {
+    const kept = keptOf(entry.row);
+    if (shown.has(kept)) under.set(kept, [...(under.get(kept) ?? []), entry]);
+    else unplaced.push(entry);
+  }
+  const ordered = [
+    ...main.flatMap((entry) => [{ ...entry, nested: false }, ...(under.get(entry.row.rowId) ?? []).map((repeat) => ({ ...repeat, nested: true }))]),
+    ...unplaced.map((entry) => ({ ...entry, nested: false })),
+  ];
+  return {
+    rows: ordered.map((entry, position) => ({ ...entry, position })),
+    repeats: repeats.length ? { count: repeats.length, selected: repeats.filter(({ row }) => row.include).length } : null,
+  };
 }
 
 export type ImportBlockingIssue = ImportReviewReason | "currency_mismatch" | "assignment_unavailable";
@@ -337,6 +435,10 @@ const dispositionBadge = (disposition: ImportReviewDisposition): ImportReviewBad
   }
 };
 
+/** A capture linked as the repeat of an entry on another screenshot: shown unchecked, includable. */
+export const repeatsAnotherCapture = (row: Pick<ImportReviewRow, "relation" | "duplicateStatus">): boolean =>
+  row.relation?.kind === "duplicate_of" && row.duplicateStatus === "probable";
+
 export function reviewBadges(row: ImportReviewRow, edit?: EditedImportItem): ImportReviewBadge[] {
   const badges: ImportReviewBadge[] = [];
   const disposition = row.duplicateStatus === "exists" ? null : dispositionBadge(edit ? "candidate" : row.disposition);
@@ -348,15 +450,20 @@ export function reviewBadges(row: ImportReviewRow, edit?: EditedImportItem): Imp
   if (row.semanticKind === "cashback_or_reward" && (!edit || edit.type === "income")) badges.push({ label: msg("Reward / income"), tone: "positive" });
   if (row.alreadyApplied) badges.push({ label: msg("Already added by this import"), tone: "neutral" });
   else if (row.duplicateStatus === "exists") badges.push({ label: msg("Already exists"), tone: "neutral" });
-  if (row.duplicateStatus === "probable") badges.push({ label: msg("Probable duplicate"), tone: "warning" });
+  const repeat = repeatsAnotherCapture(row);
+  if (repeat) badges.push({ label: msg("Repeats a row from another screenshot"), tone: "neutral" });
+  else if (row.duplicateStatus === "probable") badges.push({ label: msg("Probable duplicate"), tone: "warning" });
   if (row.blockingIssues.includes("assignment_unavailable")) badges.push({ label: msg("Saved assignment is unavailable"), tone: "warning" });
   for (const reason of row.reviewReasons) {
+    if (repeat && reason === "relation_changes_ledger_shape") continue;
     if (edit && ["missing_fact", "unknown_kind", "inconsistent_direction", "unknown_transfer_endpoint", "fact_correction"].includes(reason)) continue;
     const label = importReviewReasonMessage(reason);
     badges.push({ label, tone: reason === "pending_or_declined" ? "neutral" : "warning" });
   }
+  // A repeat left out asks nothing of the human: its kept capture carries the same warnings.
+  const quiet = repeat && !row.include;
   const unique = new Map<Message, ImportReviewBadge>();
-  for (const badge of badges) unique.set(badge.label, badge);
+  for (const badge of badges) if (!quiet || badge.tone !== "warning") unique.set(badge.label, badge);
   return [...unique.values()];
 }
 
@@ -399,6 +506,27 @@ function completeCandidateItem(args: {
       };
   const item = importReviewItem({ ...result, rawPlace: sourceRef || null }, args.automaticEnvelopeId);
   return { ...item, include: proposal.selected && item.include };
+}
+
+/** A repeat's read facts equal its kept capture's, so it books what the kept one books: the
+ *  account-currency figure printed for a foreign payment goes to the kept capture alone. */
+function repeatAsCandidate(repeat: ReconciledImportProposal, proposals: ReadonlyMap<string, ReconciledImportProposal>): ReconciledImportProposal {
+  let kept = repeat;
+  const seen = new Set([repeat.rowId]);
+  for (let next = kept.relation?.kind === "duplicate_of" ? proposals.get(kept.relation.rowId) : undefined; next && !seen.has(next.rowId); ) {
+    kept = next;
+    seen.add(next.rowId);
+    next = kept.relation?.kind === "duplicate_of" ? proposals.get(kept.relation.rowId) : undefined;
+  }
+  const fx = kept.reviewReasons.includes("fx_converted") && !repeat.reviewReasons.includes("fx_converted");
+  return {
+    ...repeat,
+    amount: kept.amount,
+    currency: kept.currency,
+    reviewReasons: fx ? [...repeat.reviewReasons, "fx_converted"] : repeat.reviewReasons,
+    disposition: "candidate",
+    selected: false,
+  };
 }
 
 const effectiveDuplicateStatus = (
@@ -454,9 +582,13 @@ export function buildImportReviewRows(args: {
     const receivesDryResult =
       proposal.selected && proposal.disposition === "candidate" && proposal.date !== null && proposal.amount !== null && proposal.type !== null;
     const dryResult = receivesDryResult ? args.dryRunResults[dryIndex++] : undefined;
-    const duplicateStatus = alreadyApplied ? "exists" : effectiveDuplicateStatus(proposal.duplicateStatus, dryResult?.status);
+    // A repeat of an entry on another screenshot is a verdict about the screenshots, not about the
+    // ledger: the human may still add it as a separate payment, so it stays a candidate, unchecked.
+    const repeat = !alreadyApplied && proposal.relation?.kind === "duplicate_of" && proposal.duplicateStatus === "exists";
+    const reviewed: ReconciledImportProposal = repeat ? repeatAsCandidate(proposal, proposals) : proposal;
+    const duplicateStatus = alreadyApplied ? "exists" : repeat ? "probable" : effectiveDuplicateStatus(proposal.duplicateStatus, dryResult?.status);
     const item = completeCandidateItem({
-      proposal,
+      proposal: reviewed,
       recognition: args.recognition,
       ledger: args.ledger,
       dryResult,
@@ -464,31 +596,31 @@ export function buildImportReviewRows(args: {
       automaticEnvelopeId: args.automaticEnvelopeId,
     });
     const reviewItem = duplicateStatus === "exists" ? null : item;
-    const blockingIssues: ImportBlockingIssue[] = importProposalBlockingReasons(proposal);
-    if ((proposal as ReconciledImportProposal & { assignmentUnavailable?: boolean }).assignmentUnavailable) blockingIssues.push("assignment_unavailable");
-    if (proposal.currency && proposal.currency !== args.budgetCurrency) blockingIssues.push("currency_mismatch");
+    const blockingIssues: ImportBlockingIssue[] = importProposalBlockingReasons(reviewed);
+    if ((reviewed as ReconciledImportProposal & { assignmentUnavailable?: boolean }).assignmentUnavailable) blockingIssues.push("assignment_unavailable");
+    if (reviewed.currency && reviewed.currency !== args.budgetCurrency) blockingIssues.push("currency_mismatch");
     return {
       rowId: rawRow.rowId,
-      disposition: proposal.disposition,
-      semanticKind: proposal.semanticKind,
-      relation: proposal.relation,
-      reviewReasons: proposal.reviewReasons,
-      requiresReview: proposal.reviewReasons.length > 0 || duplicateStatus === "probable" || blockingIssues.length > 0,
+      disposition: reviewed.disposition,
+      semanticKind: reviewed.semanticKind,
+      relation: reviewed.relation,
+      reviewReasons: reviewed.reviewReasons,
+      requiresReview: reviewed.reviewReasons.length > 0 || duplicateStatus === "probable" || blockingIssues.length > 0,
       blockingIssues,
       duplicateStatus,
       alreadyApplied,
       sourceRef,
       rawTextLines: rawRow.rawTextLines,
-      date: proposal.date,
-      amount: proposal.amount,
-      currency: proposal.currency,
+      date: reviewed.date,
+      amount: reviewed.amount,
+      currency: reviewed.currency,
       include: duplicateStatus === "new" && !skippedRowIds.has(rawRow.rowId) && reviewItem?.include === true,
-      editable: duplicateStatus !== "exists" && (reviewItem !== null || (proposal.disposition === "unresolved" && rawRow.rowRole === "financial_event")),
+      editable: duplicateStatus !== "exists" && (reviewItem !== null || (reviewed.disposition === "unresolved" && rawRow.rowRole === "financial_event")),
       draftItem: {
-        ...proposal,
-        date: isCalendarDate(proposal.date) ? proposal.date : null,
+        ...reviewed,
+        date: isCalendarDate(reviewed.date) ? reviewed.date : null,
         rawPlace: sourceRef || null,
-        currency: proposal.currency ?? undefined,
+        currency: reviewed.currency ?? undefined,
       },
       item: reviewItem ? { ...reviewItem, include: reviewItem.include } : null,
     };
@@ -523,7 +655,9 @@ export function reviewedImportRowsForApply(args: {
       items: [{ ...item, include: true }],
       edited: edit ? { 0: edit } : {},
       editedAutomaticDefaults: { 0: args.editedAutomaticDefaults[index] ?? false },
-    }).map((item) => ({ ...item, importRowId: row.rowId }));
+      // A flagged repeat the human chose to add is not matched again on its own: the recorded
+      // row it resembles already stands for another entry of this review.
+    }).map((item) => ({ ...item, importRowId: row.rowId, ...(row.duplicateStatus === "probable" ? { force: true } : {}) }));
   });
 }
 
@@ -568,7 +702,7 @@ export function importBalanceEffect(args: {
 export function importReviewDoneStats(rows: ImportReviewRow[], result: { added: number; skipped: number }): { added: number; dup: number } {
   return {
     added: result.added,
-    dup: rows.filter((row) => row.duplicateStatus === "exists").length + result.skipped,
+    dup: rows.filter((row) => row.duplicateStatus === "exists" || (repeatsAnotherCapture(row) && !row.include)).length + result.skipped,
   };
 }
 
@@ -596,10 +730,14 @@ export function balanceMatchCandidatesForReview(args: {
 }): ReviewBalanceMatchCandidate[] {
   const candidates: ReviewBalanceMatchCandidate[] = [];
   args.rows.forEach((row, index) => {
-    if (row.duplicateStatus === "exists" || row.alreadyApplied) return;
+    // A proven repeat is never a balance explanation: re-adding overlap would "fix" a gap that is
+    // really an entry missing between screenshots.
+    if (row.duplicateStatus === "exists" || row.alreadyApplied || repeatsAnotherCapture(row)) return;
     const edit = args.edited[index];
     if (!row.item && !edit) return;
     if (edit && row.include) return;
+    // A foreign amount is not an account-currency effect; it stays out until the human enters one.
+    if (!edit && countsAtFaceValue(row)) return;
     const doubtful = row.requiresReview || row.duplicateStatus === "probable";
     if (!doubtful && row.include) return;
     const item = reviewApplyItem(row, edit);
@@ -616,6 +754,14 @@ export function balanceMatchCandidatesForReview(args: {
     });
   });
   return candidates.sort((left, right) => Number(right.doubtful) - Number(left.doubtful) || left.index - right.index);
+}
+
+const countsAtFaceValue = (row: ImportReviewRow): boolean => row.blockingIssues.includes("currency_mismatch");
+
+/** Selected rows still in a foreign currency: the balance after import counts them at face value,
+ *  so the difference to the bank is not exact until the human enters their account-currency amount. */
+export function foreignRowsAtFaceValue(rows: readonly ImportReviewRow[], edited: Record<number, EditedImportItem>): number {
+  return rows.filter((row, index) => row.include && row.duplicateStatus !== "exists" && !edited[index] && countsAtFaceValue(row)).length;
 }
 
 export function applyBalanceMatchToReview(args: {
@@ -637,8 +783,10 @@ export function applyBalanceMatchToReview(args: {
     rows[index] = { ...row, include: true };
     if (change.action === "flip") {
       const current = reviewApplyItem(row, edited[index])!;
+      // Money in (income, or a refund) becomes a plain expense; money out becomes income.
+      const credit = current.type === "income" || current.isRefund === true;
       edited[index] = {
-        type: current.type === "income" ? "expense" : "income",
+        type: credit ? "expense" : "income",
         accountId: current.accountId ?? args.defaultAccountId,
         toAccountId: null,
         isRefund: false,
@@ -655,33 +803,84 @@ export function applyBalanceMatchToReview(args: {
   return { rows, edited };
 }
 
-const BALANCE_LABEL = /saldo|balance|dost[eę]pn|available|stan konta|kontostand|solde|saldo disponible/i;
-const NUMBER_TOKEN = /-?\d[\d\s\u00a0.,]*\d|-?\d/g;
+const CLOSING_BALANCE_LABEL = /closing balance|saldo (końcowe|zamknięcia)/i;
+const AVAILABLE_BALANCE_LABEL = /dost[eę]pn|available|saldo disponible/i;
+const BALANCE_LABEL = /saldo|balance|dost[eę]pn|available|stan konta|kontostand|solde/i;
+/** Labelled figures that are not the account's own current balance. */
+const OTHER_FIGURE_LABEL = /opening|pocz[aą]tkow|otwarci|previous|poprzedni|reward|points|\bpts\b|\bpkt\b|punkt/i;
+/** With a credit line or an overdraft the "available" figure includes the limit, so it is not the balance. */
+const CREDIT_LINE =
+  /credit limit|credit line|overdraft|limit kredyt|linia kredyt|kredyt odnawialn|limit debet|debet w (koncie|rachunku)|dopuszczaln[a-ząćęłńóśźż]* debet|kredyt w (koncie|rachunku)|kreditlinie|kreditrahmen|dispositionskredit|dispolimit/i;
+const DATE_TEXT = /\b\d{1,4}[./-]\d{1,2}[./-]\d{1,4}\b|\b\d{1,2}\s+\p{L}{3,}\.?\s+\d{4}\b|\b\p{L}{3,}\.?\s+\d{1,2},?\s+\d{4}\b/gu;
+const SIGNED_FIGURE = /(-?)(\d[\d\s\u00a0.,]*\d|\d)(-(?![\d]))?/g;
 
-export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLines: string[] }>): number | null {
-  for (const label of [CLOSING_BALANCE_LABEL, BALANCE_LABEL]) {
-    for (const row of rows) {
-      if (row.rowRole !== "ui_metadata") continue;
-      const index = row.rawTextLines.findIndex((text) => label.test(text));
-      if (index === -1) continue;
-      const found = balanceFigure(row.rawTextLines[index]!, row.rawTextLines[index + 1], label);
-      if (found !== null) return found;
+const firstFigure = (text: string): number | null => {
+  for (const match of text
+    .replace(/[\u2212\u2012\u2013\u2014]/g, "-")
+    .replace(DATE_TEXT, " ")
+    .matchAll(SIGNED_FIGURE)) {
+    const value = parseDisplayAmount(match[2]!);
+    if (value !== null) return match[1] || match[3] ? -value : value;
+  }
+  return null;
+};
+
+const currencyMark = (code: string): RegExp =>
+  new RegExp(
+    [
+      `(?<![A-Za-z])${code}(?![A-Za-z])`,
+      ...(UNAMBIGUOUS_CURRENCY_SYMBOLS[code as SupportedCurrency] ?? []).map((symbol) => symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    ].join("|"),
+  );
+/** A line that names another currency and not the account's is another account's figure. */
+const otherCurrencyOnly = (text: string, currency: string | undefined): boolean =>
+  currency !== undefined && !currencyMark(currency).test(text) && SUPPORTED_CURRENCIES.some((code) => code !== currency && currencyMark(code).test(text));
+
+/**
+ * The balance a screenshot or statement header shows, to prefill "Bank shows". Only a figure that
+ * follows its label counts (a date or an account number before it is not the balance), opening,
+ * reward and other-currency figures are skipped, and a closing label beats an available one, which
+ * beats any other balance. Two different figures at the same rank prefill nothing: the human types it.
+ */
+export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLines: string[] }>, currency?: string): number | null {
+  const chrome = rows.filter((row) => row.rowRole === "ui_metadata");
+  const creditLine = chrome.some((row) => row.rawTextLines.some((text) => CREDIT_LINE.test(text)));
+  const ranks = [CLOSING_BALANCE_LABEL, AVAILABLE_BALANCE_LABEL, BALANCE_LABEL];
+  for (const label of ranks) {
+    const figures = new Set<number>();
+    for (const row of chrome) {
+      for (const [index, text] of row.rawTextLines.entries()) {
+        if (creditLine && AVAILABLE_BALANCE_LABEL.test(text)) continue;
+        for (const found of balanceFigures(text, row.rawTextLines[index + 1], label, currency)) figures.add(found);
+      }
     }
+    if (figures.size === 1) return [...figures][0]!;
+    if (figures.size > 1) return null;
   }
   return null;
 }
 
-const CLOSING_BALANCE_LABEL = /closing balance|saldo (końcowe|zamknięcia|dostępne)|dost[eę]pn|available/i;
-
-function balanceFigure(line: string, next: string | undefined, label: RegExp): number | null {
-  const own = (line.replace(label, "").match(NUMBER_TOKEN) ?? []).map(parseDisplayAmount).find((value) => value !== null);
-  if (own !== undefined) return own;
-  if (!next) return null;
+/** The figures a line gives for `label`: the first one after each occurrence of the label, so two
+ *  different balances on one line conflict, or else the cell under the label on the next line. */
+function balanceFigures(line: string, next: string | undefined, label: RegExp, currency: string | undefined): number[] {
+  const labels = [...line.matchAll(new RegExp(label.source, `${label.flags.replace("g", "")}g`))];
+  if (labels.length === 0) return [];
   const cells = line.split(/\s{2,}/);
   const column = cells.findIndex((cell) => label.test(cell));
+  const labelCell = cells[column] ?? line;
+  if (OTHER_FIGURE_LABEL.test(labelCell)) return [];
+  const own = labels.flatMap((match, index) => {
+    const figure = firstFigure(line.slice(match.index + match[0].length, labels[index + 1]?.index ?? line.length));
+    return figure === null ? [] : [figure];
+  });
+  if (own.length > 0) return otherCurrencyOnly(line, currency) ? [] : own;
+  if (!next) return [];
   const below = next.split(/\s{2,}/);
-  const cell = below[column] ?? below[below.length - 1];
-  return (cell?.match(NUMBER_TOKEN) ?? []).map(parseDisplayAmount).find((value) => value !== null) ?? null;
+  const cell = below[column] ?? below[below.length - 1] ?? "";
+  // The label may name the currency the figure below is in ("EUR balance").
+  if (otherCurrencyOnly(cell, currency) || otherCurrencyOnly(labelCell, currency)) return [];
+  const figure = firstFigure(cell);
+  return figure === null ? [] : [figure];
 }
 
 export interface ImportBalanceDiagnosis {

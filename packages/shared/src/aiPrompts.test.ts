@@ -6,6 +6,7 @@ import {
   type ChatMessage,
   cleanImportPlaceName,
   IMPORT_EXTRACT_JSON_SCHEMA,
+  ImportExtractionMisplacedError,
   languageDirectives,
   languageName,
   parseImportEnrichResponse,
@@ -105,9 +106,23 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect(sys).toContain("do not translate data values");
     const content = req.messages[1]!.content as Array<Record<string, unknown>>;
     expect(content[0]).toEqual({ type: "text", text: "Extract all transactions from these screenshots." });
-    expect(content[1]).toEqual({ type: "image_url", image_url: { url: "data:image/png;base64,AAA", detail: "high" } });
+    expect(content[1]).toEqual({ type: "text", text: "imageIndex 0" });
+    expect(content[2]).toEqual({ type: "image_url", image_url: { url: "data:image/png;base64,AAA", detail: "high" } });
     expect((req.responseFormat as { type: string; json_schema: { name: string } }).type).toBe("json_schema");
     expect((req.responseFormat as { type: string; json_schema: { name: string } }).json_schema.name).toBe("extracted_transactions");
+  });
+
+  it("labels every screenshot with the imageIndex the answer must use", () => {
+    const req = buildImportExtractPrompt(["data:image/png;base64,AAA", "data:image/png;base64,BBB"], refs, "2026-07-07", "en", "USD");
+    const content = req.messages[1]!.content as Array<Record<string, unknown>>;
+
+    expect(content.slice(1).map((part) => (part.type === "text" ? part.text : (part.image_url as { url: string }).url))).toEqual([
+      "imageIndex 0",
+      "data:image/png;base64,AAA",
+      "imageIndex 1",
+      "data:image/png;base64,BBB",
+    ]);
+    expect(sysOf(req.messages)).toContain("imageIndex is the 0-based position of the screenshot the row appears on");
   });
 
   it("binds the structured-output image index to the supplied screenshot count", () => {
@@ -231,6 +246,63 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
       ["third", 0, 2],
       ["next-image", 1, 0],
     ]);
+  });
+
+  it("rejects an answer that puts overlapping screenshots under one imageIndex", () => {
+    const row = (rowId: string, imageIndex: number) => ({
+      rowId,
+      imageIndex,
+      visualOrder: 0,
+      rawTextLines: ["12.34 USD", "Corner Grocery"],
+      date: "2026-08-07",
+      amount: 1234,
+      currency: "USD",
+      direction: "debit",
+      postingStatus: "posted",
+      rowRole: "financial_event",
+      semanticKind: "card_purchase",
+      relation: null,
+      confidence: "high",
+      reviewReasons: [],
+    });
+
+    expect(() => parseImportExtractResponse(JSON.stringify({ rows: [row("first", 1), row("repeat", 1)] }), 2)).toThrow(ImportExtractionMisplacedError);
+    expect(parseImportExtractResponse(JSON.stringify({ rows: [row("first", 0), row("repeat", 1)] }), 2).rows).toHaveLength(2);
+  });
+
+  it("accepts a blank screenshot reported as one interface row", () => {
+    const blank = {
+      rowId: "blank",
+      imageIndex: 1,
+      visualOrder: 0,
+      rawTextLines: ["blank screenshot"],
+      date: null,
+      amount: null,
+      currency: null,
+      direction: "unknown",
+      postingStatus: "unknown",
+      rowRole: "ui_metadata",
+      semanticKind: "unknown",
+      relation: null,
+      confidence: "high",
+      reviewReasons: [],
+    };
+    const entry = {
+      ...blank,
+      rowId: "entry",
+      imageIndex: 0,
+      rawTextLines: ["12.34 USD", "Corner Grocery"],
+      date: "2026-08-07",
+      amount: 1234,
+      currency: "USD",
+      direction: "debit",
+      postingStatus: "posted",
+      rowRole: "financial_event",
+      semanticKind: "card_purchase",
+    };
+
+    expect(parseImportExtractResponse(JSON.stringify({ rows: [entry, blank] }), 2).rows.map((r) => r.rowId)).toEqual(["entry", "blank"]);
+    expect(buildImportExtractPrompt([], refs, "2026-07-07", "en", "USD").messages[0]!.content).toContain("Return at least one row for EVERY screenshot");
   });
 
   it("normalizes a zero model amount to an unknown fact instead of rejecting the whole screenshot", () => {
@@ -1470,6 +1542,68 @@ describe("runImportRecognitionPipeline", () => {
     expect(calls).toBe(2);
     expect(result.proposals.find((proposal) => proposal.rowId === "fx")).toMatchObject({ selected: false, reviewReasons: [] });
     expect(result.proposals.find((proposal) => proposal.rowId === "purchase")?.reviewReasons).toContain("relation_changes_ledger_shape");
+  });
+
+  it("keeps a conversion from the exchange line when cycle two drops the link", async () => {
+    const row = (over: Record<string, unknown>) => ({
+      imageIndex: 0,
+      date: "2026-08-07",
+      direction: "debit",
+      postingStatus: "posted",
+      relation: null,
+      confidence: "medium",
+      reviewReasons: [],
+      ...over,
+    });
+    const enrich = (rowId: string, semanticKind: string) => ({
+      rowId,
+      name: "",
+      place: null,
+      envelopeId: null,
+      categoryId: null,
+      semanticKind,
+      relation: null,
+      reviewReasons: [],
+    });
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) {
+          return JSON.stringify({
+            rows: [
+              row({
+                rowId: "purchase",
+                visualOrder: 0,
+                rawTextLines: ["100 EUR", "MERCHANT"],
+                amount: 10000,
+                currency: "EUR",
+                rowRole: "financial_event",
+                semanticKind: "card_purchase",
+              }),
+              // Not next to the purchase: only the model's link ties the two together.
+              row({ rowId: "label", visualOrder: 1, rawTextLines: ["Details"], amount: null, currency: null, rowRole: "ui_metadata", semanticKind: "unknown" }),
+              row({
+                rowId: "fx",
+                visualOrder: 2,
+                rawTextLines: ["100 EUR", "125 USD"],
+                amount: 12500,
+                currency: "USD",
+                rowRole: "supporting_detail",
+                semanticKind: "fx_conversion",
+                relation: { kind: "fx_for", rowId: "purchase" },
+              }),
+            ],
+          });
+        }
+        return JSON.stringify({ rows: [enrich("purchase", "card_purchase"), enrich("label", "unknown"), enrich("fx", "unknown")] });
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals.find((proposal) => proposal.rowId === "purchase")).toMatchObject({ amount: 12500, currency: "USD" });
+    expect(result.proposals.find((proposal) => proposal.rowId === "purchase")?.reviewReasons).toContain("fx_converted");
   });
 
   it("builds byte-identical cycle-two prompts for permutations of set-like ledger context", async () => {

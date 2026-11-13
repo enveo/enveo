@@ -9,11 +9,11 @@
  * A job with at most one chunk behaves exactly as before (raw model rowIds, no seam pass).
  *
  * WHAT THE MODEL LOSES: cycle one compares the screenshots it can SEE for overlap. Across chunk
- * boundaries that comparison is rebuilt here: identical entries (date, amount, text) are already
- * caught by `reconcileImportProposals` (strong key), so the only remaining case is the same
- * posting facts with DIFFERENT text — those become "seam pairs" for one cheap text-only model
- * call (see `buildImportSeamPrompt`), bounded by IMPORT_SEAM_MAX_MODEL_PAIRS; the rest, and every
- * pair a failed seam call could not judge, is surfaced as `possible_duplicate` for review.
+ * boundaries that comparison is rebuilt here: identical entries (date, amount, text) are settled
+ * by `settleImportDuplicates` (same facts AND same neighbouring entries), so the only remaining
+ * case is the same posting facts with DIFFERENT text — those become "seam pairs" for one cheap
+ * text-only model call (see `buildImportSeamPrompt`), bounded by IMPORT_SEAM_MAX_MODEL_PAIRS; the
+ * rest, and every pair a failed seam call could not judge, is surfaced as `possible_duplicate`.
  */
 import type { ImportExtractBatch, ImportExtractRow } from "./importRecognition";
 
@@ -137,7 +137,7 @@ const seamKey = (row: ImportExtractRow): string => `${row.date}|${row.amount}|${
 /**
  * Cross-chunk pairs with identical posting facts but different visible text — the only
  * overlap the merged extraction cannot settle deterministically. Identical text is left to
- * `reconcileImportProposals`, which already declines the later occurrence as an existing row.
+ * `settleImportDuplicates`.
  * Pairs are emitted in screenshot order, each later row paired with its nearest earlier
  * candidate only, so one repeated amount cannot explode into a quadratic pair list.
  */
@@ -240,6 +240,23 @@ const isFinancialTwinCandidate = (row: ImportExtractRow): boolean =>
  *  captures. The sign is NOT part of it: a pending entry often shows none, and the same entry
  *  can be read with and without one; a visible contradiction is filtered out separately. */
 const twinKey = (row: ImportExtractRow): string => `${seamText(row)}|${row.amount}|${row.currency}`;
+const ELLIPSIS = /(?:…|\.\.\.)$/;
+/** The same printed line, allowing for the app cutting it with an ellipsis at a different width
+ *  on each screenshot (owner, 2026-11): two lines that BOTH end in "…" or "..." agree when the
+ *  longer one starts with what the shorter one shows, at least three characters of it. A cut
+ *  line never agrees with a full one: "Transfer to Alex…" may be "Transfer to Alexandra" or
+ *  another payee, and the same app cuts the same descriptor on every screenshot. */
+const sameLine = (left: string, right: string): boolean => {
+  const [a, b] = [left.trim().toLowerCase(), right.trim().toLowerCase()];
+  if (a === b) return true;
+  if (!ELLIPSIS.test(a) || !ELLIPSIS.test(b)) return false;
+  const [shorter, longer] = [a, b].map((line) => line.replace(ELLIPSIS, "").trimEnd()).sort((x, y) => x.length - y.length) as [string, string];
+  return shorter.length >= 3 && longer.startsWith(shorter);
+};
+const sameText = (left: ImportExtractRow, right: ImportExtractRow): boolean => {
+  const [a, b] = [left.rawTextLines, right.rawTextLines].map((lines) => lines.filter((line) => line.trim().length > 0));
+  return a!.length === b!.length && a!.every((line, index) => sameLine(line, b![index]!));
+};
 const compatibleDirections = (left: ImportExtractRow, right: ImportExtractRow): boolean =>
   left.direction === "unknown" || right.direction === "unknown" || left.direction === right.direction;
 
@@ -403,6 +420,10 @@ export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch 
       if (leading.length === 0) continue;
       const right = lastDividerTowards(layout, above);
       if (right === null) continue;
+      // A leading block sits ABOVE this screenshot's first divider. When that divider is the one
+      // the neighbour ends with, the screenshots overlap past it and the block belongs to an
+      // earlier divider of the neighbour, not to that one: its dates stay as they are.
+      if (layout.rows.find(isDateDivider)?.date === right) continue;
       const wrong = lastDividerTowards(layout, above === 1 ? -1 : 1);
       for (const row of leading) {
         if (row.date === null || (wrong !== null && wrong !== right && row.date === wrong)) set(row, right);
@@ -444,4 +465,193 @@ export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch 
   }
 
   return { rows };
+}
+
+export interface ImportDuplicateSettlement {
+  /** Later capture → the earlier capture of the same entry. Only these rows are declined. */
+  links: Map<string, string>;
+  /** Captures that look like a repeat but could not be proven one: shown, unselected. */
+  possible: Array<{ earlierRowId: string; laterRowId: string }>;
+  /** Cut-off pieces at a screenshot edge → the whole entry they may repeat: shown flagged, unselected. */
+  fragments: Map<string, string>;
+}
+
+/**
+ * Owner rule (decided 2026-11): a row is the SAME entry as a row of another screenshot only when
+ * every fact agrees (text, amount, currency, date, direction) AND the entries next to it agree
+ * too. Identical entries inside one screenshot are always separate transactions, and a lone
+ * identical amount on a different screenshot may be a second real payment (screenshots do not
+ * always tile the list), so neither is ever hidden on text alone.
+ *
+ * Neighbours are the adjacent financial entries of each capture, compared on their posting facts
+ * (amount, currency, date, direction). A side is compared only when
+ * both captures show an entry there (the screenshot edge hides one); at least
+ * one compared side must agree and none may disagree; an unread entry (one cut off by the edge
+ * included) shows no facts to agree with, so it disagrees. Anything short of that, including links
+ * proposed by the model, the seam pass or date inference, becomes a `possible_duplicate` for the
+ * human instead of a silent decline. A capture is linked at most once per screenshot, so two
+ * identical rows of one screenshot can never both collapse onto one earlier row.
+ */
+export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): ImportDuplicateSettlement {
+  const sorted = ordered(rows);
+  const entriesByImage = new Map<number, ImportExtractRow[]>();
+  for (const row of sorted) {
+    if (row.rowRole !== "financial_event") continue;
+    entriesByImage.set(row.imageIndex, [...(entriesByImage.get(row.imageIndex) ?? []), row]);
+  }
+  const position = new Map<string, number>();
+  for (const entries of entriesByImage.values()) {
+    for (const [index, row] of entries.entries()) position.set(row.rowId, index);
+  }
+  const neighbour = (row: ImportExtractRow, step: 1 | -1): ImportExtractRow | undefined =>
+    entriesByImage.get(row.imageIndex)?.[position.get(row.rowId)! + step];
+  // A payment the bank declined and one it charged are never the same entry: settling the charged
+  // capture onto the declined one would leave neither to book.
+  const sameStanding = (row: ImportExtractRow, other: ImportExtractRow): boolean => (row.postingStatus === "declined") === (other.postingStatus === "declined");
+  const sameFacts = (row: ImportExtractRow, other: ImportExtractRow): boolean =>
+    isFinancialTwinCandidate(row) && row.amount === other.amount && row.currency === other.currency && row.date === other.date && sameStanding(row, other);
+  const sameEntry = (row: ImportExtractRow, other: ImportExtractRow): boolean =>
+    row.imageIndex !== other.imageIndex &&
+    isFinancialTwinCandidate(row) &&
+    sameStanding(row, other) &&
+    row.amount === other.amount &&
+    row.currency === other.currency &&
+    sameText(row, other) &&
+    row.date === other.date &&
+    compatibleDirections(row, other);
+  // Neighbours are compared on their posting facts, not their text: a second reading of the same
+  // entry may drop a letter, and that must not unmake the proof for the row next to it.
+  // An unread fact agrees with nothing, not even another unread one.
+  const sameNeighbour = (mine: ImportExtractRow, theirs: ImportExtractRow): boolean =>
+    mine.amount !== null &&
+    mine.currency !== null &&
+    mine.date !== null &&
+    mine.amount === theirs.amount &&
+    mine.currency === theirs.currency &&
+    mine.date === theirs.date &&
+    compatibleDirections(mine, theirs);
+  const cutOff = (row: ImportExtractRow): boolean =>
+    row.amount === null && (position.get(row.rowId) === 0 || position.get(row.rowId) === entriesByImage.get(row.imageIndex)!.length - 1);
+  // An entry cut off at the screenshot edge shows no amount, only some of its lines. It may be the
+  // whole entry beside a repeat on the other screenshot when every line it shows is printed by that
+  // entry and by no other entry there. That is a hint for the human, never proof of a repeat.
+  const pieceOf = (piece: ImportExtractRow, whole: ImportExtractRow): boolean => {
+    const lines = piece.rawTextLines.filter((line) => line.length > 0);
+    const carries = (entry: ImportExtractRow) => lines.every((line) => entry.rawTextLines.includes(line));
+    return (
+      cutOff(piece) &&
+      whole.amount !== null &&
+      lines.length > 0 &&
+      carries(whole) &&
+      entriesByImage.get(whole.imageIndex)!.every((entry) => entry === whole || !carries(entry))
+    );
+  };
+  const neighboursAgree = (row: ImportExtractRow, other: ImportExtractRow): boolean => {
+    let agreeing = 0;
+    for (const step of [-1, 1] as const) {
+      const mine = neighbour(row, step);
+      const theirs = neighbour(other, step);
+      if (!mine || !theirs) continue;
+      if (!sameNeighbour(mine, theirs)) return false;
+      agreeing += 1;
+    }
+    return agreeing > 0;
+  };
+
+  const rowsById = new Map(rows.map((row) => [row.rowId, row]));
+  const order = new Map(sorted.map((row, index) => [row.rowId, index]));
+  const links = new Map<string, string>();
+  const possible: Array<{ earlierRowId: string; laterRowId: string }> = [];
+  const claimedFrom = new Map<string, Set<number>>();
+  // A claim is counted against the entry, not the capture it names: two captures of one screenshot
+  // naming two captures of the same earlier entry would otherwise both settle onto it.
+  const keptCapture = (rowId: string): string => {
+    let current = rowId;
+    while (links.has(current)) current = links.get(current)!;
+    return current;
+  };
+  const claim = (row: ImportExtractRow, target: ImportExtractRow): boolean => {
+    const entry = keptCapture(target.rowId);
+    const images = claimedFrom.get(entry) ?? new Set<number>();
+    if (images.has(row.imageIndex)) return false;
+    images.add(row.imageIndex);
+    claimedFrom.set(entry, images);
+    return true;
+  };
+
+  for (const row of sorted) {
+    if (row.rowRole !== "financial_event") continue;
+    // Any other relation (an exchange line, a refund, a fee) describes the entry, not its identity:
+    // the later capture of a repeated entry is still settled here, or it would be booked twice.
+    const earlier = (candidate: ImportExtractRow) => order.get(candidate.rowId)! < order.get(row.rowId)!;
+    const claimed = row.relation?.kind === "duplicate_of" ? rowsById.get(row.relation.rowId) : undefined;
+    // A repeat always points back: a claim on a LATER capture is read as no claim, or a claim
+    // that goes round three screenshots would link every capture and leave the entry none to keep.
+    const forward = claimed !== undefined && !earlier(claimed);
+    const claimsTwin = row.relation?.kind === "duplicate_of" && !forward;
+    const declared = claimsTwin ? claimed : undefined;
+    // A claimed twin that does not even share the posting facts (or sits in the same screenshot)
+    // is not a repeat at all: the claim is dropped. The one exception is the same printed entry on
+    // the ADJACENT screenshot under another date: one of the two dates may be misread or inferred
+    // wrongly, so the claim is surfaced for the human instead of booking the entry twice in silence.
+    if (claimsTwin && !(declared && declared.imageIndex !== row.imageIndex && sameFacts(row, declared))) {
+      if (declared && Math.abs(declared.imageIndex - row.imageIndex) === 1 && sameEntry(row, { ...declared, date: row.date })) {
+        possible.push(seamPair(row, declared));
+      }
+      continue;
+    }
+    const candidates = declared
+      ? [declared]
+      : isFinancialTwinCandidate(row)
+        ? sorted.filter((twin) => earlier(twin) && sameEntry(row, twin) && !links.has(twin.rowId))
+        : [];
+    if (candidates.length === 0) continue;
+    const proven = candidates.filter((target) => sameEntry(row, target) && neighboursAgree(row, target));
+    const target = proven.length === 1 ? proven[0]! : undefined;
+    if (target && claim(row, target)) {
+      links.set(row.rowId, target.rowId);
+      continue;
+    }
+    const nearest = candidates.at(-1)!;
+    possible.push(seamPair(row, nearest));
+  }
+
+  // The same posting facts as an entry on another screenshot, with the neighbours agreeing too, but
+  // other text (a line cut off or read differently) is not proof of a repeat, yet too likely to stay
+  // silent: the later capture is flagged for the human. A model or seam claim reached the loop above.
+  const settled = new Set([...links.keys(), ...possible.map((pair) => pair.laterRowId)]);
+  const financial = sorted.filter((row) => row.rowRole === "financial_event");
+  for (const [index, row] of financial.entries()) {
+    if (settled.has(row.rowId) || row.relation?.kind === "duplicate_of" || !isFinancialTwinCandidate(row)) continue;
+    const earlier = financial
+      .slice(0, index)
+      .filter((other) => other.imageIndex !== row.imageIndex && !sameText(other, row) && sameNeighbour(row, other) && neighboursAgree(row, other))
+      .at(-1);
+    if (earlier) possible.push(seamPair(row, earlier));
+  }
+
+  // An entry cut off by the screenshot edge shows only some of its lines and no amount. When the
+  // entry next to it is a repeat (proven or possible), the entry beside its other capture is probably
+  // the whole one; if it carries every line of the piece, the piece is flagged as a possible repeat
+  // of it. Shared lines do not prove identity, so the piece stays visible for the human.
+  const fragments = new Map<string, string>();
+  const capturesOf = new Map<string, string>();
+  for (const [later, earlier] of [...links, ...possible.map((pair) => [pair.laterRowId, pair.earlierRowId] as const)]) {
+    if (!capturesOf.has(earlier)) capturesOf.set(earlier, later);
+  }
+  const earlierOf = new Map([...possible.map((pair) => [pair.laterRowId, pair.earlierRowId] as const), ...links]);
+  for (const entries of entriesByImage.values()) {
+    for (const [piece, inward] of [
+      [entries[0], 1],
+      [entries.at(-1), -1],
+    ] as const) {
+      if (!piece || !cutOff(piece) || entries.length < 2) continue;
+      const inner = neighbour(piece, inward)!.rowId;
+      const counterpart = earlierOf.get(inner) ?? capturesOf.get(inner);
+      const whole = counterpart ? neighbour(rowsById.get(counterpart)!, inward === 1 ? -1 : 1) : undefined;
+      if (!whole || !pieceOf(piece, whole)) continue;
+      fragments.set(piece.rowId, whole.rowId);
+    }
+  }
+  return { links, possible, fragments };
 }

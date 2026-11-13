@@ -17,6 +17,7 @@ import {
   bankBalanceHint,
   buildImportReviewRows,
   createImportReviewSaver,
+  foreignRowsAtFaceValue,
   type ImportReviewChanges,
   type ImportReviewChangesStore,
   type ImportReviewRow,
@@ -26,8 +27,10 @@ import {
   importPeriodStart,
   importReviewChanges,
   importReviewDoneStats,
+  importReviewListing,
   importReviewReasonMessage,
   parseImportReviewChanges,
+  recognizedImportRowFacts,
   reconcileReviewEdits,
   refreshedReviewRows,
   restoreImportReview,
@@ -35,12 +38,21 @@ import {
   reviewedImportRowsForApply,
   reviewRowControlLabels,
   reviewSelectionAfterRefresh,
-  visibleImportReviewRows,
   withEditedAssignment,
 } from "./importReview";
 import { type LocalImportReviewItem, recognitionCandidatesForDryRun } from "./localImport";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+type ListedRow = Pick<ReturnType<typeof buildImportReviewRows>[number], "rowId" | "disposition" | "relation" | "duplicateStatus" | "include">;
+const listed = (rowId: string, overrides: Partial<ListedRow> = {}): ListedRow => ({
+  rowId,
+  disposition: "candidate",
+  relation: null,
+  duplicateStatus: "new",
+  include: true,
+  ...overrides,
+});
 
 const ledger = (): ClientLedger => ({
   budgets: [{ id: U(1), name: "Budget", currency: "USD", preferences: createDefaultBudgetPreferences() }],
@@ -407,17 +419,44 @@ describe("screenshot import review view model", () => {
   });
 
   it("hides supporting evidence from review while preserving original row indexes", () => {
+    const rows = [listed("first"), listed("heading", { disposition: "supporting" }), listed("second", { disposition: "unresolved" })];
+
+    const listing = importReviewListing(rows, false);
+
+    expect(listing).toEqual({
+      rows: [
+        { row: rows[0]!, index: 0, position: 0, nested: false },
+        { row: rows[2]!, index: 2, position: 1, nested: false },
+      ],
+      repeats: null,
+    });
+  });
+
+  it("folds proven repeats away and lists each one under the capture it repeats when opened", () => {
+    const repeat = (rowId: string, of: string, include = false) =>
+      listed(rowId, { relation: { kind: "duplicate_of", rowId: of }, duplicateStatus: "probable", include });
     const rows = [
-      { rowId: "first", disposition: "candidate" },
-      { rowId: "heading", disposition: "supporting" },
-      { rowId: "second", disposition: "unresolved" },
-    ] as Pick<ReturnType<typeof buildImportReviewRows>[number], "rowId" | "disposition">[];
+      repeat("again", "first", true),
+      listed("first"),
+      listed("maybe", { duplicateStatus: "probable" }),
+      repeat("chained", "again"),
+      repeat("orphan", "heading"),
+      listed("heading", { disposition: "supporting" }),
+    ];
 
-    const visible = visibleImportReviewRows(rows);
-
-    expect(visible).toEqual([
-      { row: rows[0]!, index: 0, position: 0 },
-      { row: rows[2]!, index: 2, position: 1 },
+    expect(importReviewListing(rows, false)).toEqual({
+      rows: [
+        { row: rows[1]!, index: 1, position: 0, nested: false },
+        { row: rows[2]!, index: 2, position: 1, nested: false },
+      ],
+      repeats: { count: 3, selected: 1 },
+    });
+    expect(importReviewListing(rows, true).rows).toEqual([
+      { row: rows[1]!, index: 1, position: 0, nested: false },
+      { row: rows[0]!, index: 0, position: 1, nested: true },
+      { row: rows[3]!, index: 3, position: 2, nested: true },
+      { row: rows[2]!, index: 2, position: 3, nested: false },
+      { row: rows[4]!, index: 4, position: 4, nested: false },
     ]);
   });
 
@@ -500,9 +539,88 @@ describe("screenshot import review view model", () => {
     expect(proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
     expect(review[0]).toMatchObject({ duplicateStatus: "exists", include: false, editable: false, item: null });
     expect(reviewBadges(review[0]!).map((badge) => badge.label)).toEqual(["Already exists"]);
+    expect(recognizedImportRowFacts({ ...review[0]!, draftItem: { ...review[0]!.draftItem!, name: " Corner Grocery " } })).toEqual({
+      name: "Corner Grocery",
+      type: "expense",
+      isRefund: false,
+    });
     expect(reviewRowControlLabels(review[0]!, 0)).toEqual({ select: null, edit: null });
     expect(importReviewDoneStats(review, { added: 0, skipped: 0 })).toEqual({ added: 0, dup: 1 });
     expect(importReviewDoneStats(review, { added: 0, skipped: 1 })).toEqual({ added: 0, dup: 2 });
+  });
+
+  it("lets the human add a repeat from another screenshot as a separate payment, unchecked by default", () => {
+    const rows = [row("first"), row("again", { imageIndex: 1 })];
+    const proposals = reconcileImportProposals({
+      proposals: [
+        proposal("first"),
+        proposal("again", { relation: { kind: "duplicate_of", rowId: "first" }, reviewReasons: ["relation_changes_ledger_shape"] }),
+      ],
+      transactions: [],
+      accounts: ledger().accounts,
+      envelopes: [],
+      categories: [],
+      selectedAccountId: U(2),
+    });
+    const review = buildImportReviewRows({
+      recognition: { rows, proposals },
+      ledger: ledger(),
+      dryRunResults: [dryResult()],
+      automaticEnvelopeId: null,
+      budgetCurrency: "USD",
+    });
+
+    expect(proposals[1]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
+    expect(review[1]).toMatchObject({ duplicateStatus: "probable", disposition: "candidate", include: false, editable: true });
+    expect(review[1]!.item).not.toBeNull();
+    expect(reviewBadges(review[1]!).map((badge) => badge.label)).toEqual(["Repeats a row from another screenshot"]);
+    const flagged = { ...review[1]!, reviewReasons: [...review[1]!.reviewReasons, "possible_transfer" as const] };
+    expect(reviewBadges(flagged).map((badge) => badge.label)).toEqual(["Repeats a row from another screenshot"]);
+    expect(reviewBadges({ ...flagged, include: true }).map((badge) => badge.label)).toContain("Possible transfer");
+    expect(reviewRowControlLabels(review[1]!, 1).select).not.toBeNull();
+    expect(importReviewDoneStats(review, { added: 1, skipped: 0 })).toEqual({ added: 1, dup: 1 });
+    expect(balanceMatchCandidatesForReview({ rows: review, edited: {}, defaultAccountId: U(2) }).map((candidate) => candidate.index)).not.toContain(1);
+
+    const included = review.map((reviewRow, index) => (index === 1 ? { ...reviewRow, include: true } : reviewRow));
+    const apply = reviewedImportRowsForApply({ rows: included, edited: {}, editedAutomaticDefaults: {} });
+    expect(apply.map((item) => [item.importRowId, item.force ?? false])).toEqual([
+      ["first", false],
+      ["again", true],
+    ]);
+    expect(importReviewDoneStats(included, { added: 2, skipped: 0 })).toEqual({ added: 2, dup: 0 });
+  });
+
+  it("books a repeat of a foreign payment at the account-currency figure printed for its kept capture", () => {
+    const rows = [row("paid", { currency: "EUR", amount: 1000 }), row("paid again", { imageIndex: 1, currency: "EUR", amount: 1000 })];
+    const proposals = reconcileImportProposals({
+      proposals: [
+        proposal("paid", { amount: 1100, currency: "USD", reviewReasons: ["fx_converted"] }),
+        proposal("paid again", {
+          amount: 1000,
+          currency: "EUR",
+          relation: { kind: "duplicate_of", rowId: "paid" },
+          reviewReasons: ["relation_changes_ledger_shape"],
+        }),
+      ],
+      transactions: [],
+      accounts: ledger().accounts,
+      envelopes: [],
+      categories: [],
+      selectedAccountId: U(2),
+    });
+    const review = buildImportReviewRows({
+      recognition: { rows, proposals },
+      ledger: ledger(),
+      dryRunResults: [dryResult({ amount: 1100 })],
+      automaticEnvelopeId: null,
+      budgetCurrency: "USD",
+    });
+
+    expect(review[1]).toMatchObject({ amount: 1100, currency: "USD", blockingIssues: [] });
+    expect(review[1]!.reviewReasons).toContain("fx_converted");
+    const included = review.map((reviewRow, index) => (index === 1 ? { ...reviewRow, include: true } : reviewRow));
+    const apply = reviewedImportRowsForApply({ rows: included, edited: {}, editedAutomaticDefaults: {} });
+    expect(apply.find((item) => item.importRowId === "paid again")).toMatchObject({ amount: 1100, force: true });
   });
 
   it("treats a durably applied row as already added even without duplicate evidence", () => {
@@ -687,6 +805,20 @@ describe("screenshot import review view model", () => {
 
     expect(selected).toHaveLength(1);
     expect(selected[0]).toMatchObject({ name: "candidate", rawPlace: "raw candidate\n$25.00" });
+  });
+
+  it("adds a flagged repeat the human included without matching it against the ledger again", () => {
+    const review = buildImportReviewRows({
+      recognition: recognition([row("repeat")], [proposal("repeat", { duplicateStatus: "probable", selected: false })]),
+      ledger: ledger(),
+      dryRunResults: [],
+      automaticEnvelopeId: null,
+      budgetCurrency: "USD",
+    });
+    expect(review[0]).toMatchObject({ duplicateStatus: "probable", include: false });
+
+    const [item] = reviewedImportRowsForApply({ rows: [{ ...review[0]!, include: true }], edited: {}, editedAutomaticDefaults: {} });
+    expect(item).toMatchObject({ importRowId: "repeat", force: true });
   });
 
   it("keeps a currency warning advisory at the final apply boundary", () => {
@@ -1094,6 +1226,33 @@ describe("matching the selection to the bank balance", () => {
     expect(rows[0]!.include).toBe(true);
   });
 
+  it("reverses a refund into a plain expense, as the suggestion promised", () => {
+    const refund = reviewRow("refund", {
+      requiresReview: true,
+      reviewReasons: ["inconsistent_direction"],
+      item: { type: "expense", isRefund: true, amount: 4_500 },
+    });
+    const [candidate] = balanceMatchCandidatesForReview({ rows: [refund], edited: {}, defaultAccountId: "acc-main" });
+    expect(candidate).toMatchObject({ effect: 4_500, flippable: true });
+
+    const applied = applyBalanceMatchToReview({
+      rows: [refund],
+      edited: {},
+      defaultAccountId: "acc-main",
+      changes: [{ id: "refund", action: "flip", delta: -9_000 }],
+    });
+    expect(applied.edited[0]).toMatchObject({ type: "expense", isRefund: false, amount: 4_500 });
+  });
+
+  it("keeps rows still in a foreign currency out of the match and counts them for a warning", () => {
+    const foreign = reviewRow("foreign", { requiresReview: true, blockingIssues: ["currency_mismatch"], currency: "EUR" });
+    const rows = [foreign, reviewRow("local", { requiresReview: true })];
+    expect(balanceMatchCandidatesForReview({ rows, edited: {}, defaultAccountId: "acc-main" }).map((candidate) => candidate.id)).toEqual(["local"]);
+    expect(foreignRowsAtFaceValue(rows, {})).toBe(1);
+    // An amount the human entered is in the account currency.
+    expect(foreignRowsAtFaceValue(rows, { 0: editedFor(foreign) })).toBe(0);
+  });
+
   it("reads the bank balance out of a balance line the model kept as interface chrome", () => {
     expect(
       bankBalanceHint([
@@ -1114,6 +1273,43 @@ describe("matching the selection to the bank balance", () => {
 
   it("reads Polish balance labels and decimal separators", () => {
     expect(bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: ["Saldo 125,00 zł"] }])).toBe(12_500);
+  });
+
+  it("reads the figure after the label, never a date or an account number before it", () => {
+    const hint = (lines: string[], currency?: string) => bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: lines }], currency);
+    expect(hint(["Saldo na dzień 28.08.2031: 1 234,56 zł"])).toBe(123_456);
+    expect(hint(["Balance as of 12 Nov 2031: $1,234.56"])).toBe(123_456);
+    expect(hint(["Checking ••4821  Balance $500.00"])).toBe(50_000);
+    expect(hint(["Available balance: −842.16"])).toBe(-84_216);
+    expect(hint(["Available balance: 842,16-"])).toBe(-84_216);
+  });
+
+  it("skips opening, reward and other-currency figures, and prefills nothing when figures disagree", () => {
+    const hint = (lines: string[], currency?: string) => bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: lines }], currency);
+    expect(hint(["Opening balance 1,000.00", "Balance 1,250.00"])).toBe(125_000);
+    expect(hint(["Rewards balance 1,250 pts", "Balance $90.10"])).toBe(9_010);
+    expect(hint(["EUR balance 300.00", "USD balance 90.10"], "USD")).toBe(9_010);
+    // With a credit line, "available" includes the limit and is not the balance.
+    expect(hint(["Balance: -200.00", "Available: 1,800.00", "Credit limit 2,000.00"])).toBe(-20_000);
+    expect(hint(["Balance: -200.00", "Available: 1,800.00", "Overdraft: 2,000.00"])).toBe(-20_000);
+    expect(hint(["Saldo: -200,00 zł", "Dostępne środki 1 800,00 zł", "Debet w koncie 2 000,00 zł"])).toBe(-20_000);
+    expect(hint(["Saldo: -200,00 zł", "Dostępne środki 1 800,00 zł", "Limit debetowy 2 000,00 zł"])).toBe(-20_000);
+    // A debit card or a payment limit is no credit line.
+    expect(hint(["Dostępne środki 500,00 zł", "Saldo 600,00 zł", "Karta debetowa"])).toBe(50_000);
+    expect(hint(["Dostępne środki 500,00 zł", "Saldo 600,00 zł", "Debet  Kredyt"])).toBe(50_000);
+    expect(hint(["Dostępne środki 500,00 zł", "Dzienny limit przelewów 2 000,00 zł"])).toBe(50_000);
+    expect(hint(["Available balance $500.00", "Daily payment limit $2,000.00"])).toBe(50_000);
+    expect(hint(["Balance 1,250.00", "Balance 1,300.00"])).toBeNull();
+    // Two different balances on one line conflict just as on two lines; the same one twice does not.
+    expect(hint(["Balance $100.00 · Balance $200.00"])).toBeNull();
+    expect(hint(["Balance $100.00 · Balance $100.00"])).toBe(10_000);
+  });
+
+  it("keeps the label's currency when the figure sits on the line below", () => {
+    const hint = (lines: string[], currency?: string) => bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: lines }], currency);
+    expect(hint(["EUR balance", "300.00"], "USD")).toBeNull();
+    expect(hint(["USD balance", "300.00"], "USD")).toBe(30_000);
+    expect(hint(["Balance", "300.00"], "USD")).toBe(30_000);
   });
 });
 

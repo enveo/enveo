@@ -5,6 +5,7 @@ import {
   ImportEnrichmentMalformedError,
   type ImportExtractBatch,
   ImportExtractionFailedError,
+  ImportExtractionMisplacedError,
   type ImportJobErrorCode,
   type ImportRecognitionResult,
 } from "@enveo/shared";
@@ -291,6 +292,7 @@ describe("plain import job processor", () => {
     [new ImportJobModelUnavailable(), { kind: "failed", errorCode: "ai_model_unavailable" }],
     [new ByokInvalidBodyError(), { kind: "retry", errorCode: "malformed_model_response" }],
     [new ImportEnrichmentMalformedError(new Error("bad rows")), { kind: "retry", errorCode: "malformed_model_response" }],
+    [new ImportExtractionMisplacedError("an image without rows"), { kind: "retry", errorCode: "malformed_model_response" }],
   ] as const)("persists the worker disposition when strict recognition propagates %s", async (error, expected) => {
     const fixture = processorFixture({ recognitionError: error });
 

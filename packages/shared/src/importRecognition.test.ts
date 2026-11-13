@@ -239,7 +239,8 @@ describe("screenshot import proposal validation", () => {
     expect(result.proposals).toMatchObject([
       { rowId: "purchase", relation: null, reviewReasons: ["relation_changes_ledger_shape"] },
       { rowId: "other", relation: null, reviewReasons: [] },
-      { rowId: "duplicate", relation: { kind: "duplicate_of", rowId: "purchase" }, reviewReasons: ["relation_changes_ledger_shape"] },
+      // Identical entries in ONE screenshot are separate transactions: the claim is dropped.
+      { rowId: "duplicate", relation: null, reviewReasons: [] },
       { rowId: "fx", relation: { kind: "fx_for", rowId: "purchase" }, reviewReasons: [] },
       { rowId: "incomplete", relation: null, reviewReasons: ["missing_fact"] },
       { rowId: "incomplete-target", relation: null, reviewReasons: ["missing_fact"] },
@@ -386,6 +387,37 @@ describe("screenshot import proposal validation", () => {
 
     expect(result.rows[0]).toMatchObject({ amount: 2149, currency: "EUR" });
     expect(result.proposals[4]).toMatchObject({ rowId: "lonely", amount: 500, currency: "GBP", reviewReasons: [] });
+  });
+
+  it("leaves a payment unconverted when its own lines print another figure than its linked exchange line", () => {
+    const convert = (ownFigure: string) =>
+      validateImportExtraction({
+        batch: {
+          rows: [
+            extractRow({
+              rowId: "hosting",
+              amount: 1650,
+              currency: "EUR",
+              rawTextLines: ["FIXTURE HOSTING", "16.50 EUR", ownFigure],
+              relation: { kind: "fx_for", rowId: "fx" },
+            }),
+            extractRow({
+              rowId: "fx",
+              rowRole: "supporting_detail",
+              semanticKind: "fx_conversion",
+              amount: null,
+              currency: null,
+              direction: "unknown",
+              rawTextLines: ["16.50 EUR < 17.82 USD"],
+            }),
+          ],
+        },
+        budgetCurrency: "USD",
+      }).proposals[0];
+
+    expect(convert("18.45 USD")).toMatchObject({ amount: 1650, currency: "EUR" });
+    expect(convert("18.45 USD")!.reviewReasons).not.toContain("fx_converted");
+    expect(convert("17.82 USD")).toMatchObject({ amount: 1782, currency: "USD", reviewReasons: ["fx_converted"] });
   });
 
   it("rejects duplicate row identities and invalidates dangling or self relations", () => {
@@ -623,6 +655,101 @@ describe("screenshot import proposal reconciliation", () => {
     expect(candidate.envelopeId).toBe("envelope-1");
   });
 
+  it("keeps two identical entries of one screenshot as two payments, each recorded row covering one of them", () => {
+    const twin = (rowId: string, visualOrder: number) => extractRow({ rowId, visualOrder, rawTextLines: ["TRANSFER TO SAVINGS"], amount: 50000 });
+    const { proposals } = validateImportExtraction({ batch: { rows: [twin("first", 0), twin("second", 1)] }, budgetCurrency: "USD" });
+
+    const fresh = reconcileImportProposals(input({ proposals }));
+    expect(fresh.map((row) => [row.duplicateStatus, row.disposition, row.selected])).toEqual([
+      ["new", "candidate", true],
+      ["new", "candidate", true],
+    ]);
+
+    // One of the two is already booked: the other is shown for review, not hidden behind it.
+    const booked = transaction({ amount: 50000, sourceRef: "TRANSFER TO SAVINGS" });
+    const halfBooked = reconcileImportProposals(input({ proposals, transactions: [booked] }));
+    expect(halfBooked.map((row) => [row.duplicateStatus, row.disposition, row.selected])).toEqual([
+      ["exists", "declined", false],
+      ["probable", "candidate", false],
+    ]);
+
+    const bothBooked = reconcileImportProposals(input({ proposals, transactions: [booked, { ...booked, id: "transaction-2" }] }));
+    expect(bothBooked.map((row) => row.duplicateStatus)).toEqual(["exists", "exists"]);
+  });
+
+  it("keeps one capture of an entry whose repeat claims point forward, and links the others to it", () => {
+    const rows = [0, 1, 2].flatMap((image) => [
+      extractRow({ rowId: `shop-${image}`, imageIndex: image, visualOrder: 0, rawTextLines: ["PINE HARDWARE"], amount: 915 }),
+      extractRow({
+        rowId: `park-${image}`,
+        imageIndex: image,
+        visualOrder: 1,
+        rawTextLines: ["CITY PARKING"],
+        amount: 1200,
+        relation: { kind: "duplicate_of", rowId: `park-${(image + 1) % 3}` },
+      }),
+    ]);
+    const { proposals } = validateImportExtraction({ batch: { rows }, budgetCurrency: "USD" });
+    const by = Object.fromEntries(proposals.map((proposal) => [proposal.rowId, proposal]));
+
+    expect(by["park-0"]!.relation).toBeNull();
+    expect(by["park-1"]!.relation).toEqual({ kind: "duplicate_of", rowId: "park-0" });
+    expect(by["park-2"]!.relation).toEqual({ kind: "duplicate_of", rowId: "park-0" });
+  });
+
+  it("keeps an entry cut off at the screenshot edge visible as a possible repeat, never hidden", () => {
+    const rows = [
+      extractRow({ rowId: "cafe-0", imageIndex: 0, visualOrder: 0, rawTextLines: ["CORNER CAFE", "0.62"], amount: 940 }),
+      extractRow({ rowId: "shop-0", imageIndex: 0, visualOrder: 1, rawTextLines: ["PINE HARDWARE"], amount: 915 }),
+      extractRow({ rowId: "fuel-0", imageIndex: 0, visualOrder: 2, rawTextLines: ["CITY FUEL"], amount: 4200 }),
+      extractRow({ rowId: "cut", imageIndex: 1, visualOrder: 0, rawTextLines: ["0.62"], amount: null, currency: null }),
+      extractRow({ rowId: "shop-1", imageIndex: 1, visualOrder: 1, rawTextLines: ["PINE HARDWARE"], amount: 915 }),
+      extractRow({ rowId: "fuel-1", imageIndex: 1, visualOrder: 2, rawTextLines: ["CITY FUEL"], amount: 4200 }),
+    ];
+    const { proposals } = validateImportExtraction({ batch: { rows }, budgetCurrency: "USD" });
+    const by = Object.fromEntries(proposals.map((proposal) => [proposal.rowId, proposal]));
+
+    expect(by["shop-1"]).toMatchObject({ relation: null, selected: false });
+    expect(by["shop-1"]!.reviewReasons).toContain("possible_duplicate");
+    expect(by["fuel-1"]!.relation).toEqual({ kind: "duplicate_of", rowId: "fuel-0" });
+    expect(by.cut).toMatchObject({ disposition: "unresolved", selected: false });
+    expect(by.cut!.reviewReasons).toContain("possible_duplicate");
+  });
+
+  it("reaches the same verdict when a result is reconciled again, a declined repeat never taking a recorded row", () => {
+    const rows = [
+      extractRow({ rowId: "cafe-0", imageIndex: 0, visualOrder: 0, rawTextLines: ["CORNER CAFE"], amount: 940 }),
+      extractRow({ rowId: "first", imageIndex: 0, visualOrder: 1, rawTextLines: ["TRANSFER TO SAVINGS"], amount: 50000 }),
+      extractRow({ rowId: "cafe-1", imageIndex: 1, visualOrder: 0, rawTextLines: ["CORNER CAFE"], amount: 940 }),
+      extractRow({ rowId: "repeat", imageIndex: 1, visualOrder: 1, rawTextLines: ["TRANSFER TO SAVINGS"], amount: 50000 }),
+      extractRow({ rowId: "second", imageIndex: 1, visualOrder: 2, rawTextLines: ["TRANSFER TO SAVINGS"], amount: 50000 }),
+    ];
+    const { proposals } = validateImportExtraction({ batch: { rows }, budgetCurrency: "USD" });
+    const booked = transaction({ amount: 50000, sourceRef: "TRANSFER TO SAVINGS" });
+    const ledger = [booked, { ...booked, id: "transaction-2" }];
+    const once = reconcileImportProposals(input({ proposals, transactions: ledger }));
+    const twice = reconcileImportProposals(input({ proposals: once, transactions: ledger }));
+    const verdict = (result: typeof once) => result.map((row) => [row.rowId, row.duplicateStatus, row.disposition]);
+    expect(verdict(once)).toEqual([
+      ["cafe-0", "new", "candidate"],
+      ["first", "exists", "declined"],
+      ["cafe-1", "exists", "declined"],
+      ["repeat", "exists", "declined"],
+      ["second", "exists", "declined"],
+    ]);
+    expect(verdict(twice)).toEqual(verdict(once));
+  });
+
+  it("never lets an entry the bank declined take a recorded row away from the real payment", () => {
+    const rows = [
+      extractRow({ rowId: "declined", postingStatus: "declined", rawTextLines: ["SAAS VENDOR"] }),
+      extractRow({ rowId: "charged", visualOrder: 1, rawTextLines: ["SAAS VENDOR"] }),
+    ];
+    const { proposals } = validateImportExtraction({ batch: { rows }, budgetCurrency: "USD" });
+    const reconciled = reconcileImportProposals(input({ proposals, transactions: [transaction({ sourceRef: "SAAS VENDOR" })] }));
+    expect(reconciled.find((row) => row.rowId === "charged")).toMatchObject({ duplicateStatus: "exists", disposition: "declined" });
+  });
+
   it("clears stale assignments and uses exact and probable duplicate evidence", () => {
     const stale = { ...proposal(), envelopeId: "missing-envelope", categoryId: "missing-category" };
     const exact = reconcileImportProposals(input({ proposals: [stale], transactions: [transaction()] }))[0]!;
@@ -731,5 +858,238 @@ describe("contradictory signed entries", () => {
   it("does not preselect an expense whose visible sign says money came in", () => {
     const result = validateImportExtraction({ batch: { rows: [extractRow({ direction: "credit", semanticKind: "card_purchase" })] }, budgetCurrency: "USD" });
     expect(result.proposals[0]).toMatchObject({ selected: false, type: "expense", reviewReasons: ["inconsistent_direction"] });
+  });
+});
+
+describe("a foreign-currency payment takes the account-currency figure printed for it", () => {
+  const purchase = (over: Partial<ImportExtractRow> = {}) =>
+    extractRow({ rowId: "purchase", visualOrder: 1, rawTextLines: ["− 16.50 EUR", "SAAS VENDOR"], amount: 1650, currency: "EUR", ...over });
+  const validate = (rows: ImportExtractRow[]) => validateImportExtraction({ batch: { rows }, budgetCurrency: "USD" }).proposals;
+
+  it("from an exchange entry next to it, which then stays evidence instead of a second expense", () => {
+    // The model may read the exchange entry as anything: an event, a detail, either currency.
+    for (const reading of [
+      { rowRole: "financial_event" as const, semanticKind: "unknown" as const, amount: 1650, currency: "EUR", direction: "unknown" as const },
+      { rowRole: "financial_event" as const, semanticKind: "fx_conversion" as const, amount: 1782, currency: "USD" },
+      { rowRole: "supporting_detail" as const, semanticKind: "fx_conversion" as const },
+    ]) {
+      const proposals = validate([
+        extractRow({ rowId: "divider", visualOrder: 0, rowRole: "ui_metadata", rawTextLines: ["Aug 7"], amount: null, currency: null }),
+        extractRow({
+          rowId: "exchange",
+          visualOrder: 1,
+          rawTextLines: ["16.50 EUR < 17.82 USD", "Exchange USD to EUR", "1.00 USD =", "0.925926 EUR"],
+          ...reading,
+        }),
+        purchase({ visualOrder: 2 }),
+        extractRow({ rowId: "next", visualOrder: 3, rawTextLines: ["− 9.40 USD", "CORNER CAFE"], amount: 940 }),
+      ]);
+      expect(proposals.find((row) => row.rowId === "purchase")).toMatchObject({
+        amount: 1782,
+        currency: "USD",
+        reviewReasons: ["fx_converted"],
+        selected: true,
+      });
+      expect(proposals.find((row) => row.rowId === "exchange")).toMatchObject({ disposition: "supporting", selected: false });
+      expect(proposals.find((row) => row.rowId === "next")).toMatchObject({ amount: 940, currency: "USD" });
+    }
+  });
+
+  it("from its own lines when the entry prints both amounts", () => {
+    const [proposal] = validate([purchase({ rawTextLines: ["−17,82 USD", "SAAS VENDOR", "16,50 €"] })]);
+    expect(proposal).toMatchObject({ amount: 1782, currency: "USD", reviewReasons: ["fx_converted"] });
+  });
+
+  it("for the capture that is kept, when only its repeat on the next screenshot shows the figure", () => {
+    const proposals = validate([
+      extractRow({ rowId: "cafe-0", imageIndex: 0, visualOrder: 0, rawTextLines: ["CORNER CAFE"], amount: 940 }),
+      purchase({ rowId: "store-0", imageIndex: 0 }),
+      extractRow({ rowId: "cafe-1", imageIndex: 1, visualOrder: 0, rawTextLines: ["CORNER CAFE"], amount: 940 }),
+      purchase({ rowId: "store-1", imageIndex: 1 }),
+      extractRow({
+        rowId: "fx-1",
+        imageIndex: 1,
+        visualOrder: 2,
+        rowRole: "supporting_detail",
+        semanticKind: "fx_conversion",
+        rawTextLines: ["16.50 EUR < 17.82 USD"],
+      }),
+    ]);
+    expect(proposals.find((row) => row.rowId === "store-1")).toMatchObject({ relation: { kind: "duplicate_of", rowId: "store-0" } });
+    expect(proposals.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1782, currency: "USD", reviewReasons: ["fx_converted"] });
+  });
+
+  it("for a payment repeated on two screenshots that names its exchange line, booking it once", () => {
+    const capture = (image: number) => [
+      extractRow({ rowId: `cafe-${image}`, imageIndex: image, visualOrder: 0, rawTextLines: ["CORNER CAFE"], amount: 940 }),
+      purchase({ rowId: `store-${image}`, imageIndex: image, relation: { kind: "fx_for", rowId: `fx-${image}` } }),
+      extractRow({
+        rowId: `fx-${image}`,
+        imageIndex: image,
+        visualOrder: 2,
+        rowRole: "supporting_detail",
+        semanticKind: "fx_conversion",
+        rawTextLines: ["16.50 EUR < 17.82 USD"],
+      }),
+      extractRow({ rowId: `books-${image}`, imageIndex: image, visualOrder: 3, rawTextLines: ["BOOK NOOK"], amount: 700 }),
+    ];
+    const proposals = validate([...capture(0), ...capture(1)]);
+    expect(proposals.find((row) => row.rowId === "store-1")).toMatchObject({ relation: { kind: "duplicate_of", rowId: "store-0" } });
+    expect(proposals.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1782, currency: "USD", disposition: "candidate" });
+  });
+
+  it("from one exchange line for one payment only, however the line was tied to it", () => {
+    const proposals = validate([
+      purchase({ rowId: "a", visualOrder: 0, rawTextLines: ["− 16.50 EUR", "STORE A"] }),
+      extractRow({
+        rowId: "fx",
+        visualOrder: 1,
+        rowRole: "supporting_detail",
+        semanticKind: "fx_conversion",
+        rawTextLines: ["16.50 EUR < 17.82 USD"],
+        relation: { kind: "fx_for", rowId: "a" },
+      }),
+      purchase({ rowId: "b", visualOrder: 2, rawTextLines: ["− 16.50 EUR", "STORE B"] }),
+    ]);
+    expect(proposals.filter((row) => row.disposition === "candidate").map((row) => [row.rowId, row.amount, row.currency])).toEqual([
+      ["a", 1782, "USD"],
+      ["b", 1650, "EUR"],
+    ]);
+
+    // A linked line whose own foreign amount disagrees is not this payment's evidence.
+    const mismatched = validate([
+      purchase({ rowId: "a", visualOrder: 0 }),
+      extractRow({
+        rowId: "fx",
+        visualOrder: 1,
+        rowRole: "supporting_detail",
+        semanticKind: "fx_conversion",
+        rawTextLines: ["17.00 EUR < 18.45 USD"],
+        relation: { kind: "fx_for", rowId: "a" },
+      }),
+    ]);
+    expect(mismatched[0]).toMatchObject({ amount: 1650, currency: "EUR" });
+  });
+
+  it("for the kept capture only when every capture showing a figure agrees", () => {
+    const capture = (image: number, usd: string | null) => [
+      extractRow({ rowId: `cafe-${image}`, imageIndex: image, visualOrder: 0, rawTextLines: ["CORNER CAFE"], amount: 940 }),
+      purchase({ rowId: `store-${image}`, imageIndex: image }),
+      ...(usd
+        ? [
+            extractRow({
+              rowId: `fx-${image}`,
+              imageIndex: image,
+              visualOrder: 2,
+              rowRole: "supporting_detail" as const,
+              semanticKind: "fx_conversion" as const,
+              rawTextLines: [`16.50 EUR < ${usd} USD`],
+            }),
+          ]
+        : []),
+    ];
+    const conflicting = validate([...capture(0, null), ...capture(1, "17.82"), ...capture(2, "18.45")]);
+    expect(conflicting.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1650, currency: "EUR" });
+    const agreeing = validate([...capture(0, null), ...capture(1, "17.82"), ...capture(2, "17.82")]);
+    expect(agreeing.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1782, currency: "USD" });
+
+    // A capture whose own evidence contradicts itself also leaves the group unsettled.
+    const line = (rowId: string, visualOrder: number, text: string, over: Partial<ImportExtractRow> = {}) =>
+      extractRow({ rowId, imageIndex: 2, visualOrder, rowRole: "supporting_detail", semanticKind: "fx_conversion", rawTextLines: [text], ...over });
+    const selfContradicting = [
+      [
+        line("fx-2a", 2, "16.50 EUR < 17.82 USD", { relation: { kind: "fx_for", rowId: "store-2" } }),
+        line("fx-2b", 3, "16.50 EUR < 18.45 USD", { relation: { kind: "fx_for", rowId: "store-2" } }),
+      ],
+      [line("fx-2", 2, "16.50 EUR < 17.82 USD / 18.45 USD")],
+      [line("fx-2a", 0.5, "16.50 EUR < 17.82 USD"), line("fx-2b", 2, "16.50 EUR < 18.45 USD")],
+    ];
+    for (const evidence of selfContradicting) {
+      const proposals = validate([...capture(0, null), ...capture(1, "17.82"), ...capture(2, null), ...evidence]);
+      expect(proposals.find((row) => row.rowId === "store-0")).toMatchObject({ amount: 1650, currency: "EUR" });
+    }
+  });
+
+  it("from a linked line only when the line proves the link, in either or both directions", () => {
+    const line = (over: Partial<ImportExtractRow>) =>
+      extractRow({
+        rowId: "fx",
+        visualOrder: 1,
+        rowRole: "supporting_detail",
+        semanticKind: "fx_conversion",
+        rawTextLines: ["16.50 EUR < 17.82 USD"],
+        ...over,
+      });
+    const reciprocal = validate([
+      purchase({ visualOrder: 0, relation: { kind: "fx_for", rowId: "fx" } }),
+      line({ relation: { kind: "fx_for", rowId: "purchase" } }),
+    ]);
+    expect(reciprocal[0]).toMatchObject({ amount: 1782, currency: "USD" });
+
+    const unproven = validate([
+      purchase({ visualOrder: 0 }),
+      line({ visualOrder: 5, rawTextLines: ["17.82 USD"], relation: { kind: "fx_for", rowId: "purchase" } }),
+    ]);
+    expect(unproven[0]).toMatchObject({ amount: 1650, currency: "EUR" });
+
+    // A link the line disproves leaves the line free for the payment it does belong to.
+    const misdirected = validate([
+      purchase({ rowId: "a", visualOrder: 0, amount: 1700, rawTextLines: ["− 17.00 EUR", "STORE A"] }),
+      line({ relation: { kind: "fx_for", rowId: "a" } }),
+      purchase({ rowId: "b", visualOrder: 2, rawTextLines: ["− 16.50 EUR", "STORE B"] }),
+    ]);
+    expect(misdirected.filter((row) => row.disposition === "candidate").map((row) => [row.rowId, row.amount, row.currency])).toEqual([
+      ["a", 1700, "EUR"],
+      ["b", 1782, "USD"],
+    ]);
+  });
+
+  it("never for a payment the bank declined, which leaves a real exchange next to it alone", () => {
+    const proposals = validate([
+      purchase({ rowId: "declined", visualOrder: 0, postingStatus: "declined" }),
+      extractRow({
+        rowId: "exchange",
+        visualOrder: 1,
+        semanticKind: "fx_conversion",
+        rawTextLines: ["16.50 EUR < 17.82 USD", "Exchange"],
+        amount: 1782,
+      }),
+    ]);
+    expect(proposals.find((row) => row.rowId === "exchange")).toMatchObject({ disposition: "candidate", amount: 1782, currency: "USD" });
+  });
+
+  it("not at all when only the foreign amount is shown or the evidence is ambiguous", () => {
+    expect(validate([purchase()])[0]).toMatchObject({ amount: 1650, currency: "EUR", reviewReasons: [] });
+
+    const exchange = (rowId: string, visualOrder: number, usd: string) =>
+      extractRow({ rowId, visualOrder, rowRole: "supporting_detail", semanticKind: "fx_conversion", rawTextLines: [`16.50 EUR < ${usd} USD`] });
+    const twoCandidates = validate([exchange("above", 0, "17.82"), purchase(), exchange("below", 2, "17.90")]);
+    expect(twoCandidates.find((row) => row.rowId === "purchase")).toMatchObject({ amount: 1650, currency: "EUR" });
+
+    const sharedEvidence = validate([
+      purchase({ rowId: "first", visualOrder: 0 }),
+      exchange("between", 1, "17.82"),
+      purchase({ rowId: "second", visualOrder: 2 }),
+    ]);
+    expect(sharedEvidence.filter((row) => row.currency === "EUR").map((row) => row.rowId)).toEqual(["first", "second"]);
+
+    // A neighbouring payment that prints both of its own amounts is that payment, even when its
+    // foreign amount happens to equal this one's.
+    const twoPayments = validate([
+      extractRow({ rowId: "bank", visualOrder: 0, rawTextLines: ["−17,82 USD", "BOOK SHOP", "16,50 €"], amount: 1650, currency: "EUR" }),
+      purchase(),
+    ]);
+    expect(twoPayments.map((row) => [row.rowId, row.disposition, row.amount, row.currency])).toEqual([
+      ["bank", "candidate", 1782, "USD"],
+      ["purchase", "candidate", 1650, "EUR"],
+    ]);
+
+    // A different screenshot or a date divider in between is not "next to it".
+    const apart = validate([
+      exchange("exchange", 0, "17.82"),
+      extractRow({ rowId: "divider", visualOrder: 1, rowRole: "ui_metadata", rawTextLines: ["Aug 6"], amount: null, currency: null }),
+      purchase({ visualOrder: 2 }),
+    ]);
+    expect(apart.find((row) => row.rowId === "purchase")).toMatchObject({ currency: "EUR" });
   });
 });

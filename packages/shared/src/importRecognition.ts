@@ -1,6 +1,7 @@
 import { isSupportedCurrency } from "./currency";
 import { isCalendarDate } from "./dates";
-import { printedAmountIn } from "./importAmounts";
+import { printedAmountIn, printedAmountsIn } from "./importAmounts";
+import { settleImportDuplicates } from "./importChunks";
 import { buildImportDupIndex, classifyImportDup, existingImportRowsForAccount, type ImportDupStatus, importCandidateDirection } from "./importDedupe";
 import type { ImportReceipt } from "./importReceipt";
 import type { Account, Category, Envelope, Transaction } from "./types";
@@ -183,7 +184,7 @@ export function applyImportSeamReviewReasons(result: ImportRecognitionResult): I
   return {
     ...result,
     proposals: result.proposals.map((proposal) =>
-      flagged.has(proposal.rowId) ? { ...proposal, reviewReasons: addReasons(proposal.reviewReasons, "possible_duplicate") } : proposal,
+      flagged.has(proposal.rowId) ? { ...proposal, reviewReasons: addReasons(proposal.reviewReasons, "possible_duplicate"), selected: false } : proposal,
     ),
   };
 }
@@ -404,6 +405,16 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
   const invalidRelations = new Set<string>();
   const acceptedRelations = new Map<string, ImportRowRelation>();
   const shapeChangingRelations = new Set<string>();
+  const duplicates = settleImportDuplicates(rows);
+  const possibleDuplicates = new Set(duplicates.possible.map((pair) => pair.laterRowId));
+  // A proven repeat is its kept capture, whatever else the model said about it: the kept capture
+  // carries the entry's own relations (and takes any exchange figure seen on this one).
+  for (const [rowId, targetRowId] of duplicates.links) {
+    const claim = rowsById.get(rowId)!.relation;
+    if (claim?.kind === "duplicate_of" && claim.rowId === targetRowId) continue;
+    acceptedRelations.set(rowId, { kind: "duplicate_of", rowId: targetRowId });
+    shapeChangingRelations.add(rowId);
+  }
   for (const row of rows) {
     if (!row.relation) continue;
     const target = rowsById.get(row.relation.rowId);
@@ -411,6 +422,8 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
       invalidRelations.add(row.rowId);
       continue;
     }
+    if (row.relation.kind === "duplicate_of" && duplicates.links.get(row.rowId) !== target.rowId) continue;
+    if (row.relation.kind !== "duplicate_of" && duplicates.links.has(row.rowId)) continue;
     if (!relationSupportedByFacts(row, target)) continue;
     acceptedRelations.set(row.rowId, row.relation);
     shapeChangingRelations.add(row.rowId);
@@ -419,12 +432,33 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
   }
 
   const budgetCurrencySupported = isSupportedCurrency(budgetCurrency);
-  const fxByEvent = foreignAmountsInBudgetCurrency(rows, rowsById, budgetCurrency);
+  const foreign = foreignAmountsInBudgetCurrency(rows, rowsById, budgetCurrency);
+  // The capture that is kept stands for the entry: a printed account-currency figure seen on any
+  // capture of it belongs to the kept one, provided every capture that shows one agrees.
+  const keptCapture = (rowId: string): string => {
+    const seen = new Set<string>();
+    let current = rowId;
+    for (let next = acceptedRelations.get(current); next?.kind === "duplicate_of" && !seen.has(next.rowId); next = acceptedRelations.get(current)) {
+      seen.add(current);
+      current = next.rowId;
+    }
+    return current;
+  };
+  const figuresByKept = new Map<string, Set<number>>();
+  for (const [rowId, figure] of foreign.converted) {
+    const kept = keptCapture(rowId);
+    figuresByKept.set(kept, (figuresByKept.get(kept) ?? new Set()).add(figure));
+  }
+  const conflictedKept = new Set([...foreign.conflicted].map(keptCapture));
+  for (const [kept, figures] of figuresByKept) {
+    if (figures.size === 1 && !conflictedKept.has(kept)) foreign.converted.set(kept, [...figures][0]!);
+    else foreign.converted.delete(kept);
+  }
   const proposals = rows.map((row) => {
     const mapping = mappingFor(row.semanticKind, row.direction);
     const relation = acceptedRelations.get(row.rowId) ?? null;
 
-    if (row.rowRole !== "financial_event") {
+    if (row.rowRole !== "financial_event" || foreign.exchangeLines.has(row.rowId)) {
       return proposalFrom(row, { disposition: "supporting", type: null, relation, reviewReasons: [], selected: false });
     }
     // A pending entry has already left the account: the bank shows it and the money is spent, so
@@ -440,7 +474,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
         selected: false,
       });
     }
-    const converted = fxByEvent.get(row.rowId);
+    const converted = foreign.converted.get(row.rowId);
 
     let disposition: ImportProposal["disposition"] = "candidate";
     let type = mapping.type;
@@ -477,6 +511,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     // Suspicious content never blocks a row (the facts may still be right) but it is never
     // pre-selected: whatever the text asked for, the human decides with the flag in view.
     if (row.suspiciousText) reasons = addReasons(reasons, "suspicious_text");
+    if (possibleDuplicates.has(row.rowId) || duplicates.fragments.has(row.rowId)) reasons = addReasons(reasons, "possible_duplicate");
 
     return proposalFrom(row, {
       disposition,
@@ -484,7 +519,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
       isRefund: mapping.isRefund,
       relation,
       reviewReasons: reasons,
-      selected: !row.suspiciousText && !reasons.includes("inconsistent_direction"),
+      selected: !row.suspiciousText && !reasons.includes("inconsistent_direction") && !reasons.includes("possible_duplicate"),
       ...(converted !== undefined ? { amount: converted, currency: budgetCurrency } : {}),
     });
   });
@@ -492,25 +527,146 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
   return { rows, proposals };
 }
 
+interface ForeignAmounts {
+  /** Foreign-currency event → its printed account-currency figure. */
+  converted: Map<string, number>;
+  /** Exchange entries whose figure was taken: evidence only, never booked a second time. */
+  exchangeLines: Set<string>;
+  /** Payments whose printed evidence contradicts itself: no capture of them may be converted. */
+  conflicted: Set<string>;
+}
+
+/**
+ * A foreign-currency payment takes the account-currency figure PRINTED for it, never a computed
+ * rate. The figure is tied to the payment by the exact foreign amount, not by a layout or by the
+ * model's labels, so it works for any bank or wallet:
+ *  1. a linked exchange line (`fx_for` in either direction, as the model reported it);
+ *  2. an adjacent entry (same screenshot, nothing but supporting text between them) that prints
+ *     the payment's foreign amount AND one account-currency figure — a wallet that books the
+ *     exchange as its own entry next to the purchase. That entry becomes evidence; one read as a
+ *     payment of its own (any kind but an exchange or unknown) never does;
+ *  3. the payment's own lines, when they print one account-currency figure next to its amount.
+ * Anything ambiguous (two candidates, two figures, a candidate claimed by two payments) leaves
+ * the amount as read, with the currency warning, for the human.
+ */
 function foreignAmountsInBudgetCurrency(
   rows: ReadonlyArray<ImportExtractRow>,
   rowsById: ReadonlyMap<string, ImportExtractRow>,
   budgetCurrency: string,
-): Map<string, number> {
+): ForeignAmounts {
   const converted = new Map<string, number>();
+  const exchangeLines = new Set<string>();
+  const conflicted = new Set<string>();
+  // A payment the bank declined moves no money and never takes an exchange line from another.
+  const isForeignEvent = (row: ImportExtractRow | undefined): row is ImportExtractRow =>
+    row !== undefined &&
+    row.rowRole === "financial_event" &&
+    row.postingStatus !== "declined" &&
+    row.currency !== null &&
+    row.currency !== budgetCurrency &&
+    hasPositiveMinorAmount(row.amount);
   const isFx = (row: ImportExtractRow | undefined): row is ImportExtractRow =>
     row !== undefined && row.rowRole === "supporting_detail" && row.semanticKind === "fx_conversion";
+  // One piece of evidence pays for one payment, whichever way it was tied to it.
+  // A link counts only when the line itself proves it: it prints the payment's exact foreign
+  // amount and one account-currency figure. A disproved link reserves nothing.
+  const usedEvidence = new Set<string>();
+  const linked = new Map<string, Map<string, number>>();
+  const paymentsPerExchange = new Map<string, Set<string>>();
   for (const row of rows) {
     if (row.relation?.kind !== "fx_for") continue;
     const target = rowsById.get(row.relation.rowId);
     const [fx, event] = isFx(row) ? [row, target] : isFx(target) ? [target, row] : [undefined, undefined];
-    if (!fx || !event || event.rowRole !== "financial_event" || event.currency === null || event.currency === budgetCurrency) continue;
-    if (!hasPositiveMinorAmount(event.amount)) continue;
-    const figure = printedAmountIn(fx.rawTextLines, budgetCurrency);
-    if (figure !== null && figure > 0) converted.set(event.rowId, figure);
+    if (!fx || !isForeignEvent(event)) continue;
+    if (printedAmountIn(fx.rawTextLines, event.currency!) !== event.amount) continue;
+    const figures = printedAmountsIn(fx.rawTextLines, budgetCurrency);
+    if (figures.length > 1) conflicted.add(event.rowId);
+    if (figures.length !== 1) continue;
+    const figure = figures[0]!;
+    usedEvidence.add(fx.rowId);
+    linked.set(event.rowId, (linked.get(event.rowId) ?? new Map()).set(fx.rowId, figure));
+    paymentsPerExchange.set(fx.rowId, (paymentsPerExchange.get(fx.rowId) ?? new Set()).add(event.rowId));
   }
-  return converted;
+  for (const [eventId, links] of linked) {
+    const figures = new Set(links.values());
+    if (figures.size > 1) conflicted.add(eventId);
+    else if ([...links.keys()].every((exchange) => paymentsPerExchange.get(exchange)!.size === 1)) converted.set(eventId, [...figures][0]!);
+  }
+
+  const byImage = new Map<number, ImportExtractRow[]>();
+  for (const row of rows) byImage.set(row.imageIndex, [...(byImage.get(row.imageIndex) ?? []), row]);
+  for (const imageRows of byImage.values()) imageRows.sort((left, right) => left.visualOrder - right.visualOrder);
+  // The rows between a payment and the next entry on each side: supporting text belongs to the
+  // nearest entry, and a divider or other interface text ends the search.
+  const adjacent = (row: ImportExtractRow): ImportExtractRow[] => {
+    const imageRows = byImage.get(row.imageIndex)!;
+    const at = imageRows.indexOf(row);
+    const found: ImportExtractRow[] = [];
+    for (const step of [-1, 1]) {
+      for (let index = at + step; index >= 0 && index < imageRows.length; index += step) {
+        const other = imageRows[index]!;
+        if (other.rowRole === "ui_metadata") break;
+        found.push(other);
+        if (other.rowRole === "financial_event") break;
+      }
+    }
+    return found;
+  };
+  // The account-currency figures a row prints next to the payment's exact foreign amount.
+  const pairedFigures = (row: ImportExtractRow, event: ImportExtractRow): number[] =>
+    printedAmountIn(row.rawTextLines, event.currency!) === event.amount ? printedAmountsIn(row.rawTextLines, budgetCurrency) : [];
+  // A neighbour read as a payment of its own (a bank entry printing both of ITS amounts) is never
+  // another payment's exchange line, even when the two foreign amounts happen to be equal.
+  const mayBeExchange = (row: ImportExtractRow): boolean =>
+    row.rowRole !== "financial_event" || row.semanticKind === "fx_conversion" || row.semanticKind === "unknown";
+  // A linked figure stands only when no other evidence for the same payment prints a different one.
+  for (const [eventId, figure] of converted) {
+    const event = rowsById.get(eventId)!;
+    const others = [
+      ...pairedFigures(event, event),
+      ...adjacent(event).flatMap((other) => (mayBeExchange(other) && !usedEvidence.has(other.rowId) ? pairedFigures(other, event) : [])),
+    ];
+    if (others.some((other) => other !== figure)) {
+      converted.delete(eventId);
+      conflicted.add(eventId);
+    }
+  }
+
+  const pairs = new Map<string, { exchange: string; figure: number }>();
+  const claims = new Map<string, number>();
+  for (const event of rows) {
+    if (!isForeignEvent(event) || converted.has(event.rowId) || conflicted.has(event.rowId)) continue;
+    if (printedAmountsIn(event.rawTextLines, budgetCurrency).length > 0) continue;
+    const matches = adjacent(event).flatMap((other) => {
+      const figures = mayBeExchange(other) && !usedEvidence.has(other.rowId) ? pairedFigures(other, event) : [];
+      if (figures.length > 1) conflicted.add(event.rowId);
+      return figures.length === 1 ? [{ exchange: other.rowId, figure: figures[0]! }] : [];
+    });
+    if (new Set(matches.map((match) => match.figure)).size > 1) conflicted.add(event.rowId);
+    if (matches.length !== 1 || conflicted.has(event.rowId)) continue;
+    pairs.set(event.rowId, matches[0]!);
+    claims.set(matches[0]!.exchange, (claims.get(matches[0]!.exchange) ?? 0) + 1);
+  }
+  for (const [eventId, pair] of pairs) {
+    if (claims.get(pair.exchange) !== 1) continue;
+    converted.set(eventId, pair.figure);
+    exchangeLines.add(pair.exchange);
+  }
+
+  for (const event of rows) {
+    if (!isForeignEvent(event) || converted.has(event.rowId) || exchangeLines.has(event.rowId) || conflicted.has(event.rowId)) continue;
+    const figures = pairedFigures(event, event);
+    if (figures.length > 1) conflicted.add(event.rowId);
+    else if (figures.length === 1) converted.set(event.rowId, figures[0]!);
+  }
+  return { converted, exchangeLines, conflicted };
 }
+
+/** Only an entry that could become a transaction stands for a recorded one. Evidence rows and
+ *  entries the bank itself declined never take a ledger row away from a real entry. */
+const declinedByBank = (proposal: ImportProposal): boolean => proposal.disposition === "declined" && proposal.reviewReasons.includes("pending_or_declined");
+const claimsLedgerRow = (proposal: ImportProposal): boolean =>
+  proposal.disposition !== "supporting" && !declinedByBank(proposal) && proposal.relation?.kind !== "duplicate_of";
 
 export function reconcileImportProposals(input: {
   proposals: ImportProposal[];
@@ -535,12 +691,16 @@ export function reconcileImportProposals(input: {
     const reviewReasons = proposal.reviewReasons;
     let duplicateStatus: ImportDupStatus = "new";
 
-    if (proposal.relation?.kind === "duplicate_of" && proposal.disposition === "candidate") {
-      // A repeat of another captured row (validated against its facts) is that row, not a new one.
+    if (
+      proposal.relation?.kind === "duplicate_of" &&
+      (proposal.disposition === "candidate" || (proposal.disposition === "declined" && !declinedByBank(proposal)))
+    ) {
+      // A repeat of another captured row (validated against its facts) is that row, not a new one;
+      // a second reconciliation of the same result reaches the same verdict.
       duplicateStatus = "exists";
       disposition = "declined";
       selected = false;
-    } else if (isCalendarDate(proposal.date) && hasPositiveMinorAmount(proposal.amount)) {
+    } else if (claimsLedgerRow(proposal) && isCalendarDate(proposal.date) && hasPositiveMinorAmount(proposal.amount)) {
       duplicateStatus = classifyImportDup(
         {
           date: proposal.date,
@@ -562,8 +722,6 @@ export function reconcileImportProposals(input: {
         }
       } else if (duplicateStatus === "probable") {
         selected = false;
-      } else if (proposal.disposition === "candidate") {
-        duplicates.markSeen({ date: proposal.date, amount: proposal.amount, rawPlace: proposal.rawPlace });
       }
     }
     if (sourceAccountInvalid) {
