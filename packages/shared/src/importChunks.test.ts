@@ -547,6 +547,17 @@ describe("settling repeats across screenshots", () => {
     expect(full.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
   });
 
+  it("keeps the first capture when the model's repeat claims go round three screenshots", () => {
+    const rows = [0, 1, 2].flatMap((image) => [
+      entry(`a${image}`, image, 0, "ORCHARD BAKERY"),
+      entry(`x${image}`, image, 1, "CITY PARKING", { amount: 1200, relation: { kind: "duplicate_of", rowId: `x${(image + 1) % 3}` } }),
+    ]);
+    const settled = settleImportDuplicates(rows);
+    expect(settled.links.get("x1")).toBe("x0");
+    expect(settled.links.get("x2")).toBe("x0");
+    expect(settled.links.has("x0")).toBe(false);
+  });
+
   it("keeps two identical entries of one screenshot as two, even when an earlier screenshot shows one", () => {
     const settled = settleImportDuplicates([
       entry("a1", 0, 0, "ORCHARD BAKERY"),

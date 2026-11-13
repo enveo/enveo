@@ -646,6 +646,26 @@ describe("screenshot import proposal reconciliation", () => {
     expect(bothBooked.map((row) => row.duplicateStatus)).toEqual(["exists", "exists"]);
   });
 
+  it("keeps one capture of an entry whose repeat claims point forward, and links the others to it", () => {
+    const rows = [0, 1, 2].flatMap((image) => [
+      extractRow({ rowId: `shop-${image}`, imageIndex: image, visualOrder: 0, rawTextLines: ["PINE HARDWARE"], amount: 915 }),
+      extractRow({
+        rowId: `park-${image}`,
+        imageIndex: image,
+        visualOrder: 1,
+        rawTextLines: ["CITY PARKING"],
+        amount: 1200,
+        relation: { kind: "duplicate_of", rowId: `park-${(image + 1) % 3}` },
+      }),
+    ]);
+    const { proposals } = validateImportExtraction({ batch: { rows }, budgetCurrency: "USD" });
+    const by = Object.fromEntries(proposals.map((proposal) => [proposal.rowId, proposal]));
+
+    expect(by["park-0"]!.relation).toBeNull();
+    expect(by["park-1"]!.relation).toEqual({ kind: "duplicate_of", rowId: "park-0" });
+    expect(by["park-2"]!.relation).toEqual({ kind: "duplicate_of", rowId: "park-0" });
+  });
+
   it("keeps an entry cut off at the screenshot edge visible as a possible repeat, never hidden", () => {
     const rows = [
       extractRow({ rowId: "cafe-0", imageIndex: 0, visualOrder: 0, rawTextLines: ["CORNER CAFE", "0.62"], amount: 940 }),

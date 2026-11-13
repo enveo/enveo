@@ -567,12 +567,16 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
     if (row.rowRole !== "financial_event") continue;
     // Any other relation (an exchange line, a refund, a fee) describes the entry, not its identity:
     // the later capture of a repeated entry is still settled here, or it would be booked twice.
-    const claimsTwin = row.relation?.kind === "duplicate_of";
-    const declared = claimsTwin ? rowsById.get(row.relation!.rowId) : undefined;
+    const earlier = (candidate: ImportExtractRow) => order.get(candidate.rowId)! < order.get(row.rowId)!;
+    const claimed = row.relation?.kind === "duplicate_of" ? rowsById.get(row.relation.rowId) : undefined;
+    // A repeat always points back: a claim on a LATER capture is read as no claim, or a claim
+    // that goes round three screenshots would link every capture and leave the entry none to keep.
+    const forward = claimed !== undefined && !earlier(claimed);
+    const claimsTwin = row.relation?.kind === "duplicate_of" && !forward;
+    const declared = claimsTwin ? claimed : undefined;
     // A claimed twin that does not even share the posting facts (or sits in the same screenshot)
     // is not a repeat at all: the claim is dropped, not surfaced.
     if (claimsTwin && !(declared && declared.imageIndex !== row.imageIndex && sameFacts(row, declared))) continue;
-    const earlier = (candidate: ImportExtractRow) => order.get(candidate.rowId)! < order.get(row.rowId)!;
     const candidates = declared
       ? [declared]
       : isFinancialTwinCandidate(row)
