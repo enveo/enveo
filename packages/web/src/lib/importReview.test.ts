@@ -1300,6 +1300,16 @@ describe("matching the selection to the bank balance", () => {
     expect(hint(["Dostępne środki 500,00 zł", "Dzienny limit przelewów 2 000,00 zł"])).toBe(50_000);
     expect(hint(["Available balance $500.00", "Daily payment limit $2,000.00"])).toBe(50_000);
     expect(hint(["Balance 1,250.00", "Balance 1,300.00"])).toBeNull();
+    // Two different balances on one line conflict just as on two lines; the same one twice does not.
+    expect(hint(["Balance $100.00 · Balance $200.00"])).toBeNull();
+    expect(hint(["Balance $100.00 · Balance $100.00"])).toBe(10_000);
+  });
+
+  it("keeps the label's currency when the figure sits on the line below", () => {
+    const hint = (lines: string[], currency?: string) => bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: lines }], currency);
+    expect(hint(["EUR balance", "300.00"], "USD")).toBeNull();
+    expect(hint(["USD balance", "300.00"], "USD")).toBe(30_000);
+    expect(hint(["Balance", "300.00"], "USD")).toBe(30_000);
   });
 });
 

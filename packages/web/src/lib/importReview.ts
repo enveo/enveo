@@ -851,8 +851,7 @@ export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLi
     for (const row of chrome) {
       for (const [index, text] of row.rawTextLines.entries()) {
         if (creditLine && AVAILABLE_BALANCE_LABEL.test(text)) continue;
-        const found = balanceFigure(text, row.rawTextLines[index + 1], label, currency);
-        if (found !== null) figures.add(found);
+        for (const found of balanceFigures(text, row.rawTextLines[index + 1], label, currency)) figures.add(found);
       }
     }
     if (figures.size === 1) return [...figures][0]!;
@@ -861,19 +860,27 @@ export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLi
   return null;
 }
 
-function balanceFigure(line: string, next: string | undefined, label: RegExp, currency: string | undefined): number | null {
-  const labelled = label.exec(line);
-  if (!labelled) return null;
+/** The figures a line gives for `label`: the first one after each occurrence of the label, so two
+ *  different balances on one line conflict, or else the cell under the label on the next line. */
+function balanceFigures(line: string, next: string | undefined, label: RegExp, currency: string | undefined): number[] {
+  const labels = [...line.matchAll(new RegExp(label.source, `${label.flags.replace("g", "")}g`))];
+  if (labels.length === 0) return [];
   const cells = line.split(/\s{2,}/);
   const column = cells.findIndex((cell) => label.test(cell));
-  if (OTHER_FIGURE_LABEL.test(cells[column] ?? line)) return null;
-  const after = line.slice(labelled.index + labelled[0].length);
-  const own = firstFigure(after);
-  if (own !== null) return otherCurrencyOnly(line, currency) ? null : own;
-  if (!next) return null;
+  const labelCell = cells[column] ?? line;
+  if (OTHER_FIGURE_LABEL.test(labelCell)) return [];
+  const own = labels.flatMap((match, index) => {
+    const figure = firstFigure(line.slice(match.index + match[0].length, labels[index + 1]?.index ?? line.length));
+    return figure === null ? [] : [figure];
+  });
+  if (own.length > 0) return otherCurrencyOnly(line, currency) ? [] : own;
+  if (!next) return [];
   const below = next.split(/\s{2,}/);
   const cell = below[column] ?? below[below.length - 1] ?? "";
-  return otherCurrencyOnly(cell, currency) ? null : firstFigure(cell);
+  // The label may name the currency the figure below is in ("EUR balance").
+  if (otherCurrencyOnly(cell, currency) || otherCurrencyOnly(labelCell, currency)) return [];
+  const figure = firstFigure(cell);
+  return figure === null ? [] : [figure];
 }
 
 export interface ImportBalanceDiagnosis {
