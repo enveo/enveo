@@ -404,6 +404,22 @@ describe("correcting a leading block dated from the wrong neighbour", () => {
     expect(dated.find((r) => r.rowId === "i2-t1")).toMatchObject({ date: "2031-09-10", relation: { kind: "duplicate_of", rowId: "i1-t2" } });
     expect(settleImportDuplicates(dated).links.get("i2-t1")).toBe("i1-t2");
   });
+
+  it("leaves a row above the shared divider undated rather than guessing that divider's day", () => {
+    const rows = [
+      divider("i0-m1", 0, 0, "2031-09-10"),
+      row("i0-t1", 0, { visualOrder: 1, date: "2031-09-10", amount: 4410, rawTextLines: ["$44.10", "WILLOW GARDEN"] }),
+      row("i1-t1", 1, { visualOrder: 0, date: "2031-09-10", amount: 4410, rawTextLines: ["$44.10", "WILLOW GARDEN"] }),
+      divider("i1-m1", 1, 1, "2031-09-09"),
+      row("i1-t2", 1, { visualOrder: 2, date: "2031-09-09", amount: 275, rawTextLines: ["$2.75", "METRO TRANSIT"] }),
+      // read only on this screenshot: nothing says which earlier day it belongs to
+      row("i2-t1", 2, { visualOrder: 0, date: null, amount: 1960, rawTextLines: ["$19.60", "LARKSPUR BEAUTY"] }),
+      divider("i2-m1", 2, 1, "2031-09-09"),
+      row("i2-t2", 2, { visualOrder: 2, date: "2031-09-09", amount: 275, rawTextLines: ["$2.75", "METRO TRANSIT"] }),
+    ];
+
+    expect(inferImportDates({ rows }).rows.find((r) => r.rowId === "i2-t1")!.date).toBeNull();
+  });
 });
 
 describe("the same entry captured in non-adjacent screenshots", () => {
