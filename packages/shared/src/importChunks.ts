@@ -420,6 +420,10 @@ export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch 
       if (leading.length === 0) continue;
       const right = lastDividerTowards(layout, above);
       if (right === null) continue;
+      // A leading block sits ABOVE this screenshot's first divider. When that divider is the one
+      // the neighbour ends with, the screenshots overlap past it and the block belongs to an
+      // earlier divider of the neighbour, not to that one: its dates stay as they are.
+      if (layout.rows.find(isDateDivider)?.date === right) continue;
       const wrong = lastDividerTowards(layout, above === 1 ? -1 : 1);
       for (const row of leading) {
         if (row.date === null || (wrong !== null && wrong !== right && row.date === wrong)) set(row, right);

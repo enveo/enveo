@@ -369,6 +369,41 @@ describe("correcting a leading block dated from the wrong neighbour", () => {
     expect(byId.get("i8-t1")).toMatchObject({ date: "2031-09-05" });
     expect(byId.get("i8-t1")!.dateInferred).toBeUndefined();
   });
+
+  it("keeps a leading block's date when the screenshots overlap past the divider the neighbour ends with", () => {
+    const topUp = {
+      amount: 50000,
+      direction: "credit" as const,
+      semanticKind: "account_topup" as const,
+      rawTextLines: ["$500.00 +", "EXAMPLE SAVINGS TOP-UP"],
+    };
+    const fare = { amount: 275, rawTextLines: ["$2.75", "METRO TRANSIT"] };
+    const rows = [
+      divider("i0-m1", 0, 0, "2031-09-10"),
+      row("i0-t1", 0, { visualOrder: 1, date: "2031-09-10", amount: 1299, rawTextLines: ["$12.99", "CEDAR BAKERY"] }),
+      row("i0-t2", 0, { visualOrder: 2, date: "2031-09-10", amount: 4410, rawTextLines: ["$44.10", "WILLOW GARDEN"] }),
+      row("i1-t1", 1, { visualOrder: 0, date: "2031-09-10", amount: 4410, rawTextLines: ["$44.10", "WILLOW GARDEN"] }),
+      row("i1-t2", 1, { visualOrder: 1, date: "2031-09-10", ...topUp }),
+      divider("i1-m1", 1, 2, "2031-09-09"),
+      row("i1-t3", 1, { visualOrder: 3, date: "2031-09-09", ...fare }),
+      // the top of the next screenshot repeats the top-up from ABOVE the 09-09 divider
+      row("i2-t1", 2, { visualOrder: 0, date: null, ...topUp }),
+      divider("i2-m1", 2, 1, "2031-09-09"),
+      row("i2-t2", 2, { visualOrder: 2, date: "2031-09-09", ...fare }),
+      divider("i2-m2", 2, 3, "2031-09-08"),
+      row("i2-t3", 2, { visualOrder: 4, date: "2031-09-08", amount: 6020, rawTextLines: ["$60.20", "PINECONE GROCERY"] }),
+      // a screenshot from elsewhere in the list, ending on the same day the top-up was made
+      divider("i3-m1", 3, 0, "2031-09-13"),
+      row("i3-t1", 3, { visualOrder: 1, date: "2031-09-13", amount: 1875, rawTextLines: ["$18.75", "STARTRAIL FUEL"] }),
+      divider("i3-m2", 3, 2, "2031-09-10"),
+      row("i3-t2", 3, { visualOrder: 3, date: "2031-09-10", amount: 1299, rawTextLines: ["$12.99", "CEDAR BAKERY"] }),
+    ];
+
+    const dated = inferImportDates({ rows }).rows;
+
+    expect(dated.find((r) => r.rowId === "i2-t1")).toMatchObject({ date: "2031-09-10", relation: { kind: "duplicate_of", rowId: "i1-t2" } });
+    expect(settleImportDuplicates(dated).links.get("i2-t1")).toBe("i1-t2");
+  });
 });
 
 describe("the same entry captured in non-adjacent screenshots", () => {
