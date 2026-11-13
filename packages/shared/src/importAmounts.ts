@@ -27,7 +27,11 @@ export function printedAmountIn(lines: readonly string[], currency: string): num
 /** Every distinct amount printed in `currency`, rate expressions excluded. */
 export function printedAmountsIn(lines: readonly string[], currency: string): number[] {
   const marks = [currency, ...(UNAMBIGUOUS_CURRENCY_SYMBOLS[currency as SupportedCurrency] ?? [])].map(escapeRegExp).join("|");
-  const pattern = new RegExp(`(?<![\\d.,])(?:(${FIGURE})\\s*(?:${marks})(?![\\p{L}])|(?<![\\p{L}])(?:${marks})\\s*(${FIGURE})(?![\\d]|[.,]\\d))`, "giu");
+  // A sign may sit between a leading currency marker and the figure ("EUR -16.50", "€ −16,50").
+  const pattern = new RegExp(
+    `(?<![\\d.,])(?:(${FIGURE})\\s*(?:${marks})(?![\\p{L}])|(?<![\\p{L}])(?:${marks})\\s*[-+\\u2212]?\\s*(${FIGURE})(?![\\d]|[.,]\\d))`,
+    "giu",
+  );
   const figures = new Set<number>();
   for (const [index, line] of lines.entries()) {
     if (line.includes("=") || lines[index - 1]?.trimEnd().endsWith("=")) continue;

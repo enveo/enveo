@@ -9,6 +9,12 @@ describe("the amount printed in a currency", () => {
     expect(printedAmountIn(["16.50 EUR < 74.20 PLN"], "PLN")).toBe(7420);
   });
 
+  it("reads a sign between a leading currency marker and the figure", () => {
+    expect(printedAmountIn(["EUR -16.50"], "EUR")).toBe(1650);
+    expect(printedAmountIn(["€ −16,50"], "EUR")).toBe(1650);
+    expect(printedAmountIn(["GBP +16.50"], "GBP")).toBe(1650);
+  });
+
   it("never takes an exchange rate, a shared symbol or an ambiguous figure", () => {
     expect(printedAmountIn(["16.50 EUR < 74.20 PLN", "Exchange", "1.00 PLN =", "0.222372 EUR"], "PLN")).toBe(7420);
     expect(printedAmountIn(["16.50 EUR < 74.20 PLN", "Exchange", "1.00 PLN =", "0.222372 EUR"], "EUR")).toBe(1650);
