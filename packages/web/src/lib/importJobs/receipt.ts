@@ -101,8 +101,14 @@ export function prepareImportReceipt(
         placeName: tx?.placeName ?? (tx ? name(ledger.places, tx.payload.placeId) : (edit?.placeName ?? row.item?.placeName ?? null)),
         note: tx?.payload.note ?? edit?.note ?? null,
         tag: tx?.payload.tag ?? row.item?.tag ?? row.draftItem?.tag ?? "",
-        ...(baseline ? { correctionFields: importRowCorrections({ recognized: baseline.get(row.rowId), row, edit, budgetCurrency, accountId }) } : {}),
-        ...recognizedFlags(baseline?.get(row.rowId)),
+        // Supporting detail (a date divider, an exchange line) is never listed for a decision, so
+        // it is not measured: counted as unflagged it would read as rows the flags let through.
+        ...(baseline && row.disposition !== "supporting"
+          ? {
+              correctionFields: importRowCorrections({ recognized: baseline.get(row.rowId), row, edit, budgetCurrency, accountId }),
+              ...recognizedFlags(baseline.get(row.rowId)),
+            }
+          : {}),
       };
     }),
     ...((balanceCheck ?? previous?.balanceCheck) ? { balanceCheck: balanceCheck ?? previous?.balanceCheck } : {}),

@@ -182,6 +182,12 @@ test("each receipt row records which fields the human corrected, by name only", 
   const unchanged = prepareImportReceipt(null, ledger, "a", reviewed, emptyPlan, [], { 0: { ...edit, amount: 1650 } }, recognized);
   expect(unchanged.rows[0]!.correctionFields).toEqual([]);
 
+  // Supporting detail is never listed for a decision, so it is not measured.
+  const divider = recognizedRow("divider", { disposition: "supporting", include: false, amount: null, draftItem: undefined });
+  const withDivider = prepareImportReceipt(null, ledger, "a", [divider], emptyPlan, [], {}, [divider]).rows[0];
+  expect(withDivider).not.toHaveProperty("correctionFields");
+  expect(withDivider).not.toHaveProperty("reviewReasons");
+
   // Without a recognized baseline nothing is claimed; older receipts without the field still parse.
   expect(prepareImportReceipt(null, ledger, "a", reviewed, emptyPlan, []).rows[0]).not.toHaveProperty("correctionFields");
   const withFields = (correctionFields: unknown) => ({ ...receipt, rows: [{ ...receipt.rows[0]!, correctionFields }] });

@@ -15,12 +15,5 @@ const receipts = rows.flatMap((row) => {
   const parsed = importReceiptSchema.safeParse(row.receipt);
   return parsed.success ? [parsed.data] : [];
 });
-const completed = receipts.flatMap((receipt) => (receipt.completedAt ? [receipt.completedAt] : [])).sort();
-console.log(
-  JSON.stringify(
-    { window: { from: completed[0] ?? null, to: completed.at(-1) ?? null }, unreadable: rows.length - receipts.length, ...summarizeImportReceipts(receipts) },
-    null,
-    2,
-  ),
-);
+console.log(JSON.stringify({ unreadable: rows.length - receipts.length, ...summarizeImportReceipts(receipts) }, null, 2));
 await sql.end();
