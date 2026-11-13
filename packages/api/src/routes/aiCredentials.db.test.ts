@@ -34,7 +34,7 @@ describe.skipIf(!TEST_URL)("plain BYOK credential routes", () => {
       chatStatus: 200,
       chatContent: "byok-answer",
       importStatus: 200,
-      importItems: 0,
+      importItems: 1,
       sentVaultKey: true,
       sentChosenModel: true,
     });
@@ -46,8 +46,8 @@ describe.skipIf(!TEST_URL)("plain BYOK credential routes", () => {
       legacyItems: 0,
       legacyHasRecognitionFields: false,
       recognitionStatus: 200,
-      recognitionRows: 0,
-      recognitionProposals: 0,
+      recognitionRows: 1,
+      recognitionProposals: 1,
       recognitionHasLegacyItems: false,
     });
   });
