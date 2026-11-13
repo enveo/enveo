@@ -722,4 +722,38 @@ describe("settling repeats across screenshots", () => {
     expect(settled.links.has("x2")).toBe(false);
     expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
   });
+
+  it("never settles a charged capture onto one the bank declined", () => {
+    const settled = settleImportDuplicates([
+      entry("a1", 0, 0, "ORCHARD BAKERY"),
+      entry("x1", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000, postingStatus: "declined" }),
+      entry("b1", 0, 2, "PINE HARDWARE"),
+      entry("a2", 1, 0, "ORCHARD BAKERY"),
+      entry("x2", 1, 1, "TRANSFER TO SAVINGS", { amount: 50000, relation: { kind: "duplicate_of", rowId: "x1" } }),
+      entry("b2", 1, 2, "PINE HARDWARE"),
+    ]);
+
+    expect(settled.links.has("x2")).toBe(false);
+    expect(settled.possible.map((pair) => pair.laterRowId)).not.toContain("x2");
+  });
+
+  it("lets one screenshot settle onto an entry once, whichever of its captures it names", () => {
+    const settled = settleImportDuplicates([
+      entry("p0", 0, 0, "ORCHARD BAKERY"),
+      entry("a", 0, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("q0", 0, 2, "PINE HARDWARE"),
+      entry("p1", 1, 0, "ORCHARD BAKERY"),
+      entry("b", 1, 1, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("q1", 1, 2, "PINE HARDWARE"),
+      // two separate payments on one screenshot, each naming another capture of the same entry
+      entry("c", 2, 0, "TRANSFER TO SAVINGS", { amount: 50000, relation: { kind: "duplicate_of", rowId: "a" } }),
+      entry("r", 2, 1, "CEDAR BAKERY"),
+      entry("d", 2, 2, "TRANSFER TO SAVINGS", { amount: 50000, relation: { kind: "duplicate_of", rowId: "b" } }),
+    ]);
+
+    expect(settled.links.get("b")).toBe("a");
+    expect(settled.links.get("c")).toBe("a");
+    expect(settled.links.has("d")).toBe(false);
+    expect(settled.possible).toContainEqual({ earlierRowId: "b", laterRowId: "d" });
+  });
 });

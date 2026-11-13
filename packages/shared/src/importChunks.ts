@@ -505,11 +505,15 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
   }
   const neighbour = (row: ImportExtractRow, step: 1 | -1): ImportExtractRow | undefined =>
     entriesByImage.get(row.imageIndex)?.[position.get(row.rowId)! + step];
+  // A payment the bank declined and one it charged are never the same entry: settling the charged
+  // capture onto the declined one would leave neither to book.
+  const sameStanding = (row: ImportExtractRow, other: ImportExtractRow): boolean => (row.postingStatus === "declined") === (other.postingStatus === "declined");
   const sameFacts = (row: ImportExtractRow, other: ImportExtractRow): boolean =>
-    isFinancialTwinCandidate(row) && row.amount === other.amount && row.currency === other.currency && row.date === other.date;
+    isFinancialTwinCandidate(row) && row.amount === other.amount && row.currency === other.currency && row.date === other.date && sameStanding(row, other);
   const sameEntry = (row: ImportExtractRow, other: ImportExtractRow): boolean =>
     row.imageIndex !== other.imageIndex &&
     isFinancialTwinCandidate(row) &&
+    sameStanding(row, other) &&
     row.amount === other.amount &&
     row.currency === other.currency &&
     sameText(row, other) &&
@@ -559,11 +563,19 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
   const links = new Map<string, string>();
   const possible: Array<{ earlierRowId: string; laterRowId: string }> = [];
   const claimedFrom = new Map<string, Set<number>>();
+  // A claim is counted against the entry, not the capture it names: two captures of one screenshot
+  // naming two captures of the same earlier entry would otherwise both settle onto it.
+  const keptCapture = (rowId: string): string => {
+    let current = rowId;
+    while (links.has(current)) current = links.get(current)!;
+    return current;
+  };
   const claim = (row: ImportExtractRow, target: ImportExtractRow): boolean => {
-    const images = claimedFrom.get(target.rowId) ?? new Set<number>();
+    const entry = keptCapture(target.rowId);
+    const images = claimedFrom.get(entry) ?? new Set<number>();
     if (images.has(row.imageIndex)) return false;
     images.add(row.imageIndex);
-    claimedFrom.set(target.rowId, images);
+    claimedFrom.set(entry, images);
     return true;
   };
 
