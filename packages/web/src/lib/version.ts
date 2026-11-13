@@ -1,4 +1,4 @@
-export const APP_VERSION = "4.12.3";
+export const APP_VERSION = "4.12.4";
 
 export const BUILD_INFO = Object.freeze(typeof __BUILD_INFO__ !== "undefined" ? __BUILD_INFO__ : { time: "", sha: "" });
 
