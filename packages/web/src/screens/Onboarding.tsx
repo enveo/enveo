@@ -391,7 +391,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           <BigButton label={busy ? t("Loading sample data…") : t("Try it with sample data")} onClick={() => void tryDemo()} disabled={busy} variant="outline" />
           <div style={{ height: 10 }} />
           <BigButton
-            label={t("Move from YNAB or Actual Budget")}
+            label={t("Move from another budgeting app")}
             onClick={() => {
               commitCurrency();
               setMigrating(true);

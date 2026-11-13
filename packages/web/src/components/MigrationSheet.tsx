@@ -9,14 +9,15 @@ import {
   migrationErrorMessage,
   type PreparedMigration,
   prepareActualMigration,
+  prepareFourGroszeMigration,
   prepareYnabMigration,
 } from "../lib/migration";
-import { fetchYnabPlan, listYnabPlans, readActualExport, readYnabFile, type YnabPlanSummary } from "../lib/migrationSources";
+import { fetchYnabPlan, listYnabPlans, readActualExport, readFourGroszeFile, readYnabFile, type YnabPlanSummary } from "../lib/migrationSources";
 import { store } from "../lib/store";
 import { font, TEAL } from "../lib/theme";
 import { Surface } from "./chrome";
 
-type Step = "source" | "ynab" | "plans" | "actual" | "receipt" | "done";
+type Step = "source" | "ynab" | "plans" | "actual" | "fourGrosze" | "receipt" | "done";
 
 const YNAB_TOKEN_URL = "https://app.ynab.com/settings/developer";
 
@@ -41,6 +42,7 @@ export function MigrationFlow({ onClose, onMigrated }: { onClose: () => void; on
   const [uploadPending, setUploadPending] = useState(false);
   const ynabFile = useRef<HTMLInputElement>(null);
   const actualFile = useRef<HTMLInputElement>(null);
+  const fourGroszeFile = useRef<HTMLInputElement>(null);
 
   const close = () => {
     if (busy) return;
@@ -118,7 +120,7 @@ export function MigrationFlow({ onClose, onMigrated }: { onClose: () => void; on
     <div style={{ fontFamily: font, width: "100%" }}>
       {blocked ? (
         <>
-          {title(t("Move from YNAB or Actual Budget"))}
+          {title(t("Move from another budgeting app"))}
           {hint(t("This budget already has transactions. Export a backup, reset the budget under Settings, and start the move again."))}
           <button style={secondary} onClick={close}>
             {t("Close")}
@@ -126,7 +128,7 @@ export function MigrationFlow({ onClose, onMigrated }: { onClose: () => void; on
         </>
       ) : step === "source" ? (
         <>
-          {title(t("Move from YNAB or Actual Budget"))}
+          {title(t("Move from another budgeting app"))}
           {hint(t("Your accounts, envelopes, assignments and history come along. The file or token stays in this browser until you confirm."))}
           <div style={{ display: "grid", gap: 10 }}>
             <button style={secondary} onClick={() => setStep("ynab")}>
@@ -134,6 +136,9 @@ export function MigrationFlow({ onClose, onMigrated }: { onClose: () => void; on
             </button>
             <button style={secondary} onClick={() => setStep("actual")}>
               Actual Budget
+            </button>
+            <button style={secondary} onClick={() => setStep("fourGrosze")}>
+              4grosze.pl
             </button>
           </div>
         </>
@@ -202,6 +207,17 @@ export function MigrationFlow({ onClose, onMigrated }: { onClose: () => void; on
             {busy ? t("Reading your budget…") : t("Choose the zip file")}
           </button>
           {fileInput(actualFile, "application/zip,.zip", async (file) => prepareActualMigration(await readActualExport(file)))}
+        </>
+      ) : step === "fourGrosze" ? (
+        <>
+          {title("4grosze.pl")}
+          {hint(t("Export your data from 4grosze.pl as a JSON file, then select it here."))}
+          <button style={{ ...primary, opacity: busy ? 0.5 : 1 }} disabled={busy} onClick={() => fourGroszeFile.current?.click()}>
+            {busy ? t("Reading your budget…") : t("Choose the JSON file")}
+          </button>
+          {fileInput(fourGroszeFile, "application/json,.json", async (file) =>
+            prepareFourGroszeMigration(await readFourGroszeFile(file), t("Archived envelopes")),
+          )}
         </>
       ) : step === "receipt" && prepared ? (
         <>
@@ -275,16 +291,39 @@ function MigrationReceiptView({ receipt }: { receipt: MigrationReceipt }) {
         {count(tp("{n} envelope | {n} envelopes", receipt.envelopes))}
         {count(tp("{n} transaction | {n} transactions", receipt.transactions))}
       </div>
-      <div style={{ fontSize: 13, fontWeight: 600, marginTop: 12, color: balancesMatch ? C.pos : C.warn }}>
-        {balancesMatch ? t("Every account balance matches.") : t("These account balances do not match:")}
-      </div>
-      {differences(receipt.accountDifferences)}
-      {!receipt.trackingOnly && (
+      {!receipt.balancesChecked ? (
+        receipt.uncheckedBalances.length > 0 && (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 600, marginTop: 12, color: C.text, lineHeight: 1.45 }}>
+              {t("The file has no balances to check against. Compare these with your old app before you continue:")}
+            </div>
+            {receipt.uncheckedBalances.map((row) => (
+              <div key={row.name} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5, color: C.soft, padding: "3px 0" }}>
+                <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{row.name}</span>
+                <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{M(row.amount)}</span>
+              </div>
+            ))}
+          </>
+        )
+      ) : (
+        <>
+          <div style={{ fontSize: 13, fontWeight: 600, marginTop: 12, color: balancesMatch ? C.pos : C.warn }}>
+            {balancesMatch ? t("Every account balance matches.") : t("These account balances do not match:")}
+          </div>
+          {differences(receipt.accountDifferences)}
+        </>
+      )}
+      {!receipt.trackingOnly && receipt.envelopesChecked && (
         <div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, color: envelopesMatch ? C.pos : C.warn }}>
           {envelopesMatch ? t("Every envelope matches this month's available amount.") : t("These envelopes do not match this month's available amount:")}
         </div>
       )}
       {differences(receipt.envelopeDifferences)}
+      {!receipt.trackingOnly && !receipt.envelopesChecked && (
+        <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.55, marginTop: 10 }}>
+          {t("After the move, compare a few envelopes with your old app too.")}
+        </div>
+      )}
       {receipt.debtAccounts > 0 && (
         <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.55, marginTop: 10 }}>
           {t("Enveo has no card payment envelopes, so money owed on a card lowers what is left to budget.")}

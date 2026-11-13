@@ -1,5 +1,5 @@
 import { computeBudgetState } from "../budget";
-import type { Account, AccountType, Allocation, Budget, ClientLedger, Envelope, EnvelopeGroup, Money, Place, Transaction, TxnItem } from "../types";
+import type { Account, AccountType, Allocation, Budget, Category, ClientLedger, Envelope, EnvelopeGroup, Money, Place, Transaction, TxnItem } from "../types";
 
 /** One line of money; an unsplit transaction has exactly one. `amount` is signed: negative leaves the account. */
 export interface MigrationLine {
@@ -10,6 +10,10 @@ export interface MigrationLine {
   memo: string | null;
   transferAccountKey: string | null;
   transferPeerKey: string | null;
+  /** The row's own title, when the source keeps one apart from the payee. Absent: the payee names it. */
+  name?: string | null;
+  /** A category alongside the envelope, created by name. */
+  category?: string | null;
 }
 
 export interface MigrationTransaction {
@@ -24,14 +28,16 @@ export interface MigrationSource {
   name: string;
   /** null: the source does not say, so the budget keeps its own currency. */
   currency: string | null;
-  accounts: Array<{ key: string; name: string; type: AccountType; onBudget: boolean; closed: boolean; expectedBalance: Money }>;
+  /** `expectedBalance` null: the source does not state the balance, so the person compares it by eye. */
+  accounts: Array<{ key: string; name: string; type: AccountType; onBudget: boolean; closed: boolean; expectedBalance: Money | null }>;
   groups: Array<{ key: string; name: string }>;
   categories: Array<{ key: string; groupKey: string; name: string; hidden: boolean; monthlyTarget: Money | null; note: string | null }>;
   /** Already expressed in Enveo's terms: see `carriedAllocation`. */
   allocations: Array<{ categoryKey: string; month: string; amount: Money }>;
   /** The source's own figures for `month`, compared with what the ledger computes. */
   month: string;
-  expectedAvailable: Array<{ categoryKey: string; amount: Money }>;
+  /** null: the source does not state what each envelope holds. */
+  expectedAvailable: Array<{ categoryKey: string; amount: Money }> | null;
   /** The source tracks spending without envelopes, so no assignment can be carried over. */
   trackingOnly: boolean;
   transactions: MigrationTransaction[];
@@ -53,6 +59,11 @@ export interface MigrationReceipt {
   places: number;
   accountDifferences: MigrationDifference[];
   envelopeDifferences: MigrationDifference[];
+  /** False when the source states no balance for some account: nothing was compared for it. */
+  balancesChecked: boolean;
+  /** Accounts whose balance the source does not state, with the balance the move produces; closed ones only when not zero. */
+  uncheckedBalances: Array<{ name: string; amount: Money }>;
+  envelopesChecked: boolean;
   /** On-budget accounts owing money: Enveo has no card-payment envelopes, so debt lowers To be budgeted. */
   debtAccounts: number;
   trackingOnly: boolean;
@@ -132,6 +143,19 @@ export function buildMigrationLedger(source: MigrationSource, options: Migration
     return created.id;
   };
 
+  const categories = new Map<string, Category>();
+  const categoryId = (name: string | null | undefined): string | null => {
+    const trimmed = name?.trim();
+    if (!trimmed) return null;
+    const key = trimmed.toLowerCase();
+    const existing = categories.get(key);
+    if (existing) return existing.id;
+    const created = { id: newId(), name: trimmed, archived: false };
+    categories.set(key, created);
+    return created.id;
+  };
+  const rowName = (line: MigrationLine, payee: string | null): string | null => (line.name === undefined ? payee?.trim() || null : line.name?.trim() || null);
+
   const sides = new Map<string, TransferSide>();
   const namedBy = new Map<string, string>();
   for (const transaction of source.transactions) {
@@ -176,6 +200,7 @@ export function buildMigrationLedger(source: MigrationSource, options: Migration
     return {
       ...blank({ ...transaction, accountKey: fromKey }, line.memo ?? transaction.memo),
       type: "transfer",
+      name: line.name?.trim() || null,
       toAccountId: accountIds.get(toKey)!,
       amount: Math.abs(line.amount),
       allocationFromEnvelopeId: leavesBudget ? (envelopeIds.get(fromSide?.categoryKey ?? "") ?? null) : null,
@@ -192,7 +217,8 @@ export function buildMigrationLedger(source: MigrationSource, options: Migration
       isRefund: line.amount > 0 && !!envelopeId,
       envelopeId,
       placeId: placeId(transaction.payee),
-      name: transaction.payee?.trim() || null,
+      categoryId: categoryId(line.category),
+      name: rowName(line, transaction.payee),
     };
   };
 
@@ -204,7 +230,7 @@ export function buildMigrationLedger(source: MigrationSource, options: Migration
     const items: TxnItem[] = lines.map((line) => ({
       id: newId(),
       envelopeId: envelopeIds.get(line.categoryKey!)!,
-      categoryId: null,
+      categoryId: categoryId(line.category),
       amount: Math.abs(line.amount),
     }));
     return {
@@ -213,7 +239,9 @@ export function buildMigrationLedger(source: MigrationSource, options: Migration
       amount: items.reduce((sum, item) => sum + item.amount, 0),
       isRefund: inward,
       placeId: placeId(transaction.payee),
-      name: transaction.payee?.trim() || null,
+      name: lines.some((line) => line.name !== undefined)
+        ? [...new Set(lines.flatMap((line) => line.name?.trim() || []))].join(" · ") || null
+        : transaction.payee?.trim() || null,
       items,
     };
   };
@@ -234,17 +262,32 @@ export function buildMigrationLedger(source: MigrationSource, options: Migration
   });
 
   const budget: Budget = { ...options.budget, currency: source.currency ?? options.budget.currency };
-  const ledger: ClientLedger = { budgets: [budget], accounts, groups, envelopes, categories: [], places: [...places.values()], allocations, transactions };
+  const ledger: ClientLedger = {
+    budgets: [budget],
+    accounts,
+    groups,
+    envelopes,
+    categories: [...categories.values()],
+    places: [...places.values()],
+    allocations,
+    transactions,
+  };
 
   // Every date counts for an account, so the balance is read past the end of any budget.
   const balances = new Map(computeBudgetState(ledger, "9999-12").accounts.map((state) => [state.account.id, state.balance]));
   const available = new Map(computeBudgetState(ledger, source.month).envelopes.map((state) => [state.envelope.id, state.available]));
+  const balanceOf = (key: string) => balances.get(accountIds.get(key)!) ?? 0;
   const accountDifferences = source.accounts.flatMap((account) => {
-    const actual = balances.get(accountIds.get(account.key)!) ?? 0;
-    return actual === account.expectedBalance ? [] : [{ name: account.name, expected: account.expectedBalance, actual }];
+    const actual = balanceOf(account.key);
+    return account.expectedBalance === null || actual === account.expectedBalance ? [] : [{ name: account.name, expected: account.expectedBalance, actual }];
+  });
+  // A closed account still holding money is where a mismatched transfer would land, so it is shown too.
+  const uncheckedBalances = source.accounts.flatMap((account) => {
+    const amount = balanceOf(account.key);
+    return account.expectedBalance === null && (!account.closed || amount !== 0) ? [{ name: account.name, amount }] : [];
   });
   const categoryNames = new Map(source.categories.map((category) => [category.key, category.name]));
-  const envelopeDifferences = source.expectedAvailable.flatMap(({ categoryKey, amount }) => {
+  const envelopeDifferences = (source.expectedAvailable ?? []).flatMap(({ categoryKey, amount }) => {
     const id = envelopeIds.get(categoryKey);
     if (!id) return [];
     const actual = available.get(id) ?? 0;
@@ -263,7 +306,10 @@ export function buildMigrationLedger(source: MigrationSource, options: Migration
       places: places.size,
       accountDifferences,
       envelopeDifferences,
-      debtAccounts: source.accounts.filter((account) => account.onBudget && !account.closed && account.expectedBalance < 0).length,
+      balancesChecked: source.accounts.every((account) => account.expectedBalance !== null),
+      uncheckedBalances,
+      envelopesChecked: source.expectedAvailable !== null,
+      debtAccounts: source.accounts.filter((account) => account.onBudget && !account.closed && (account.expectedBalance ?? balanceOf(account.key)) < 0).length,
       trackingOnly: source.trackingOnly,
     },
   };

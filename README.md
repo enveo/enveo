@@ -26,9 +26,9 @@ It installs from the browser, works offline, syncs in the background
   OpenAI key or configure an operator key on the server. A normal budget uses
   the optional server vault; an E2EE budget encrypts the key with its budget
   key and calls OpenAI directly from the unlocked browser.
-- **Move in with your history** — bring a whole budget from YNAB or Actual
-  Budget and see every balance checked against the source before you confirm,
-  or import a bank's CSV export. Neither needs AI.
+- **Move in with your history** — bring a whole budget from YNAB, Actual
+  Budget or 4grosze.pl and check its balances before you confirm, or import a
+  bank's CSV export. Neither needs AI.
 - **Reports** — net worth, cash flow, spending, budget health.
 - **10 languages** ([add yours](CONTRIBUTING.md#add-a-language)), **31
   currencies**, dark mode, two colour themes (Cisza and Duet).

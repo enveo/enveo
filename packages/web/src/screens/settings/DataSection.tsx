@@ -206,7 +206,7 @@ function DataBackup() {
         />
         <ActionRow
           icon={<ActionIcon paths={IC.upload} />}
-          label={t("Move from YNAB or Actual Budget")}
+          label={t("Move from another budgeting app")}
           desc={t("Brings your accounts, envelopes and history into an empty budget.")}
           onClick={() => setMigrating(true)}
           disabled={busy}

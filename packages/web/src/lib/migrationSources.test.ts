@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { ActualExportError, YnabPlanError } from "@enveo/shared";
+import { ActualExportError, FourGroszeExportError, YnabPlanError } from "@enveo/shared";
 import {
   fetchYnabPlan,
   listYnabPlans,
   MigrationFileTooLarge,
   readActualExport,
+  readFourGroszeFile,
   readYnabFile,
   readZipEntry,
   type SqliteReader,
@@ -130,5 +131,17 @@ describe("YNAB requests", () => {
 
   test("given a file that is not JSON when read then it is refused", async () => {
     await expect(readYnabFile(new Blob(["not json"]))).rejects.toThrow(YnabPlanError);
+  });
+});
+
+describe("4grosze.pl export", () => {
+  test("given an export file when read then its rows come back as written", async () => {
+    const file = { envelopes: [], accounts: [{ name: "Checking" }], budgetEntries: [], transactions: [] };
+    expect(await readFourGroszeFile(new Blob([JSON.stringify(file)]))).toMatchObject({ accounts: [{ name: "Checking" }] });
+  });
+
+  test("given a YNAB file or something that is not JSON when read then it is refused", async () => {
+    await expect(readFourGroszeFile(new Blob([JSON.stringify({ data: { budget: {} } })]))).rejects.toThrow(FourGroszeExportError);
+    await expect(readFourGroszeFile(new Blob(["not json"]))).rejects.toThrow(FourGroszeExportError);
   });
 });

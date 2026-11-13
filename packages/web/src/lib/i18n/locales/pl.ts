@@ -1561,6 +1561,15 @@ export const pl: Dict = {
   "Choose a budget": "Wybierz budżet",
   "Choose a column": "Wybierz kolumnę",
   "Choose the zip file": "Wybierz plik zip",
+  "Choose the JSON file": "Wybierz plik JSON",
+  "Archived envelopes": "Archiwalne koperty",
+  "Export your data from 4grosze.pl as a JSON file, then select it here.": "Wyeksportuj dane z 4grosze.pl do pliku JSON i wybierz go tutaj.",
+  "This is not a 4grosze.pl export. Choose the JSON file 4grosze.pl gave you.": "To nie jest eksport z 4grosze.pl. Wybierz plik JSON pobrany z 4grosze.pl.",
+  "This 4grosze.pl export contradicts itself, for example a transfer whose two sides differ, so nothing was read.":
+    "Ten eksport z 4grosze.pl jest wewnętrznie sprzeczny, na przykład obie strony przelewu się różnią, więc niczego nie wczytano.",
+  "The file has no balances to check against. Compare these with your old app before you continue:":
+    "Plik nie zawiera sald do porównania. Zanim przejdziesz dalej, porównaj te salda z poprzednią aplikacją:",
+  "After the move, compare a few envelopes with your old app too.": "Po przeniesieniu porównaj też kilka kopert z poprzednią aplikacją.",
   Continue: "Dalej",
   "Create a personal access token in YNAB and paste it here. It goes straight to YNAB, is not saved, and never reaches Enveo's server.":
     "Utwórz w YNAB osobisty token dostępu i wklej go tutaj. Trafia bezpośrednio do YNAB, nie jest zapisywany i nie dociera do serwera Enveo.",
@@ -1583,7 +1592,7 @@ export const pl: Dict = {
   "Money in and out are in separate columns": "Wpływy i wydatki są w osobnych kolumnach",
   "Money out": "Wydatki",
   "Month first (12/31/2026)": "Najpierw miesiąc (12/31/2026)",
-  "Move from YNAB or Actual Budget": "Przenieś się z YNAB lub Actual Budget",
+  "Move from another budgeting app": "Przenieś się z innej aplikacji budżetowej",
   "No table with dates was found in this file.": "W tym pliku nie ma tabeli z datami.",
   None: "Brak",
   "Open YNAB developer settings": "Otwórz ustawienia deweloperskie YNAB",

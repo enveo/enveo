@@ -6,6 +6,9 @@ import {
   buildMigrationLedger,
   type ClientLedger,
   clientLedgerSchema,
+  type FourGroszeExport,
+  FourGroszeExportError,
+  fourGroszeExportToMigrationSource,
   type MigrationReceipt,
   type MigrationSource,
   type YnabPlan,
@@ -48,6 +51,10 @@ function prepare(source: MigrationSource): PreparedMigration {
 export const prepareYnabMigration = (plan: YnabPlan): PreparedMigration => prepare(ynabPlanToMigrationSource(plan, currentMonth()));
 
 export const prepareActualMigration = (tables: ActualTables): PreparedMigration => prepare(actualTablesToMigrationSource(tables, currentMonth()));
+
+/** `archive` names the group for envelopes the export only mentions, in the person's language. */
+export const prepareFourGroszeMigration = (input: FourGroszeExport, archive: string): PreparedMigration =>
+  prepare(fourGroszeExportToMigrationSource(input, currentMonth(), { name: "4grosze.pl", archive }));
 
 /** Ciphertext is base64 of the JSON plus its envelope, so an E2EE upload needs the extra margin. */
 const E2EE_UPLOAD_GROWTH = 1.4;
@@ -116,6 +123,11 @@ export function migrationErrorMessage(error: unknown): Message {
     return error.code === "unsupported_currency"
       ? msg("Enveo only supports currencies with two decimals, and this budget uses another one.")
       : msg("This is not an Actual Budget export. Choose the zip file from Settings → Export data.");
+  }
+  if (error instanceof FourGroszeExportError) {
+    return error.code === "inconsistent_export"
+      ? msg("This 4grosze.pl export contradicts itself, for example a transfer whose two sides differ, so nothing was read.")
+      : msg("This is not a 4grosze.pl export. Choose the JSON file 4grosze.pl gave you.");
   }
   if (error instanceof MigrationFileTooLarge) return msg("This file is too large to read in the browser.");
   if (error instanceof Error && error.message === "migration_needs_empty_budget") return msg("This budget already has transactions, so nothing was changed.");

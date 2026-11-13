@@ -1,4 +1,4 @@
-import { ActualExportError, type ActualTables, parseYnabPlan, type YnabPlan } from "@enveo/shared";
+import { ActualExportError, type ActualTables, type FourGroszeExport, parseFourGroszeExport, parseYnabPlan, type YnabPlan } from "@enveo/shared";
 
 /** The part of sql.js used here, kept narrow so the engine stays one adapter. */
 export interface SqliteReader {
@@ -161,13 +161,19 @@ export async function fetchYnabPlan(token: string, id: string, fetcher: typeof f
   return parseYnabPlan(await ynabGet(token, `/plans/${encodeURIComponent(id)}`, fetcher));
 }
 
-export async function readYnabFile(file: Blob): Promise<YnabPlan> {
+async function readJsonFile(file: Blob): Promise<unknown> {
   if (file.size > MIGRATION_FILE_MAX_BYTES) throw new MigrationFileTooLarge();
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(await file.text());
+    return JSON.parse(await file.text());
   } catch {
-    parsed = null;
+    return null;
   }
-  return parseYnabPlan(parsed);
+}
+
+export async function readYnabFile(file: Blob): Promise<YnabPlan> {
+  return parseYnabPlan(await readJsonFile(file));
+}
+
+export async function readFourGroszeFile(file: Blob): Promise<FourGroszeExport> {
+  return parseFourGroszeExport(await readJsonFile(file));
 }
