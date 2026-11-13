@@ -708,4 +708,18 @@ describe("settling repeats across screenshots", () => {
     expect(settled.links).toEqual(new Map([["a2", "a1"]]));
     expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
   });
+
+  it("surfaces a claim on the same printed entry under another date only on the adjacent screenshot", () => {
+    const later = { date: "2031-08-06", amount: 50000 };
+    const settled = settleImportDuplicates([
+      entry("x0", 0, 0, "TRANSFER TO SAVINGS", { date: "2031-08-05", amount: 50000 }),
+      entry("x1", 1, 0, "TRANSFER TO SAVINGS", { amount: 50000 }),
+      entry("x2", 2, 0, "TRANSFER TO SAVINGS", { ...later, relation: { kind: "duplicate_of", rowId: "x1" } }),
+      entry("x4", 4, 0, "TRANSFER TO SAVINGS", { ...later, relation: { kind: "duplicate_of", rowId: "x0" } }),
+      entry("y2", 2, 1, "TRANSFER TO CHECKING", { ...later, relation: { kind: "duplicate_of", rowId: "x1" } }),
+    ]);
+
+    expect(settled.links.has("x2")).toBe(false);
+    expect(settled.possible).toEqual([{ earlierRowId: "x1", laterRowId: "x2" }]);
+  });
 });

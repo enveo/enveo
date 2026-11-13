@@ -579,8 +579,15 @@ export function settleImportDuplicates(rows: ReadonlyArray<ImportExtractRow>): I
     const claimsTwin = row.relation?.kind === "duplicate_of" && !forward;
     const declared = claimsTwin ? claimed : undefined;
     // A claimed twin that does not even share the posting facts (or sits in the same screenshot)
-    // is not a repeat at all: the claim is dropped, not surfaced.
-    if (claimsTwin && !(declared && declared.imageIndex !== row.imageIndex && sameFacts(row, declared))) continue;
+    // is not a repeat at all: the claim is dropped. The one exception is the same printed entry on
+    // the ADJACENT screenshot under another date: one of the two dates may be misread or inferred
+    // wrongly, so the claim is surfaced for the human instead of booking the entry twice in silence.
+    if (claimsTwin && !(declared && declared.imageIndex !== row.imageIndex && sameFacts(row, declared))) {
+      if (declared && Math.abs(declared.imageIndex - row.imageIndex) === 1 && sameEntry(row, { ...declared, date: row.date })) {
+        possible.push(seamPair(row, declared));
+      }
+      continue;
+    }
     const candidates = declared
       ? [declared]
       : isFinancialTwinCandidate(row)
