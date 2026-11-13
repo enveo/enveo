@@ -389,6 +389,37 @@ describe("screenshot import proposal validation", () => {
     expect(result.proposals[4]).toMatchObject({ rowId: "lonely", amount: 500, currency: "GBP", reviewReasons: [] });
   });
 
+  it("leaves a payment unconverted when its own lines print another figure than its linked exchange line", () => {
+    const convert = (ownFigure: string) =>
+      validateImportExtraction({
+        batch: {
+          rows: [
+            extractRow({
+              rowId: "hosting",
+              amount: 1650,
+              currency: "EUR",
+              rawTextLines: ["FIXTURE HOSTING", "16.50 EUR", ownFigure],
+              relation: { kind: "fx_for", rowId: "fx" },
+            }),
+            extractRow({
+              rowId: "fx",
+              rowRole: "supporting_detail",
+              semanticKind: "fx_conversion",
+              amount: null,
+              currency: null,
+              direction: "unknown",
+              rawTextLines: ["16.50 EUR < 17.82 USD"],
+            }),
+          ],
+        },
+        budgetCurrency: "USD",
+      }).proposals[0];
+
+    expect(convert("18.45 USD")).toMatchObject({ amount: 1650, currency: "EUR" });
+    expect(convert("18.45 USD")!.reviewReasons).not.toContain("fx_converted");
+    expect(convert("17.82 USD")).toMatchObject({ amount: 1782, currency: "USD", reviewReasons: ["fx_converted"] });
+  });
+
   it("rejects duplicate row identities and invalidates dangling or self relations", () => {
     expect(() =>
       validateImportExtraction({

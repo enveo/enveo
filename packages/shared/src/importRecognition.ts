@@ -619,6 +619,18 @@ function foreignAmountsInBudgetCurrency(
   // another payment's exchange line, even when the two foreign amounts happen to be equal.
   const mayBeExchange = (row: ImportExtractRow): boolean =>
     row.rowRole !== "financial_event" || row.semanticKind === "fx_conversion" || row.semanticKind === "unknown";
+  // A linked figure stands only when no other evidence for the same payment prints a different one.
+  for (const [eventId, figure] of converted) {
+    const event = rowsById.get(eventId)!;
+    const others = [
+      ...pairedFigures(event, event),
+      ...adjacent(event).flatMap((other) => (mayBeExchange(other) && !usedEvidence.has(other.rowId) ? pairedFigures(other, event) : [])),
+    ];
+    if (others.some((other) => other !== figure)) {
+      converted.delete(eventId);
+      conflicted.add(eventId);
+    }
+  }
 
   const pairs = new Map<string, { exchange: string; figure: number }>();
   const claims = new Map<string, number>();
