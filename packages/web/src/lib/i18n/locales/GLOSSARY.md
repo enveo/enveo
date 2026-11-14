@@ -45,5 +45,5 @@ translation of the English.
    prefer characters that exist on a keyboard the user plausibly has — a word nobody can
    type is a lock-out, not a cosmetic bug.
 5. **`**bold**` markers and `→` arrows are markup**, not prose. Keep them where they are.
-6. **Leave a translation out rather than guess.** A missing entry renders correct English;
-   a confident wrong one does not.
+6. **Translate every message.** A locale must be complete (`i18n.test.ts` fails on a gap). When a
+   short message is ambiguous, read its call sites (`bun run i18n:ambiguity`) instead of guessing.

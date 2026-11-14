@@ -3,6 +3,7 @@
  * pattern safe:
  *
  *  - messages.generated.ts must match the source (it types every t() call site);
+ *  - every locale translates every message: a new English string ships in all languages at once;
  *  - a locale may not carry an ORPHAN — editing an English string changes its key, which silently
  *    invalidates that string's translations. The orphan list names exactly what to re-translate;
  *  - plural entries must carry the CLDR categories their language requires (computed, never
@@ -39,9 +40,9 @@ describe("i18n runtime", () => {
   });
 
   it("a message MISSING from a locale degrades to correct English (what makes partial locales usable)", async () => {
-    // Dict is Partial by design: a community locale may cover 3 messages or 600, and every gap
-    // renders the English source rather than a key or a blank. Deliberately NOT asserted against a
-    // shipped locale — those are complete today, so they could only prove this by regressing.
+    // Dict is Partial at runtime: a locale chunk that fails to load, or a dictionary that lacks a
+    // message, renders the English source rather than a key or a blank. Deliberately NOT asserted
+    // against a shipped locale — those must be complete (see "every locale translates every message").
     const code = "zy" as Lang; // never in the registry: no future locale can shadow this test
     const entry = {
       code,
@@ -134,6 +135,14 @@ describe("i18n messages", () => {
   it("plural messages carry exactly one ' | ' separator (the English one/other source)", () => {
     for (const m of MESSAGES.filter((x) => x.includes(" | "))) {
       expect(m.split(" | ").length).toBe(2);
+    }
+  });
+
+  it("every locale translates every message (no English left behind in a translated UI)", async () => {
+    for (const l of TRANSLATED) {
+      const dict = await l.load();
+      const missing = MESSAGES.filter((m) => !(m in dict));
+      expect({ locale: l.code, missing }).toEqual({ locale: l.code, missing: [] });
     }
   });
 

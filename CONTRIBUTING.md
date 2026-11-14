@@ -162,8 +162,9 @@ or "fix" its findings — inside an unrelated PR; each of these is its own discu
 
 ## Add a language
 
-A locale is **one file**. English is the source, so a translation can never break
-the app: any message you leave out simply renders its English text.
+A locale is **one file**, and it ships complete: the test suite fails while any
+message is missing from it. (At runtime a missing message would render its English
+text, so a gap never breaks the app — it just never reaches users.)
 
 1. Copy `packages/web/src/lib/i18n/locales/de.ts` to `<code>.ts` (a BCP-47 code —
    `pt-BR`, `sv`, …) and rename the exported const (no dashes: `pt-BR` → `ptBR`).
@@ -186,15 +187,14 @@ the app: any message you leave out simply renders its English text.
    picker and the lazy-loading are driven by that registry, so there is nothing
    else to wire up.
 5. `bun run i18n:extract` (in `packages/web`), then
-   `bun run test --files packages/web/src/lib/i18n` (from the repository root). The tests report orphaned messages,
-   incomplete plural categories and dropped `{placeholders}` by name.
+   `bun run test --files packages/web/src/lib/i18n` (from the repository root). The tests report missing and
+   orphaned messages, incomplete plural categories and dropped `{placeholders}` by name.
 
 ## Fix a translation
 
 Every language except English and Polish is a **community translation**: written without a
-native review, labelled as such in Settings, and free to be incomplete — anything missing
-renders its English source, so a partial correction ships on its own. Reporting or fixing a
-single string is a complete contribution; you never have to finish a language.
+native review and labelled as such in Settings. Every language is complete, so the useful fix is
+a better wording. Reporting or fixing a single string is a complete contribution.
 
 - **Report one:** the [translation fix
   form](https://github.com/enveo/enveo/issues/new?template=translation_fix.yml) (also reachable
@@ -212,7 +212,8 @@ single string is a complete contribution; you never have to finish a language.
 
 **Changing the English copy is a different job** and belongs to whoever changes the UI: it mints
 a new key, so `bun run i18n:extract` must be run and the orphan report read — the orphans name
-exactly which translations of the old sentence now need re-translating.
+exactly which translations of the old sentence now need re-translating. The same change adds the
+new message to every locale; the test suite fails until it does.
 
 > **For maintainers editing English copy:** changing an English string CHANGES ITS
 > KEY, which silently orphans every translation of it. Run `bun run i18n:extract`
