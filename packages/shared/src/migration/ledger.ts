@@ -233,8 +233,10 @@ export function buildMigrationLedger(source: MigrationSource, options: Migration
       categoryId: categoryId(line.category),
       amount: Math.abs(line.amount),
     }));
+    // Items carry no note, so each part's own note joins the transaction's.
+    const notes = [...new Set([transaction.memo, ...lines.map((line) => line.memo)].flatMap((memo) => memo?.trim() || []))];
     return {
-      ...blank(transaction, transaction.memo),
+      ...blank(transaction, notes.join(" · ") || null),
       type: "expense",
       amount: items.reduce((sum, item) => sum + item.amount, 0),
       isRefund: inward,

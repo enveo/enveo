@@ -82,7 +82,10 @@ export function actualTablesToMigrationSource(tables: ActualTables, currentMonth
   const rowById = new Map(rows.map((row) => [row.id, row]));
   const children = new Map<string, typeof rows>();
   for (const row of rows) {
-    if (on(row.isChild) && row.parent_id) children.set(row.parent_id, [...(children.get(row.parent_id) ?? []), row]);
+    if (!on(row.isChild) || !row.parent_id) continue;
+    const siblings = children.get(row.parent_id);
+    if (siblings) siblings.push(row);
+    else children.set(row.parent_id, [row]);
   }
 
   const line = (row: (typeof rows)[number]): MigrationLine => {

@@ -141,6 +141,21 @@ describe("YNAB plan conversion", () => {
     expect(row.amount).toBe(2000);
   });
 
+  test("given split lines with their own memos when converted then the transaction keeps every note", () => {
+    const row = only(
+      convert({
+        accounts: [account("checking", -20_000)],
+        transactions: [txn("t1", -20_000, { category_id: null, memo: null })],
+        subtransactions: [
+          { id: "s1", transaction_id: "t1", amount: -15_000, category_id: "rent", memo: "September rent" },
+          { id: "s2", transaction_id: "t1", amount: -5_000, category_id: "groceries", memo: "Snacks" },
+        ],
+      }),
+    );
+    expect(row.items).toHaveLength(2);
+    expect(row.note).toBe("September rent · Snacks");
+  });
+
   test("given a split with a refund line when converted then each line stands alone and the balance still matches", () => {
     const result = convert({
       accounts: [account("checking", -8_000)],
