@@ -91,6 +91,20 @@ describe("CSV mapping", () => {
     expect(readCsvRows(found, mapping).rows.map((row) => row.amount)).toEqual([-4250, 300000]);
   });
 
+  test("given only a debit column when read then every row stays money out", () => {
+    const found = table("Date,Payee,Debit\n2026-09-01,Linden Market,42.50\n2026-09-02,Oak Rentals,9.00\n");
+    const mapping = suggestCsvMapping(found);
+    expect(mapping).toMatchObject({ moneyOut: 2, moneyIn: null, amount: null });
+    expect(readCsvRows(found, mapping).rows.map((row) => row.amount)).toEqual([-4250, -900]);
+  });
+
+  test("given a debit or credit marker beside a signed amount when suggested then the amount column is used", () => {
+    const found = table("Date,Payee,Debit/credit,Amount\n2026-09-01,Linden Market,Debit,-42.50\n2026-09-02,Example Corp,Credit,3000.00\n");
+    const mapping = suggestCsvMapping(found);
+    expect(mapping).toMatchObject({ amount: 3, moneyOut: null, moneyIn: null });
+    expect(readCsvRows(found, mapping).rows.map((row) => row.amount)).toEqual([-4250, 300000]);
+  });
+
   test("given a row without an amount when read then it is counted and not guessed", () => {
     const found = table("date,memo,amount\n2026-09-01,Linden Market,-4.25\n2026-09-02,Balance,\n");
     const reading = readCsvRows(found, suggestCsvMapping(found));
@@ -188,6 +202,18 @@ describe("CSV history", () => {
   test("given an unknown merchant when enriched then the envelope stays blank", () => {
     expect(applyCsvHistory(recognition("Oak Rentals"), ledger([earlier]), accountId, "USD").proposals[0]!.envelopeId).toBeNull();
   });
+
+  test("given the same merchant once left without an envelope when enriched then history abstains", () => {
+    const unassigned = { ...earlier, id: "00000000-0000-4000-8000-000000000006", envelopeId: null };
+    expect(applyCsvHistory(recognition("Linden Market"), ledger([earlier, unassigned]), accountId, "USD").proposals[0]!.envelopeId).toBeNull();
+  });
+
+  test("given two rows of one payee with different descriptions when enriched then each is matched on its own text", () => {
+    const sourced = { ...earlier, name: "Fresh Mart", tag: "FRESH MART", sourceRef: "Linden Market Weekly shop" };
+    const found = table("date,payee,memo,amount\n2026-09-01,Linden Market,Weekly shop,-4.25\n2026-09-02,Linden Market,Dinner,-9.00\n");
+    const result = applyCsvHistory(csvRowsToRecognition(readCsvRows(found, suggestCsvMapping(found)).rows, "USD"), ledger([sourced]), accountId, "USD");
+    expect(result.proposals.map((proposal) => proposal.envelopeId)).toEqual([envelopeId, null]);
+  });
 });
 
 describe("CSV review findings", () => {
@@ -229,6 +255,12 @@ describe("CSV review findings", () => {
   test("given commas inside semicolon cells when parsed then the semicolon wins", () => {
     const records = parseCsv("date;memo;amount\n2026-09-01;Oak, Rentals, deposit;-1,50\n2026-09-02;Linden, Market;-2,50\n");
     expect(records[1]).toEqual(["2026-09-01", "Oak, Rentals, deposit", "-1,50"]);
+  });
+
+  test("given one comma row whose memo holds a semicolon when parsed then the comma still wins", () => {
+    const found = table("date,amount,memo\n2026-09-01,-4.25,Shop;12\n");
+    expect(found.headers).toEqual(["date", "amount", "memo"]);
+    expect(readCsvRows(found, suggestCsvMapping(found)).rows.map((row) => row.amount)).toEqual([-425]);
   });
 
   test("given semicolons inside comma cells when parsed then the comma wins", () => {

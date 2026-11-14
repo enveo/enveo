@@ -82,17 +82,23 @@ const isTransaction = (record: string[]): boolean => {
   return date >= 0 && record.some((cell, index) => index !== date && parseCsvAmount(cell) !== null);
 };
 
-/** The delimiter that gives the most readable rows of one shared width wins. */
+/**
+ * The delimiter that gives the most readable rows of one shared width wins. On a tie the one whose
+ * header and other rows share that width wins: a stray delimiter inside a cell splits only that row.
+ */
 export function parseCsv(text: string): string[][] {
   const clean = text.replace(/^\uFEFF/, "");
   let best: string[][] = [];
   let bestRows = 0;
+  let bestShared = 0;
   for (const delimiter of DELIMITERS) {
     const records = splitRecords(clean, delimiter);
-    const { rows } = tableWidth(records, isTransaction);
-    if (rows > bestRows) {
+    const { width, rows } = tableWidth(records, isTransaction);
+    const shared = records.filter((record) => record.length === width).length;
+    if (rows > bestRows || (rows === bestRows && rows > 0 && shared > bestShared)) {
       best = records;
       bestRows = rows;
+      bestShared = shared;
     }
   }
   return best;
@@ -141,7 +147,14 @@ export function suggestCsvMapping(table: CsvTable): CsvMapping {
   const sample = table.rows.slice(0, 20);
   const columns = table.headers.map((_, column) => column);
   mapping.date ??= columns.find((column) => sample.every((row) => looksLikeDate(row[column]!))) ?? null;
-  if (mapping.moneyOut !== null && mapping.moneyIn !== null) mapping.amount = null;
+  const holdsAmounts = (column: number | null) =>
+    column !== null &&
+    sample.some((row) => parseCsvAmount(row[column]!) !== null) &&
+    sample.every((row) => !row[column]!.trim() || parseCsvAmount(row[column]!) !== null);
+  // One direction column alone (a debit-only export) keeps its direction, unless it is a debit/credit marker beside an amount.
+  const separate = mapping.moneyOut !== null && mapping.moneyIn !== null;
+  const oneSided = mapping.amount === null && (mapping.moneyOut === null) !== (mapping.moneyIn === null) && holdsAmounts(mapping.moneyOut ?? mapping.moneyIn);
+  if (separate || oneSided) mapping.amount = null;
   else {
     mapping.amount ??= columns.find((column) => column !== mapping.date && sample.every((row) => parseCsvAmount(row[column]!) !== null)) ?? null;
     mapping.moneyOut = null;
@@ -251,7 +264,8 @@ function idsByUniqueName(rows: ReadonlyArray<{ id: string; name: string }>): Map
 /** What the person did with the same merchant before is the only help a file gets without AI:
  *  a confident, unconflicted match fills the envelope and category, everything else stays blank. */
 export function applyCsvHistory(result: ImportRecognitionResult, ledger: ClientLedger, accountId: string, currency: string): ImportRecognitionResult {
-  const records = importHistoryRecords(ledger, currency).filter((record) => record.type !== "transfer" && record.envelope !== null);
+  // A past expense left without an envelope stays in: it is what makes another envelope a conflict.
+  const records = importHistoryRecords(ledger, currency).filter((record) => record.type !== "transfer");
   if (records.length === 0) return result;
   const envelopes = idsByUniqueName(ledger.envelopes.filter((envelope) => !envelope.archived));
   const categories = idsByUniqueName(ledger.categories.filter((category) => !category.archived));
@@ -261,7 +275,9 @@ export function applyCsvHistory(result: ImportRecognitionResult, ledger: ClientL
     ...result,
     proposals: result.proposals.map((proposal) => {
       if (proposal.type !== "expense") return proposal;
-      let found = known.get(proposal.tag);
+      // The selector reads the whole descriptor, so two rows of one payee can still match differently.
+      const key = `${proposal.tag}\u0000${proposal.rawPlace}`;
+      let found = known.get(key);
       if (!found) {
         const { candidates, conflict } = selectImportHistoryCandidates({ accountId, ownedAccountIds, proposal }, records, 1);
         const best = conflict ? undefined : candidates[0];
@@ -270,7 +286,7 @@ export function applyCsvHistory(result: ImportRecognitionResult, ledger: ClientL
           envelopeId: confident && best.envelope ? (envelopes.get(best.envelope) ?? null) : null,
           categoryId: confident && best.category ? (categories.get(best.category) ?? null) : null,
         };
-        known.set(proposal.tag, found);
+        known.set(key, found);
       }
       return { ...proposal, ...found };
     }),
