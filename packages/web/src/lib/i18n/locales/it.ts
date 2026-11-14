@@ -1407,7 +1407,7 @@ export const it: Dict = {
   "current month": "mese corrente",
   "e.g. Payday": "es. Stipendio",
   "from last month {amount}": "dal mese scorso {amount}",
-  "in {n} of {total} envelopes": "in {n} buste su {total}",
+  "in {n} of {total} envelopes": "in {n} delle {total} buste",
   "income {income} · spending {expense}": "entrate {income} · spese {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "entrate {income} · spese {expense} · tasso di risparmio {pct}%",
   "last {n} month · {range} | last {n} months · {range}": {

@@ -1419,7 +1419,7 @@ export const fr: Dict = {
   "current month": "mois en cours",
   "e.g. Payday": "p. ex. Jour de paie",
   "from last month {amount}": "du mois précédent {amount}",
-  "in {n} of {total} envelopes": "dans {n} enveloppes sur {total}",
+  "in {n} of {total} envelopes": "dans {n} des {total} enveloppes",
   "income {income} · spending {expense}": "revenus {income} · dépenses {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "revenus {income} · dépenses {expense} · taux d'épargne {pct} %",
   "last {n} month · {range} | last {n} months · {range}": {
