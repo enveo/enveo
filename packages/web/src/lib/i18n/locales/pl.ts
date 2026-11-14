@@ -375,7 +375,6 @@ export const pl: Dict = {
   "Clear search": "Wyczyść wyszukiwanie",
   Close: "Zamknij",
   Closed: "Zamknięte",
-  "Community translation — it may be incomplete.": "Tłumaczenie społeczności — może być niekompletne.",
   "Collapsed by default": "Domyślnie zwinięte",
   Color: "Kolor",
   "Color {color}": "Kolor {color}",
@@ -1644,4 +1643,5 @@ export const pl: Dict = {
     many: "{n} wierszy nie ma czytelnej daty lub kwoty i zostanie pominiętych.",
     other: "{n} wiersza nie ma czytelnej daty lub kwoty i zostanie pominięte.",
   },
+  "Community translation — some wording may be off.": "Tłumaczenie społeczności — niektóre sformułowania mogą być nieprecyzyjne.",
 };
