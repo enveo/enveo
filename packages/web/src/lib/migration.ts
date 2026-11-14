@@ -94,6 +94,8 @@ export async function applyMigration(prepared: PreparedMigration): Promise<void>
   if (!migrationFitsUpload(ledger, getTierMeta().tier)) throw new Error("migration_too_large");
   if (!(await syncNowCompleted("migration"))) throw new Error("migration_needs_connection");
   if (migrationBlockedByData(store.getLedger())) throw new Error("migration_needs_empty_budget");
+  // The sync can switch the budget to end-to-end encryption, which makes the same upload larger.
+  if (!migrationFitsUpload(ledger, getTierMeta().tier)) throw new Error("migration_too_large");
   const budgetId = store.getBudgetId();
   if (!budgetId) throw new Error("budget_mismatch");
   await replaceLocalData(ledger, budgetId);

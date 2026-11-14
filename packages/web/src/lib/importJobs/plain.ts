@@ -218,6 +218,8 @@ export class PlainImportJobAdapter {
   async createPrepared(input: PreparedImportCreateInput): Promise<ImportActivityItem> {
     if (!this.isCurrent()) throw new StalePlainImportAdapter();
     const job = await this.remote.createPrepared({ ...input, budgetId: this.options.scope.budgetId });
+    // A refresh that listed the server before this job existed would otherwise remove it once published.
+    await this.refreshPromise?.catch(() => {});
     if (!this.isCurrent()) throw new StalePlainImportAdapter();
     const item = importActivityFromServer(job);
     this.publish(item);

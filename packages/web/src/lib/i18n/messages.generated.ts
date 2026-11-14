@@ -17,6 +17,7 @@ export const MESSAGES = [
   "6-month sparklines",
   "= {amount}",
   "A CSV export from your bank works too, and needs no AI.",
+  "A CSV file is imported on its own. Choose just that one file.",
   "A key is stored as zero-knowledge ciphertext. Enveo cannot display or decrypt it; saving below replaces it atomically.",
   "A key is stored in the server vault. Enveo cannot display it; saving below replaces it atomically.",
   "A local copy means the app opens instantly and keeps working on a plane.",

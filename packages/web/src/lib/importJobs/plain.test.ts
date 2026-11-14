@@ -111,6 +111,35 @@ describe("plain durable import adapter", () => {
     expect(activity.get("remaining-job")).toMatchObject({ status: "completed", appliedCount: 3 });
   });
 
+  it("keeps a prepared import that an older refresh did not list yet", async () => {
+    // given: a refresh is waiting for a server list read before the file's job was created
+    const ready = detail({ status: "ready", phase: "ready" });
+    const listed = deferred<void>();
+    const list = deferred<ImportJobSummary[]>();
+    const activity = createImportActivityStore();
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity,
+      remote: remote({
+        list: () => {
+          listed.resolve();
+          return list.promise;
+        },
+        createPrepared: async () => ready,
+      }),
+    });
+
+    // when: the job is created and only then the old, empty list arrives
+    const refresh = adapter.refresh();
+    await listed.promise;
+    const created = adapter.createPrepared({ id: ID, accountId: ACCOUNT, locale: "en-US", result: { rows: [], proposals: [] } });
+    list.resolve([]);
+    await Promise.all([refresh, created]);
+
+    // then: the new import is still listed
+    expect(activity.get(ID)?.status).toBe("ready");
+  });
+
   it("does not restore a deleted import from a detail response already in flight", async () => {
     const completed = detail({ status: "completed", phase: "completed" });
     const requested = deferred<void>();

@@ -222,7 +222,7 @@ export function MigrationFlow({ onClose, onMigrated }: { onClose: () => void; on
       ) : step === "receipt" && prepared ? (
         <>
           {title(prepared.receipt.budgetName)}
-          <MigrationReceiptView receipt={prepared.receipt} />
+          <MigrationReceiptView receipt={prepared.receipt} currency={prepared.ledger.budgets[0]?.currency} />
           <button
             style={{ ...primary, opacity: busy ? 0.5 : 1 }}
             disabled={busy}
@@ -268,9 +268,11 @@ export function MigrationFlow({ onClose, onMigrated }: { onClose: () => void; on
   );
 }
 
-function MigrationReceiptView({ receipt }: { receipt: MigrationReceipt }) {
+/** The figures are the imported budget's, so they read in its currency, not the one being replaced. */
+function MigrationReceiptView({ receipt, currency }: { receipt: MigrationReceipt; currency: string | undefined }) {
   const C = useTheme();
-  const M = useMask();
+  const mask = useMask();
+  const M = (minor: number) => mask(minor, currency);
   const { t, tp } = useT();
   const balancesMatch = receipt.accountDifferences.length === 0;
   const envelopesMatch = receipt.envelopeDifferences.length === 0;

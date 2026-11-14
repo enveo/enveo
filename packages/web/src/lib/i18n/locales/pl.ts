@@ -1608,6 +1608,7 @@ export const pl: Dict = {
   "This budget already has transactions, so nothing was changed.": "Ten budżet ma już transakcje, więc niczego nie zmieniono.",
   "This budget already has transactions. Export a backup, reset the budget under Settings, and start the move again.":
     "Ten budżet ma już transakcje. Wyeksportuj kopię, zresetuj budżet w Ustawieniach i zacznij przenoszenie od nowa.",
+  "A CSV file is imported on its own. Choose just that one file.": "Plik CSV importuje się osobno. Wybierz tylko ten jeden plik.",
   "This file has more than {max} rows. Split it into smaller files.": "Ten plik ma więcej niż {max} wierszy. Podziel go na mniejsze pliki.",
   "This is not a YNAB budget file.": "To nie jest plik budżetu YNAB.",
   "This is not an Actual Budget export. Choose the zip file from Settings → Export data.":

@@ -188,7 +188,7 @@ describe("import job manager", () => {
     state.status = "ready";
     const calls: string[] = [];
     const adapters = ports(calls);
-    state.currentLedger = ledger();
+    state.currentLedger = ledger("rules");
     const manager = new ImportJobManager({
       state,
       ownerId: async () => "user-a",

@@ -140,6 +140,9 @@ export function ImportSheet({
   const [images, setImages] = useState<string[]>([]);
   const [phase, setPhase] = useState<Phase>("pick");
   const [csvTable, setCsvTable] = useState<CsvTable | null>(null);
+  // Each file choice is numbered: a slower read of an earlier choice must not replace a later one.
+  const [csvSelection, setCsvSelection] = useState(0);
+  const latestSelection = useRef(0);
   const [jobId, setJobId] = useState<string | null>(initialJobId ?? null);
   const [job, setJob] = useState<ImportActivityItem | undefined>();
   const [items, setItems] = useState<ImportReviewRow[]>([]);
@@ -391,21 +394,30 @@ export function ImportSheet({
     if (!files || files.length === 0) return;
     setError(null);
     setNotice(null);
-    const csvFile = [...files].find(isCsvFile);
+    const selection = ++latestSelection.current;
+    // Copied first: clearing the input below empties the live FileList.
+    const picked = [...files];
+    const csvFile = picked.find(isCsvFile);
     if (csvFile) {
       if (fileRef.current) fileRef.current.value = "";
+      if (picked.length > 1) {
+        setError(t("A CSV file is imported on its own. Choose just that one file."));
+        return;
+      }
       const generation = viewGeneration.current;
+      const stale = () => generation !== viewGeneration.current || selection !== latestSelection.current;
       try {
         const table = await readCsvFile(csvFile);
-        if (generation !== viewGeneration.current) return;
+        if (stale()) return;
         if (table.rows.length > IMPORT_CSV_MAX_ROWS) {
           setError(t("This file has more than {max} rows. Split it into smaller files.", { max: IMPORT_CSV_MAX_ROWS }));
         } else {
           setCsvTable(table);
+          setCsvSelection(selection);
           setPhase("csv");
         }
       } catch (e) {
-        if (generation !== viewGeneration.current) return;
+        if (stale()) return;
         const tooLarge = e instanceof Error && e.message === "csv_too_large";
         setError(tooLarge ? t("This file is too large to read in the browser.") : t("No table with dates was found in this file."));
       }
@@ -1007,6 +1019,7 @@ export function ImportSheet({
 
         {phase === "csv" && csvTable && (
           <ImportCsvMapping
+            key={csvSelection}
             table={csvTable}
             busy={busy}
             error={error}
