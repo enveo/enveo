@@ -7,7 +7,7 @@ import { type ImportApplyProgress, type ImportJobStorageScope, type ImportLocalD
 import { type BootStatus, store } from "../store";
 import { verifiedIdentityUserId } from "../sync/identity";
 import { type E2eeImportJobCreateInput, E2eeImportJobRunner } from "./e2eeRunner";
-import { type PlainImportCreateInput, PlainImportJobAdapter } from "./plain";
+import { type PlainImportCreateInput, PlainImportJobAdapter, type PreparedImportCreateInput } from "./plain";
 import {
   createImportActivityStore,
   type ImportActivityItem,
@@ -27,6 +27,7 @@ export interface ImportJobManagerPlainPort {
   start(): void;
   stop(): void;
   create(input: PlainImportCreateInput, onCreated?: ImportActivityListener): Promise<ImportActivityItem>;
+  createPrepared(input: PreparedImportCreateInput): Promise<ImportActivityItem>;
   refresh(force?: boolean): Promise<void>;
   cancel(id: string): Promise<void>;
   retry(id: string): Promise<void>;
@@ -38,6 +39,7 @@ export interface ImportJobManagerPlainPort {
 export interface ImportJobManagerE2eePort {
   stop(): void;
   create(input: E2eeImportJobCreateInput): Promise<ImportActivityItem>;
+  createPrepared(input: PreparedImportCreateInput): Promise<ImportActivityItem>;
   resume(): Promise<void>;
   list(): Promise<ImportActivityItem[]>;
   cancel(id: string): Promise<void>;
@@ -354,6 +356,17 @@ export class ImportJobManager {
     if (generation !== this.generation) throw new Error("stale_import_job_manager");
     onCreated?.(created);
     void this.local.resume().catch(() => {});
+    return created;
+  }
+
+  /** A file read in the browser needs no AI, so this works with any provider, rules included. */
+  async createPrepared(input: Omit<PreparedImportCreateInput, "id">): Promise<ImportActivityItem> {
+    if (!(await this.activate()) || !this.scope) throw new Error("import_manager_not_ready");
+    const generation = this.generation;
+    const port = this.tierMeta().tier === "plain" ? this.plain : this.local;
+    if (!port) throw new Error("import_manager_not_ready");
+    const created = await port.createPrepared({ ...input, id: this.randomId() });
+    if (generation !== this.generation) throw new Error("stale_import_job_manager");
     return created;
   }
 

@@ -307,5 +307,8 @@ export type ClientLedgerInput = z.infer<typeof clientLedgerSchema>;
  */
 export const E2EE_DISABLE_CONFIRM = "DISABLE-E2EE";
 
+/** The largest request the API takes, and with it the largest ledger a restore can upload. */
+export const API_REQUEST_MAX_BYTES = 16 * 1024 * 1024;
+
 export const REPLICATED_TABLES = ["accounts", "envelope_groups", "envelopes", "categories", "places", "transactions", "allocations", "budgets"] as const;
 export type ReplicatedTable = (typeof REPLICATED_TABLES)[number];

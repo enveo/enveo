@@ -1,3 +1,4 @@
+import { API_REQUEST_MAX_BYTES } from "@enveo/shared";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
@@ -88,7 +89,8 @@ app.use("*", compress());
 const allowedOrigins = staticAllowedOrigins();
 
 // secure-headers + CSP. connect-src MUST include api.openai.com (BYOK mode calls
-// OpenAI directly from the browser); style-src 'unsafe-inline' because inline
+// OpenAI directly from the browser) and api.ynab.com (a migration reads the budget with
+// a token that must never reach this server); style-src 'unsafe-inline' because inline
 // styles + StyleInjector + QR generate styles on the fly.
 // script-src carries 'wasm-unsafe-eval': the E2EE key derivation is Argon2id via
 // hash-wasm, and current Chromium refuses WebAssembly.compile() under a bare
@@ -107,7 +109,7 @@ app.use(
       scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'", "https://api.openai.com"],
+      connectSrc: ["'self'", "https://api.openai.com", "https://api.ynab.com"],
       workerSrc: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
@@ -119,7 +121,7 @@ app.use(
   }),
 );
 
-const generalBodyLimit = bodyLimit({ maxSize: 16 * 1024 * 1024, onError: (c) => c.json({ error: "too_large" }, 413) });
+const generalBodyLimit = bodyLimit({ maxSize: API_REQUEST_MAX_BYTES, onError: (c) => c.json({ error: "too_large" }, 413) });
 const importJobBodyLimit = bodyLimit({ maxSize: IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES, onError: (c) => c.json({ error: "too_large" }, 413) });
 const cspReportBodyLimit = bodyLimit({ maxSize: CSP_REPORT_MAX_BYTES, onError: (c) => c.body(null, 413) });
 app.use("/api/*", (c, next) => {

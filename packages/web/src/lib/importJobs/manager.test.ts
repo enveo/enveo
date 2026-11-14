@@ -113,6 +113,10 @@ function ports(calls: string[]) {
       activity.upsert(value);
       return value;
     },
+    createPrepared: async () => {
+      calls.push("plain.createPrepared");
+      return item("plain");
+    },
     refresh: async () => void calls.push("plain.refresh"),
     cancel: async () => void calls.push("plain.cancel"),
     retry: async () => void calls.push("plain.retry"),
@@ -127,6 +131,10 @@ function ports(calls: string[]) {
       const value = item("e2ee");
       activity.upsert(value);
       return value;
+    },
+    createPrepared: async () => {
+      calls.push("e2ee.createPrepared");
+      return item("e2ee");
     },
     resume: async () => void calls.push("e2ee.resume"),
     list: async () => [],
@@ -172,6 +180,31 @@ afterEach(() => {
 });
 
 describe("import job manager", () => {
+  it.each([
+    ["plain", "plain.createPrepared"],
+    ["e2ee", "e2ee.createPrepared"],
+  ] as const)("creates a prepared import on the %s path even when AI is off", async (tier, expected) => {
+    const state = new FakeState();
+    state.status = "ready";
+    const calls: string[] = [];
+    const adapters = ports(calls);
+    state.currentLedger = ledger("rules");
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier, epoch: tier === "e2ee" ? 3 : 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ID,
+      visible: () => true,
+    });
+    manager.start();
+
+    await manager.createPrepared({ accountId: ACCOUNT, locale: "en-US", result: { rows: [], proposals: [] } });
+
+    expect(calls).toContain(expected);
+  });
+
   it("retains exact applied and skipped identities across a manager reload and clears them only after completion", async () => {
     const state = new FakeState();
     state.status = "ready";
@@ -926,6 +959,7 @@ describe("import job manager", () => {
           start: () => {},
           stop: () => {},
           create: async () => item("plain"),
+          createPrepared: async () => item("plain"),
           refresh: async () => {},
           cancel: async () => {},
           retry: async () => {},
@@ -1010,6 +1044,7 @@ describe("import job manager", () => {
           start: () => {},
           stop: () => {},
           create: async () => item("plain"),
+          createPrepared: async () => item("plain"),
           refresh: async () => {},
           cancel: async () => {},
           retry: async () => {},

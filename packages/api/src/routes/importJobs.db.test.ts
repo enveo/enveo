@@ -36,6 +36,19 @@ describe.skipIf(!TEST_URL)("durable import job routes", () => {
     expect(output.completion).toEqual({ notReadyStatus: 409, mismatchStatus: 409, readyStatus: 200, status: "completed", appliedCount: 2, skippedCount: 1 });
   });
 
+  test("stores a prepared file result ready for review, idempotently and inside the budget assertion", () => {
+    expect(output.prepared).toEqual({
+      firstStatus: 201,
+      replayStatus: 201,
+      conflictStatus: 409,
+      foreignBudgetStatus: 409,
+      jobs: 1,
+      status: "ready",
+      model: "csv-file",
+      phase: "ready",
+    });
+  });
+
   test("public responses exclude uploaded, lease, hash, extraction, and credential state", () => {
     expect(output.publicReadSafe).toBe(true);
   });

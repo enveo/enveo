@@ -1,4 +1,5 @@
 import type { ImportDirection, ImportProposal } from "./importRecognition";
+import type { ClientLedger } from "./types";
 
 export type ImportHistoryType = "expense" | "income" | "transfer";
 
@@ -48,6 +49,26 @@ export interface ImportHistorySelection {
   conflict: boolean;
 
   metadata?: Partial<Record<"name" | "place" | "envelope" | "category", string | null>>;
+}
+
+/** Every transaction as import evidence, with ids resolved to the names history is matched on. */
+export function importHistoryRecords(ledger: ClientLedger, currency: string): ImportHistoryRecord[] {
+  const envelopeNames = new Map(ledger.envelopes.map((envelope) => [envelope.id, envelope.name]));
+  const categoryNames = new Map(ledger.categories.map((category) => [category.id, category.name]));
+  const placeNames = new Map(ledger.places.map((place) => [place.id, place.name]));
+  return ledger.transactions.map((transaction) => ({
+    accountId: transaction.accountId,
+    currency,
+    sourceRef: transaction.sourceRef,
+    tag: transaction.tag,
+    place: transaction.placeId ? (placeNames.get(transaction.placeId) ?? null) : null,
+    name: transaction.name,
+    envelope: transaction.envelopeId ? (envelopeNames.get(transaction.envelopeId) ?? null) : null,
+    category: transaction.categoryId ? (categoryNames.get(transaction.categoryId) ?? null) : null,
+    type: transaction.type,
+    isRefund: transaction.type === "expense" && transaction.isRefund,
+    toAccountId: transaction.type === "transfer" ? transaction.toAccountId : null,
+  }));
 }
 
 const MIN_SIMILARITY = 0.3;

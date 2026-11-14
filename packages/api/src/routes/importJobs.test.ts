@@ -90,6 +90,17 @@ function harness(
       calls.creates.push(input);
       return { created: true, job: job({ provider: input.provider }) };
     },
+    createPrepared: async (input) => ({
+      created: true,
+      job: job({
+        provider: { provider: "enveo", model: "csv-file" },
+        status: "ready",
+        phase: "ready",
+        accountId: input.accountId,
+        result: input.result,
+        screenshots: { total: 0, read: 0, failed: 0 },
+      }),
+    }),
     listForUser: async (userId) => {
       calls.users.push(userId);
       return [summary()];
@@ -150,6 +161,64 @@ function harness(
 async function post(app: Hono<{ Variables: { userId?: string } }>, path: string, body: unknown): Promise<Response> {
   return app.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 }
+
+describe("prepared import job route", () => {
+  const preparedBody = (over: Record<string, unknown> = {}) => ({
+    id: JOB_ID,
+    budgetId: BUDGET_A,
+    accountId: ACCOUNT_A,
+    locale: "en-US",
+    result: { rows: [], proposals: [] },
+    ...over,
+  });
+
+  it("creates a job that is ready for review without touching AI, whatever the provider", async () => {
+    let wakeCount = 0;
+    const { app } = harness({ provider: "rules", wake: () => (wakeCount += 1) });
+
+    const response = await post(app, "/api/import/jobs/prepared", preparedBody());
+
+    expect(response.status).toBe(201);
+    expect((await response.json()).status).toBe("ready");
+    expect(wakeCount).toBe(0);
+  });
+
+  it("refuses a claim about another budget before writing", async () => {
+    const { app } = harness({ resolvedBudgetId: BUDGET_B });
+
+    const response = await post(app, "/api/import/jobs/prepared", preparedBody());
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "budget_mismatch" });
+  });
+
+  it("refuses an account outside the budget", async () => {
+    const { app } = harness({ accountAllowed: false });
+
+    const response = await post(app, "/api/import/jobs/prepared", preparedBody());
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "account_unavailable" });
+  });
+
+  it("requires a signed-in user", async () => {
+    const { app } = harness({ sessionUser: "" });
+
+    expect((await post(app, "/api/import/jobs/prepared", preparedBody())).status).toBe(401);
+  });
+
+  it("maps conflicting reuse of an id to 409", async () => {
+    const { app } = harness({
+      repository: {
+        createPrepared: async () => {
+          throw new ImportJobConflict();
+        },
+      },
+    });
+
+    expect((await post(app, "/api/import/jobs/prepared", preparedBody())).status).toBe(409);
+  });
+});
 
 describe("plain durable import job routes", () => {
   it("returns 202 only after durable creation and snapshots server-side provider preferences", async () => {

@@ -154,6 +154,7 @@ function cycleMayContinue(permit?: SignOutPermit): boolean {
 }
 
 async function doCycle(permit?: SignOutPermit): Promise<boolean> {
+  lastCycleSucceeded = false;
   if (store.getBootStatus() === "locked") return true;
 
   if (isIdentityBlocked()) return true;
@@ -450,6 +451,7 @@ async function handleTierFlip(): Promise<boolean> {
 }
 
 function finishSuccess(): void {
+  lastCycleSucceeded = true;
   resetBackoff();
   const at = new Date().toISOString();
   setLastSyncAt(at);
@@ -489,12 +491,19 @@ export async function runWithSyncMutex<T>(task: () => Promise<T>): Promise<T> {
   return result;
 }
 
+let lastCycleSucceeded = false;
+
+function refused(): Promise<void> {
+  lastCycleSucceeded = false;
+  return Promise.resolve();
+}
+
 function runSyncNow(reason: string, permit?: SignOutPermit): Promise<void> {
-  if (!cycleMayContinue(permit)) return Promise.resolve();
+  if (!cycleMayContinue(permit)) return refused();
   void reason;
   if (import.meta.env.DEV) lastReason = reason;
 
-  if (isIdentityBlocked()) return Promise.resolve();
+  if (isIdentityBlocked()) return refused();
   if (running) {
     dirty = true;
     return running;
@@ -513,6 +522,15 @@ function runSyncNow(reason: string, permit?: SignOutPermit): Promise<void> {
 
 export function syncNow(reason: string): Promise<void> {
   return runSyncNow(reason);
+}
+
+/** syncNow resolves on failure too, and a cycle can return early without syncing. This answers
+ *  whether the LAST cycle of the run reached the end, for the one caller that must not act on
+ *  stale data: a joined run can succeed once and then stop on a changed session. */
+export async function syncNowCompleted(reason: string): Promise<boolean> {
+  lastCycleSucceeded = false;
+  await runSyncNow(reason);
+  return lastCycleSucceeded && !isIdentityBlocked();
 }
 
 export function syncNowForSignOut(reason: string, permit: SignOutPermit): Promise<void> {

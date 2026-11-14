@@ -54,6 +54,7 @@ import {
   retryBoot,
   subscribeSyncStatus,
   syncNow,
+  syncNowCompleted,
   upgradeServerE2eeV2,
 } from "./sync";
 import { flushOutboxWithPermit as flushWithPermit } from "./sync/cycle";
@@ -364,6 +365,16 @@ describe("sync cycle: session guard before the push", () => {
     expect(await idbGet("meta", "ledger")).toBeDefined();
     expect(await idbGet<string>("meta", "userId")).toBe("user-A");
     expect(outbox.size()).toBe(1);
+  });
+
+  it("a finished run proves itself, and a session swapped under it does not", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    expect(await syncNowCompleted("test")).toBe(true);
+
+    session = { user: { id: "user-B" } };
+    expect(await syncNowCompleted("test")).toBe(false);
+    expect(store.getBootStatus()).toBe("foreign");
   });
 
   it("the previous owner can sign back in after the protected foreign-session exit", async () => {

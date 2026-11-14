@@ -96,16 +96,22 @@ export async function importBackup(file: File): Promise<void> {
     throw new Error(translate(uiLang(), "The backup is corrupted and was not loaded: {detail}", { detail }));
   }
 
-  const ledger = res.data as ClientLedger;
   const budgetId = typeof env.budgetId === "string" ? env.budgetId : (store.getBudgetId() ?? "");
+  await replaceLocalData(res.data as ClientLedger, budgetId);
+  await uploadReplacedData();
+}
 
+/** The validated, canonical ledger becomes the local replica and is owed to the server. */
+export async function replaceLocalData(ledger: ClientLedger, budgetId: string): Promise<void> {
   // Durable replace obligation BEFORE swapping the mirror (the same serial persist
   // chain ⇒ durable-mirror implies durable-flag): the import must REPLACE the server.
   markReplacePending();
   store.replace(ledger, 0, budgetId);
   outbox.clearAll();
   await persist.persistLedger(store.snapshotForPersist());
+}
 
+export async function uploadReplacedData(): Promise<void> {
   // Path per tier: e2ee → encrypted checkpoint to /sync2/reset (plaintext NEVER
   // leaves the device; /sync/replace would bounce with a 409 tier_mismatch),
   // plain → /sync/replace as before. Both paths clear the replace obligation.
