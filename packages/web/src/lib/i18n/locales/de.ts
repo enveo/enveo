@@ -744,7 +744,7 @@ export const de: Dict = {
     other: "{n} unauffällige Umschläge · {ignored} ignoriert",
   },
   "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} von {m} Umschlägen ist unauffällig",
+    one: "{n} Umschlag von {m} ist unauffällig",
     other: "{n} von {m} Umschlägen sind unauffällig",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
@@ -1473,5 +1473,5 @@ export const de: Dict = {
   "{pct} of place {name}": "{pct} des Orts {name}",
   "{pct} of spending from the selected accounts": "{pct} der Ausgaben von den gewählten Konten",
   "{pct} of spending from {account}": "{pct} der Ausgaben von {account}",
-  "{shown} of {total} transactions | {shown} of {total} transactions": { one: "{shown} von {total} Transaktionen", other: "{shown} von {total} Transaktionen" },
+  "{shown} of {total} transactions | {shown} of {total} transactions": { one: "{shown} Transaktion von {total}", other: "{shown} Transaktionen von {total}" },
 };

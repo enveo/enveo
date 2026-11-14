@@ -760,7 +760,7 @@ export const es: Dict = {
     other: "{n} sobres sin problemas · {ignored} ignorados",
   },
   "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} de {m} sobres está sin problemas",
+    one: "{n} sobre de {m} está sin problemas",
     many: "{n} de {m} sobres están sin problemas",
     other: "{n} de {m} sobres están sin problemas",
   },
@@ -1551,8 +1551,8 @@ export const es: Dict = {
   "{pct} of spending from the selected accounts": "{pct} del gasto de las cuentas elegidas",
   "{pct} of spending from {account}": "{pct} del gasto de {account}",
   "{shown} of {total} transactions | {shown} of {total} transactions": {
-    one: "{shown} de {total} transacciones",
-    many: "{shown} de {total} transacciones",
-    other: "{shown} de {total} transacciones",
+    one: "{shown} transacción de {total}",
+    many: "{shown} transacciones de {total}",
+    other: "{shown} transacciones de {total}",
   },
 };

@@ -2,7 +2,8 @@
  * Mini-i18n, message-as-key (gettext style): the ENGLISH SENTENCE IS THE KEY.
  * `t("Transactions")` renders "Transactions" in English and looks the sentence up in the
  * active locale otherwise. There is no English dictionary — a missing translation therefore
- * degrades to correct English, which is what makes partial community translations usable.
+ * degrades to correct English at runtime. Shipped locales must still be complete: i18n.test.ts
+ * fails on any message a locale lacks.
  *
  * PITFALL (the price of this pattern): editing an English string CHANGES ITS KEY, silently
  * orphaning every translation of it. `bun run i18n:extract` + i18n.test.ts report orphans;

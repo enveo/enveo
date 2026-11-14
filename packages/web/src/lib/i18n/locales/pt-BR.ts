@@ -756,7 +756,7 @@ export const ptBR: Dict = {
     other: "{n} envelopes saudáveis · {ignored} ignorados",
   },
   "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} de {m} envelopes está saudável",
+    one: "{n} envelope de {m} está saudável",
     many: "{n} de {m} envelopes estão saudáveis",
     other: "{n} de {m} envelopes estão saudáveis",
   },
@@ -1547,8 +1547,8 @@ export const ptBR: Dict = {
   "{pct} of spending from the selected accounts": "{pct} dos gastos das contas escolhidas",
   "{pct} of spending from {account}": "{pct} dos gastos de {account}",
   "{shown} of {total} transactions | {shown} of {total} transactions": {
-    one: "{shown} de {total} transação",
-    many: "{shown} de {total} transações",
-    other: "{shown} de {total} transações",
+    one: "{shown} transação de {total}",
+    many: "{shown} transações de {total}",
+    other: "{shown} transações de {total}",
   },
 };

@@ -656,7 +656,7 @@ export const it: Dict = {
   "Widget settings": "Impostazioni widget",
   "latest transactions": "ultime transazioni",
 
-  "+ {n} more | + {n} more": { one: "+ altri {n}", many: "+ altri {n}", other: "+ altri {n}" },
+  "+ {n} more | + {n} more": { one: "+ ancora {n}", many: "+ ancora {n}", other: "+ ancora {n}" },
   "A local copy means the app opens instantly and keeps working on a plane.":
     "Una copia locale significa che l'app si apre all'istante e continua a funzionare anche in aereo.",
   "A negative balance is fine — that is how a credit card starts.": "Un saldo negativo va benissimo — è così che parte, ad esempio, una carta di credito.",
@@ -1220,7 +1220,7 @@ export const it: Dict = {
   Show: "Mostra",
   "Show more": "Mostra altro",
   "Show {month}": "Mostra {month}",
-  "Show {n} more | Show {n} more": { one: "Mostra altri {n}", many: "Mostra altri {n}", other: "Mostra altri {n}" },
+  "Show {n} more | Show {n} more": { one: "Mostra ancora {n}", many: "Mostra ancora {n}", other: "Mostra ancora {n}" },
   "Show {n} older import | Show {n} older imports": {
     one: "Mostra {n} importazione precedente",
     many: "Mostra {n} importazioni precedenti",
@@ -1466,7 +1466,7 @@ export const it: Dict = {
     many: "{n} importazioni richiedono attenzione: apri Importazioni",
     other: "{n} importazioni richiedono attenzione: apri Importazioni",
   },
-  "{n} more | {n} more": { one: "altri {n}", many: "altri {n}", other: "altri {n}" },
+  "{n} more | {n} more": { one: "ancora {n}", many: "ancora {n}", other: "ancora {n}" },
   "{n} other combination also fits. | {n} other combinations also fit.": {
     one: "Va bene anche {n} altra combinazione.",
     many: "Vanno bene anche {n} altre combinazioni.",

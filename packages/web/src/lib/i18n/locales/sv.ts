@@ -852,7 +852,7 @@ export const sv: Dict = {
   "Cancel import": "Avbryt importen",
   "Card debt is {debtShare} of what you hold · balances are always current, whatever month you view":
     "Kortskulden är {debtShare} av det du har · saldona är alltid aktuella, oavsett vilken månad du tittar på",
-  Cash: "Kontanter",
+  Cash: "Tillgodohavanden",
   "Cash flow · 12 months": "Kassaflöde · 12 månader",
   Categories: "Kategorier",
   "Category merge": "Sammanslagning av kategorier",
@@ -1460,5 +1460,5 @@ export const sv: Dict = {
   "{pct} of place {name}": "{pct} av platsen {name}",
   "{pct} of spending from the selected accounts": "{pct} av utgifterna från de valda kontona",
   "{pct} of spending from {account}": "{pct} av utgifterna från {account}",
-  "{shown} of {total} transactions | {shown} of {total} transactions": { one: "{shown} av {total} transaktioner", other: "{shown} av {total} transaktioner" },
+  "{shown} of {total} transactions | {shown} of {total} transactions": { one: "{shown} transaktion av {total}", other: "{shown} transaktioner av {total}" },
 };

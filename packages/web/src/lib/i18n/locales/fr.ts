@@ -1551,7 +1551,7 @@ export const fr: Dict = {
   "{pct} of spending from the selected accounts": "{pct} des dépenses des comptes sélectionnés",
   "{pct} of spending from {account}": "{pct} des dépenses de {account}",
   "{shown} of {total} transactions | {shown} of {total} transactions": {
-    one: "{shown} transactions sur {total}",
+    one: "{shown} transaction sur {total}",
     many: "{shown} transactions sur {total}",
     other: "{shown} transactions sur {total}",
   },

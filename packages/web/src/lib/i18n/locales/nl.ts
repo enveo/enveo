@@ -742,7 +742,7 @@ export const nl: Dict = {
     other: "{n} enveloppen in orde · {ignored} genegeerd",
   },
   "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} van {m} enveloppen is in orde",
+    one: "{n} envelop van {m} is in orde",
     other: "{n} van {m} enveloppen zijn in orde",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
@@ -1471,5 +1471,5 @@ export const nl: Dict = {
   "{pct} of place {name}": "{pct} van plek {name}",
   "{pct} of spending from the selected accounts": "{pct} van de uitgaven van de gekozen rekeningen",
   "{pct} of spending from {account}": "{pct} van de uitgaven van {account}",
-  "{shown} of {total} transactions | {shown} of {total} transactions": { one: "{shown} van {total} transacties", other: "{shown} van {total} transacties" },
+  "{shown} of {total} transactions | {shown} of {total} transactions": { one: "{shown} transactie van {total}", other: "{shown} transacties van {total}" },
 };

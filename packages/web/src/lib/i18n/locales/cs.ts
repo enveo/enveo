@@ -769,10 +769,10 @@ export const cs: Dict = {
     other: "{n} obálek v pořádku · {ignored} přeskočeno",
   },
   "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} z {m} obálek je v pořádku",
-    few: "{n} z {m} obálek jsou v pořádku",
-    many: "{n} z {m} obálek jsou v pořádku",
-    other: "{n} z {m} obálek je v pořádku",
+    one: "{n} obálka z {m} je v pořádku",
+    few: "{n} obálky z {m} jsou v pořádku",
+    many: "{n} obálky z {m} je v pořádku",
+    other: "{n} obálek z {m} je v pořádku",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} krok do uzavřeného plánu · {pct} % měsíce za námi",
@@ -1590,9 +1590,9 @@ export const cs: Dict = {
   "{pct} of spending from the selected accounts": "{pct} výdajů z vybraných účtů",
   "{pct} of spending from {account}": "{pct} výdajů z účtu {account}",
   "{shown} of {total} transactions | {shown} of {total} transactions": {
-    one: "{shown} z {total} transakcí",
-    few: "{shown} z {total} transakcí",
-    many: "{shown} z {total} transakcí",
-    other: "{shown} z {total} transakcí",
+    one: "{shown} transakce z {total}",
+    few: "{shown} transakce z {total}",
+    many: "{shown} transakce z {total}",
+    other: "{shown} transakcí z {total}",
   },
 };
