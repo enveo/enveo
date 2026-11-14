@@ -15,8 +15,9 @@ export type Lang = "en" | "pl" | "de" | "es" | "fr" | "it" | "nl" | "pt-BR" | "c
 /** `endonym` is the language's name in itself (shown in Settings); `community` marks translations
  *  we did not author natively (labelled in the UI). Locale chunks are lazy (`import()`).
  *
- *  A locale may be INCOMPLETE — every missing message renders its English source (see ./index).
- *  That is the point: it lets a partial community translation ship instead of blocking on 100%. */
+ *  Every locale here translates every message: i18n.test.ts fails on a missing one. The runtime
+ *  still renders the English source for a message a dictionary lacks (see ./index), which is what a
+ *  locale chunk that fails to load falls back to, but no shipped locale relies on it. */
 export const LOCALES: { code: Lang; endonym: string; community: boolean; load: () => Promise<Dict> }[] = [
   { code: "en", endonym: "English", community: false, load: async () => ({}) },
   { code: "pl", endonym: "Polski", community: false, load: () => import("./locales/pl").then((m) => m.pl) },

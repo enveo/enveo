@@ -262,7 +262,7 @@ export function AppearanceSection() {
       </Row>
       {community && (
         <Helper>
-          {t("Community translation — it may be incomplete.")}{" "}
+          {t("Community translation — some wording may be off.")}{" "}
           <a href={TRANSLATION_ISSUES_URL} target="_blank" rel="noreferrer" style={{ color: TEAL, fontWeight: 600 }}>
             {t("Report a fix")}
           </a>

@@ -7,9 +7,9 @@ body:
       value: |
         Thanks for improving a translation — this is the most useful kind of small contribution.
 
-        Enveo's non-English dictionaries are **community translations**: they may be incomplete
-        or clumsy, and English is always the fallback for anything missing. Reporting one string
-        is enough; nobody has to finish a language.
+        Enveo's non-English dictionaries other than Polish are **community translations**: written
+        without a native review, so some wording may be clumsy or wrong. Reporting one string is
+        enough.
 
         **Please do not paste your budget.** No amounts, account names, transaction history or
         screenshots showing real financial data. The English source sentence and the wrong

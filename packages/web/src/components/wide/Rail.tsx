@@ -468,6 +468,8 @@ function RailUpdateCard({ incomingVersion, onRefresh, onDismiss }: { incomingVer
  * (design's `m.hint`, e.g. "clears local copy" on Log out) — `justify-content: space-between`,
  * not two independent spans, so the hint stays pinned to the row's own right edge regardless of
  * label length. `color` overrides the label's tone (design's `m.color`, e.g. `T.neg` for Log out).
+ * The hint wraps under its own right edge instead of running past the popover: translated hints
+ * ("rensar den lokala kopian", "czyści lokalną kopię") are twice the English width.
  */
 function MenuRow({ label, hint, color, disabled, onClick }: { label: string; hint?: string; color?: string; disabled?: boolean; onClick: () => void }) {
   const C = useTheme();
@@ -493,12 +495,11 @@ function MenuRow({ label, hint, color, disabled, onClick }: { label: string; hin
         opacity: disabled ? 0.6 : 1,
         textAlign: "left",
         fontFamily: font,
-        whiteSpace: "nowrap",
       }}
     >
-      <span>{label}</span>
+      <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{label}</span>
       {hint && (
-        <span aria-hidden style={{ fontSize: 11, color: C.mute, whiteSpace: "nowrap" }}>
+        <span aria-hidden style={{ minWidth: 0, fontSize: 11, color: C.mute, textAlign: "right" }}>
           {hint}
         </span>
       )}
@@ -843,20 +844,21 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
                   literal `appVersion` — brand + bare version, NEVER the build stamp. The combined
                   "v{version} · build …" string belongs to the persistent rail row below (v3:181,
                   derivation 4354) — the two were swapped in the first pass of this task. */}
-              <span>{`Enveo v${APP_VERSION}`}</span>
+              <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{`Enveo v${APP_VERSION}`}</span>
               <button
                 onClick={() => {
                   closeMenu();
                   checkForUpdate();
                 }}
                 style={{
-                  flexShrink: 0,
+                  minWidth: 0,
                   minHeight: 30,
                   display: "flex",
                   alignItems: "center",
                   border: "none",
                   background: "none",
                   padding: "0 2px",
+                  textAlign: "right",
                   color: TEAL,
                   fontSize: 10.5,
                   fontWeight: 650,

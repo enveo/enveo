@@ -224,7 +224,7 @@ export const MESSAGES = [
   "Collapsed by default",
   "Color",
   "Color {color}",
-  "Community translation — it may be incomplete.",
+  "Community translation — some wording may be off.",
   "Complete or uncheck the unfinished rows before adding transactions.",
   "Complete without adding",
   "Completed",

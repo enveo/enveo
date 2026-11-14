@@ -29,8 +29,8 @@ afterEach(() => {
 });
 
 /**
- * The provenance baseline (§5d). `community: true` is what puts "Community translation — it may
- * be incomplete." and the "Report a fix" link in front of the user, so the flag is a PROMISE, not
+ * The provenance baseline (§5d). `community: true` is what puts "Community translation — some
+ * wording may be off." and the "Report a fix" link in front of the user, so the flag is a PROMISE, not
  * decoration: these eight dictionaries were not written by native speakers of their languages.
  *
  * Losing the flag is a silent failure — the app keeps working and simply stops disclosing. So the
