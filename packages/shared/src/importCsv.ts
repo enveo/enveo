@@ -138,6 +138,9 @@ function dateOrderOf(cells: readonly string[]): CsvDateOrder {
   return monthFirst && !dayFirst ? "mdy" : "dmy";
 }
 
+/** Money out and money in come from their own columns, even when only one of them exists. */
+export const csvUsesSeparateColumns = (mapping: CsvMapping): boolean => mapping.amount === null && (mapping.moneyOut !== null || mapping.moneyIn !== null);
+
 export function suggestCsvMapping(table: CsvTable): CsvMapping {
   const mapping: CsvMapping = { date: null, amount: null, moneyOut: null, moneyIn: null, payee: null, description: null, dateOrder: "dmy" };
   table.headers.forEach((header, column) => {

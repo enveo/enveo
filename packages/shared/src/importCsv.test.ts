@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { applyCsvHistory, csvRowsToRecognition, findCsvTable, parseCsv, parseCsvAmount, parseCsvDate, readCsvRows, suggestCsvMapping } from "./importCsv";
+import {
+  applyCsvHistory,
+  csvRowsToRecognition,
+  csvUsesSeparateColumns,
+  findCsvTable,
+  parseCsv,
+  parseCsvAmount,
+  parseCsvDate,
+  readCsvRows,
+  suggestCsvMapping,
+} from "./importCsv";
 import { importJobResultSchema } from "./importJobs";
 import { reconcileImportProposals } from "./importRecognition";
 import type { Account, ClientLedger } from "./types";
@@ -96,6 +106,13 @@ describe("CSV mapping", () => {
     const mapping = suggestCsvMapping(found);
     expect(mapping).toMatchObject({ moneyOut: 2, moneyIn: null, amount: null });
     expect(readCsvRows(found, mapping).rows.map((row) => row.amount)).toEqual([-4250, -900]);
+  });
+
+  test("given only a credit column when suggested then the form starts on separate columns and reads money in", () => {
+    const found = table("Date,Payee,Credit\n2026-09-01,Example Corp,3000.00\n");
+    const mapping = suggestCsvMapping(found);
+    expect(csvUsesSeparateColumns(mapping)).toBe(true);
+    expect(readCsvRows(found, mapping).rows.map((row) => row.amount)).toEqual([300000]);
   });
 
   test("given a debit or credit marker beside a signed amount when suggested then the amount column is used", () => {

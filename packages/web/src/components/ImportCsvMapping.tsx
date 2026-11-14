@@ -1,4 +1,4 @@
-import { type CsvDateOrder, type CsvMapping, type CsvRow, type CsvTable, readCsvRows, suggestCsvMapping } from "@enveo/shared";
+import { type CsvDateOrder, type CsvMapping, type CsvRow, type CsvTable, csvUsesSeparateColumns, readCsvRows, suggestCsvMapping } from "@enveo/shared";
 import { useMemo, useState } from "react";
 import { useMask, useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
@@ -25,7 +25,7 @@ export function ImportCsvMapping({
   const M = useMask();
   const { t, tp } = useT();
   const [mapping, setMapping] = useState(() => suggestCsvMapping(table));
-  const [separateColumns, setSeparateColumns] = useState(() => mapping.moneyOut !== null);
+  const [separateColumns, setSeparateColumns] = useState(() => csvUsesSeparateColumns(mapping));
   const reading = useMemo(
     () => readCsvRows(table, separateColumns ? { ...mapping, amount: null } : { ...mapping, moneyOut: null, moneyIn: null }),
     [table, mapping, separateColumns],
