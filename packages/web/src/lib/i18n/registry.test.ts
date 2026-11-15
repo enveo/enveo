@@ -10,6 +10,7 @@
  * pattern as in settingsPersist.test.ts.
  */
 import { afterEach, describe, expect, test } from "bun:test";
+import { LANGS } from "@enveo/shared";
 import { __resetStorageForTests } from "../idb";
 import { detectLang, type Lang, LOCALES, uiLang } from "./registry";
 
@@ -79,5 +80,11 @@ describe("uiLang() vs device storage policy", () => {
     });
     __resetStorageForTests();
     expect(uiLang()).toBe(detectLang());
+  });
+});
+
+describe("LOCALES", () => {
+  test("ships exactly the shared language list, in its order", () => {
+    expect(LOCALES.map((l) => l.code)).toEqual([...LANGS]);
   });
 });

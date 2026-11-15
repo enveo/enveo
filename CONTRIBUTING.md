@@ -183,9 +183,12 @@ text, so a gap never breaks the app — it just never reaches users.)
    be sure, open the call site (`bun run i18n:ambiguity` lists every short message
    with its call sites) — and translate the whole sentence into YOUR word order, not
    English's.
-4. Add **one line** to `locales/../registry.ts` (`community: true`) — the Settings
-   picker and the lazy-loading are driven by that registry, so there is nothing
-   else to wire up.
+4. Add the language code to `LANGS` in `packages/shared/src/preferences.ts` (the
+   one language list, which account preferences and the sample data validate
+   against) and **one line** to `locales/../registry.ts` (`community: true`) — the
+   Settings picker and the lazy-loading are driven by that registry. Add the
+   language's sample-data names to `packages/api/src/routes/demo.ts`; the compiler
+   points at it.
 5. `bun run i18n:extract` (in `packages/web`), then
    `bun run test --files packages/web/src/lib/i18n` (from the repository root). The tests report missing and
    orphaned messages, incomplete plural categories and dropped `{placeholders}` by name.
