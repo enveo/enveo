@@ -1,4 +1,4 @@
-import { lazy, type ReactNode, useEffect, useState } from "react";
+import { lazy, type ReactNode, useEffect, useRef, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { LogoMark } from "../components/chrome";
 import { markInstallOffered } from "../components/InstallBanner";
@@ -135,7 +135,9 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const [migrating, setMigrating] = useState(false);
   const [busy, setBusy] = useState(false);
   // The sample data is named in the UI language, so it may not be seeded while a picked language is still loading.
+  // Only the latest pick may apply: two loads can finish out of order.
   const [pendingLang, setPendingLang] = useState<Lang | null>(null);
+  const latestLang = useRef<Lang | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // The wizard is genuinely finished here (not a mode-flip remount) — the module-level draft is
@@ -337,10 +339,12 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
               /* the locale chunk is fetched BEFORE the switch — otherwise the wizard stays English until a reload */
               onChange={(e) => {
                 const id = e.target.value as Lang;
+                latestLang.current = id;
                 setPendingLang(id);
                 void loadLocale(id).then(() => {
+                  if (latestLang.current !== id) return;
                   setSettings({ ...settings, lang: id });
-                  setPendingLang((p) => (p === id ? null : p));
+                  setPendingLang(null);
                 });
               }}
               style={{
