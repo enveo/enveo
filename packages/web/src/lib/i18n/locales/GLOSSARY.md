@@ -40,6 +40,11 @@ translation of the English.
    computed, not guessed: `new Intl.PluralRules("cs").resolvedOptions().pluralCategories`.
    The English source carries both forms joined by `" | "` — that joined string is the KEY,
    never a value.
+   A plural form is chosen by ONE number, the count the call site passes (normally `{n}`). When
+   a message holds a second number (`{over}`, `{healthy}`, `{total}`…), inflect only the words
+   that agree with the count and keep the other number out of any agreement: `Healthy:
+   {healthy} of {n} envelopes` inflects "envelope" with `{n}` only. If both numbers need their
+   own agreement, the source must be two messages, not one.
 4. **Words the user must TYPE stay typeable.** `DELETE`, `RESET`, `DISABLE-E2EE` are typed
    into a confirmation box and matched after `.toUpperCase()`. Keep them uppercase, and
    prefer characters that exist on a keyboard the user plausibly has — a word nobody can

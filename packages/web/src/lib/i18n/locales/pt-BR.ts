@@ -750,15 +750,15 @@ export const ptBR: Dict = {
     other: "{n} envelopes selecionados",
   },
   "{n} healthy envelope | {n} healthy envelopes": { one: "{n} envelope saudável", many: "{n} envelopes saudáveis", other: "{n} envelopes saudáveis" },
-  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
-    one: "{n} envelope saudável · {ignored} ignorados",
-    many: "{n} envelopes saudáveis · {ignored} ignorados",
-    other: "{n} envelopes saudáveis · {ignored} ignorados",
+  "{n} ignored | {n} ignored": {
+    one: "{n} ignorado",
+    many: "{n} ignorados",
+    other: "{n} ignorados",
   },
-  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} envelope de {m} está saudável",
-    many: "{n} de {m} envelopes estão saudáveis",
-    other: "{n} de {m} envelopes estão saudáveis",
+  "Healthy: {healthy} of {n} envelope | Healthy: {healthy} of {n} envelopes": {
+    one: "Saudáveis: {healthy} de {n} envelope",
+    many: "Saudáveis: {healthy} de {n} envelopes",
+    other: "Saudáveis: {healthy} de {n} envelopes",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} etapa para fechar o plano · {pct}% do mês passado",
@@ -1411,7 +1411,11 @@ export const ptBR: Dict = {
   "current month": "mês atual",
   "e.g. Payday": "ex.: Dia de pagamento",
   "from last month {amount}": "do mês anterior {amount}",
-  "in {n} of {total} envelopes": "em {n} de {total} envelopes",
+  "in {over} of {n} envelope | in {over} of {n} envelopes": {
+    one: "em {over} de {n} envelope",
+    many: "em {over} de {n} envelopes",
+    other: "em {over} de {n} envelopes",
+  },
   "income {income} · spending {expense}": "receitas {income} · gastos {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "receitas {income} · gastos {expense} · taxa de economia {pct}%",
   "last {n} month · {range} | last {n} months · {range}": {

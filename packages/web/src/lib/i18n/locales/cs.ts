@@ -762,17 +762,17 @@ export const cs: Dict = {
     many: "{n} obálky v pořádku",
     other: "{n} obálek v pořádku",
   },
-  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
-    one: "{n} obálka v pořádku · {ignored} přeskočeno",
-    few: "{n} obálky v pořádku · {ignored} přeskočeno",
-    many: "{n} obálky v pořádku · {ignored} přeskočeno",
-    other: "{n} obálek v pořádku · {ignored} přeskočeno",
+  "{n} ignored | {n} ignored": {
+    one: "{n} přeskočená",
+    few: "{n} přeskočené",
+    many: "{n} přeskočené",
+    other: "{n} přeskočených",
   },
-  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} obálka z {m} je v pořádku",
-    few: "{n} obálky z {m} jsou v pořádku",
-    many: "{n} obálky z {m} je v pořádku",
-    other: "{n} obálek z {m} je v pořádku",
+  "Healthy: {healthy} of {n} envelope | Healthy: {healthy} of {n} envelopes": {
+    one: "V pořádku: {healthy} z {n} obálky",
+    few: "V pořádku: {healthy} z {n} obálek",
+    many: "V pořádku: {healthy} z {n} obálky",
+    other: "V pořádku: {healthy} z {n} obálek",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} krok do uzavřeného plánu · {pct} % měsíce za námi",
@@ -1431,7 +1431,12 @@ export const cs: Dict = {
   "current month": "aktuální měsíc",
   "e.g. Payday": "např. Výplata",
   "from last month {amount}": "z minulého měsíce {amount}",
-  "in {n} of {total} envelopes": "v {n} z {total} obálek",
+  "in {over} of {n} envelope | in {over} of {n} envelopes": {
+    one: "v {over} z {n} obálky",
+    few: "v {over} z {n} obálek",
+    many: "v {over} z {n} obálky",
+    other: "v {over} z {n} obálek",
+  },
   "income {income} · spending {expense}": "příjmy {income} · výdaje {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "příjmy {income} · výdaje {expense} · míra úspor {pct} %",
   "last {n} month · {range} | last {n} months · {range}": {

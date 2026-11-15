@@ -737,13 +737,13 @@ export const nl: Dict = {
   "{now} · median {median}": "{now} · mediaan {median}",
   "{n} envelope selected | {n} envelopes selected": { one: "{n} envelop geselecteerd", other: "{n} enveloppen geselecteerd" },
   "{n} healthy envelope | {n} healthy envelopes": { one: "{n} envelop in orde", other: "{n} enveloppen in orde" },
-  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
-    one: "{n} envelop in orde · {ignored} genegeerd",
-    other: "{n} enveloppen in orde · {ignored} genegeerd",
+  "{n} ignored | {n} ignored": {
+    one: "{n} genegeerd",
+    other: "{n} genegeerd",
   },
-  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} envelop van {m} is in orde",
-    other: "{n} van {m} enveloppen zijn in orde",
+  "Healthy: {healthy} of {n} envelope | Healthy: {healthy} of {n} envelopes": {
+    one: "In orde: {healthy} van {n} envelop",
+    other: "In orde: {healthy} van {n} enveloppen",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} stap tot een afgesloten plan · {pct}% van de maand voorbij",
@@ -1384,7 +1384,10 @@ export const nl: Dict = {
   "current month": "huidige maand",
   "e.g. Payday": "bijv. Betaaldag",
   "from last month {amount}": "uit vorige maand {amount}",
-  "in {n} of {total} envelopes": "in {n} van {total} enveloppen",
+  "in {over} of {n} envelope | in {over} of {n} envelopes": {
+    one: "in {over} van {n} envelop",
+    other: "in {over} van {n} enveloppen",
+  },
   "income {income} · spending {expense}": "inkomsten {income} · uitgaven {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "inkomsten {income} · uitgaven {expense} · spaarpercentage {pct}%",
   "last {n} month · {range} | last {n} months · {range}": { one: "afgelopen {n} maand · {range}", other: "afgelopen {n} maanden · {range}" },

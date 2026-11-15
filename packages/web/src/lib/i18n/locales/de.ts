@@ -739,13 +739,13 @@ export const de: Dict = {
   "{now} · median {median}": "{now} · Median {median}",
   "{n} envelope selected | {n} envelopes selected": { one: "{n} Umschlag ausgewählt", other: "{n} Umschläge ausgewählt" },
   "{n} healthy envelope | {n} healthy envelopes": { one: "{n} unauffälliger Umschlag", other: "{n} unauffällige Umschläge" },
-  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
-    one: "{n} unauffälliger Umschlag · {ignored} ignoriert",
-    other: "{n} unauffällige Umschläge · {ignored} ignoriert",
+  "{n} ignored | {n} ignored": {
+    one: "{n} ignoriert",
+    other: "{n} ignoriert",
   },
-  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} Umschlag von {m} ist unauffällig",
-    other: "{n} von {m} Umschlägen sind unauffällig",
+  "Healthy: {healthy} of {n} envelope | Healthy: {healthy} of {n} envelopes": {
+    one: "Unauffällig: {healthy} von {n} Umschlag",
+    other: "Unauffällig: {healthy} von {n} Umschlägen",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} Schritt bis zum abgeschlossenen Plan · {pct} % des Monats vorbei",
@@ -1386,7 +1386,10 @@ export const de: Dict = {
   "current month": "aktueller Monat",
   "e.g. Payday": "z. B. Zahltag",
   "from last month {amount}": "aus dem Vormonat {amount}",
-  "in {n} of {total} envelopes": "in {n} von {total} Umschlägen",
+  "in {over} of {n} envelope | in {over} of {n} envelopes": {
+    one: "in {over} von {n} Umschlag",
+    other: "in {over} von {n} Umschlägen",
+  },
   "income {income} · spending {expense}": "Einnahmen {income} · Ausgaben {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "Einnahmen {income} · Ausgaben {expense} · Sparquote {pct} %",
   "last {n} month · {range} | last {n} months · {range}": { one: "letzter {n} Monat · {range}", other: "letzte {n} Monate · {range}" },
