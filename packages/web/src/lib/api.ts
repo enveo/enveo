@@ -246,7 +246,7 @@ export const api = {
     http<ReconciledImportRecognitionResult>("POST", "/ai/byok/import/recognize", { budgetId, model, accountId, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
 
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
-     rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
+     rationales in it. Not to be confused with demoSeed's `Lang`, which picks a SEED DATASET. */
   importExtract: (accountId: string, images: string[], locale: AiLocale) =>
     http<ReconciledImportRecognitionResult>("POST", "/import/recognize", { accountId, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
   /* `budgetId` = the same PER-REQUEST tenant assertion as the sync push: the batch creates

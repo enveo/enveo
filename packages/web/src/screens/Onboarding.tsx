@@ -1,4 +1,4 @@
-import { lazy, type ReactNode, useEffect, useState } from "react";
+import { lazy, type ReactNode, useEffect, useRef, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { LogoMark } from "../components/chrome";
 import { markInstallOffered } from "../components/InstallBanner";
@@ -115,8 +115,10 @@ type OnboardingDraft = {
   drafts: string[] | null;
   /** The latest language picked here; its dictionary may still be loading. Kept across a mode-flip remount. */
   lang: Lang | null;
+  /** The sample-data load in flight; a remounted screen follows it instead of offering the buttons again. */
+  seed: Promise<void> | null;
 };
-export const onboardingDraft: OnboardingDraft = { step: 0, accName: "", accBal: "", currency: null, rows: null, drafts: null, lang: null };
+export const onboardingDraft: OnboardingDraft = { step: 0, accName: "", accBal: "", currency: null, rows: null, drafts: null, lang: null, seed: null };
 
 /** Reset for the NEXT onboarding run (a fresh account) — call only once the current wizard has
  * genuinely finished (completion or the install step's skip/done), never on a mode-flip remount. */
@@ -128,6 +130,7 @@ export function clearOnboardingDraft() {
   onboardingDraft.rows = null;
   onboardingDraft.drafts = null;
   onboardingDraft.lang = null;
+  onboardingDraft.seed = null;
 }
 
 export function OnboardingScreen({ onDone }: { onDone: () => void }) {
@@ -136,7 +139,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const { t, tp, lang } = useT();
   const [step, setStep] = useState<0 | 1 | 2>(onboardingDraft.step);
   const [migrating, setMigrating] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(() => onboardingDraft.seed !== null);
   const [error, setError] = useState<string | null>(null);
 
   // The wizard is genuinely finished here (not a mode-flip remount) — the module-level draft is
@@ -205,12 +208,33 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     onboardingDraft.drafts = drafts;
   }, [step, accName, accBal, currency, rows, drafts]);
 
-  const tryDemo = async () => {
+  // Only the mounted screen reacts to a seed's outcome; a remount takes the seed over (effect below).
+  const mounted = useRef(true);
+  const followSeed = (seed: Promise<void>) => {
     setBusy(true);
     setError(null);
-    try {
-      commitCurrency();
+    seed
+      .then(
+        () => mounted.current && finish(),
+        (e) => mounted.current && setError(apiErrorMessage(e)),
+      )
+      .finally(() => {
+        if (onboardingDraft.seed === seed) onboardingDraft.seed = null;
+        if (mounted.current) setBusy(false);
+      });
+  };
+  useEffect(() => {
+    mounted.current = true;
+    if (onboardingDraft.seed) followSeed(onboardingDraft.seed);
+    return () => {
+      mounted.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  const tryDemo = () => {
+    const seed = (async () => {
+      commitCurrency();
       // The sample data is named in the picked language, which may still be loading (or picked before a remount).
       const seedLang = onboardingDraft.lang ?? lang;
       await loadLocale(seedLang);
@@ -218,12 +242,9 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       const userId = await assertOwnReplica();
       await api.demoSeed(seedLang, userId);
       await fullResync();
-      finish();
-    } catch (e) {
-      setError(apiErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+    })();
+    onboardingDraft.seed = seed;
+    followSeed(seed);
   };
 
   const createAccount = () => {
@@ -400,7 +421,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
             variant="teal"
           />
           <div style={{ height: 10 }} />
-          <BigButton label={busy ? t("Loading sample data…") : t("Try it with sample data")} onClick={() => void tryDemo()} disabled={busy} variant="outline" />
+          <BigButton label={busy ? t("Loading sample data…") : t("Try it with sample data")} onClick={tryDemo} disabled={busy} variant="outline" />
           <div style={{ height: 10 }} />
           <BigButton
             label={t("Move from another budgeting app")}

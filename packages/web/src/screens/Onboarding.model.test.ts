@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { clearOnboardingDraft, onboardingDraft } from "./Onboarding";
 
 describe("onboardingDraft", () => {
-  test("starts empty/step 0, with currency/rows/drafts/lang unset", () => {
-    expect(onboardingDraft).toEqual({ step: 0, accName: "", accBal: "", currency: null, rows: null, drafts: null, lang: null });
+  test("starts empty/step 0, with currency/rows/drafts/lang/seed unset", () => {
+    expect(onboardingDraft).toEqual({ step: 0, accName: "", accBal: "", currency: null, rows: null, drafts: null, lang: null, seed: null });
   });
 
   test("round-trips every field a mode-flip remount would otherwise discard", () => {
@@ -34,9 +34,10 @@ describe("onboardingDraft", () => {
     onboardingDraft.rows = [[{ custom: "Pets", checked: true, color: "#abcdef", icon: "tag" }]];
     onboardingDraft.drafts = ["x"];
     onboardingDraft.lang = "fr";
+    onboardingDraft.seed = Promise.resolve();
 
     clearOnboardingDraft();
 
-    expect(onboardingDraft).toEqual({ step: 0, accName: "", accBal: "", currency: null, rows: null, drafts: null, lang: null });
+    expect(onboardingDraft).toEqual({ step: 0, accName: "", accBal: "", currency: null, rows: null, drafts: null, lang: null, seed: null });
   });
 });
