@@ -346,7 +346,7 @@ export const pl: Dict = {
   "Cancel editing": "Anuluj edycję",
   "Card debt is {debtShare} of what you hold · balances are always current, whatever month you view":
     "Dług na karcie to {debtShare} tego, co posiadasz · salda są zawsze aktualne, niezależnie od przeglądanego miesiąca",
-  Cash: "Gotówka",
+  Cash: "Środki",
   "Cash flow": "Cashflow",
   "Cash flow · 12 months": "Cashflow · 12 miesięcy",
   Category: "Kategoria",
