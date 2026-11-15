@@ -1,3 +1,4 @@
+import { LANGS, type Lang } from "@enveo/shared";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -10,7 +11,7 @@ import { ownerAssertionFails } from "./sync";
 export const demoRoutes = new Hono();
 
 export const seedInput = z.object({
-  locale: z.enum(["pl", "en"]).optional(),
+  locale: z.enum(LANGS).optional(),
   userId: z.string().min(1).optional(),
 });
 
@@ -21,8 +22,6 @@ export const resetInput = z.object({
 
 const zl = (x: number) => Math.round(x * 100);
 
-type Locale = "pl" | "en";
-
 function monthAt(offset: number): { ym: string; day: (d: number) => string } {
   const now = new Date();
   const base = new Date(now.getFullYear(), now.getMonth() - offset, 1);
@@ -30,10 +29,10 @@ function monthAt(offset: number): { ym: string; day: (d: number) => string } {
   return { ym, day: (d: number) => `${ym}-${String(d).padStart(2, "0")}` };
 }
 
-/* ── Demo names (PL/EN) — data, not UI, so they don't go through web i18n ── */
+/* ── Demo names in every UI language — data, not UI, so they don't go through web i18n ── */
 
 const NAMES: Record<
-  Locale,
+  Lang,
   {
     accounts: [string, string, string];
     groups: [string, string, string];
@@ -97,6 +96,222 @@ const NAMES: Record<
       health: "Pharmacy",
     },
   },
+  de: {
+    accounts: ["Girokonto", "Sparkonto", "Bargeld"],
+    groups: ["Fixkosten", "Alltag", "Sparen"],
+    env: {
+      housing: "Wohnen",
+      utilities: "Nebenkosten",
+      subs: "Abos",
+      groceries: "Lebensmittel",
+      transport: "Mobilität",
+      health: "Gesundheit",
+      fun: "Freizeit",
+      savings: "Ersparnisse",
+      rainy: "Notgroschen",
+    },
+    categories: ["Einkäufe", "Haushalt", "Auto"],
+    places: ["Supermarkt", "Tankstelle"],
+    tx: {
+      salary: "Gehalt",
+      rent: "Miete",
+      utilities: "Strom und Gas",
+      subs: "Abos",
+      groceries: "Lebensmitteleinkauf",
+      fuel: "Tanken",
+      fun: "Kino und Abendessen",
+      health: "Apotheke",
+    },
+  },
+  es: {
+    accounts: ["Cuenta corriente", "Ahorros", "Efectivo"],
+    groups: ["Facturas", "Día a día", "Ahorro"],
+    env: {
+      housing: "Vivienda",
+      utilities: "Suministros",
+      subs: "Suscripciones",
+      groceries: "Supermercado",
+      transport: "Transporte",
+      health: "Salud",
+      fun: "Ocio",
+      savings: "Ahorros",
+      rainy: "Imprevistos",
+    },
+    categories: ["Compras", "Hogar", "Coche"],
+    places: ["Supermercado", "Gasolinera"],
+    tx: {
+      salary: "Nómina",
+      rent: "Alquiler",
+      utilities: "Luz y gas",
+      subs: "Suscripciones",
+      groceries: "Compra del súper",
+      fuel: "Gasolina",
+      fun: "Cine y cena",
+      health: "Farmacia",
+    },
+  },
+  fr: {
+    accounts: ["Compte courant", "Épargne", "Espèces"],
+    groups: ["Factures", "Vie courante", "Épargne"],
+    env: {
+      housing: "Logement",
+      utilities: "Énergie",
+      subs: "Abonnements",
+      groceries: "Courses",
+      transport: "Transports",
+      health: "Santé",
+      fun: "Loisirs",
+      savings: "Épargne",
+      rainy: "Imprévus",
+    },
+    categories: ["Achats", "Maison", "Voiture"],
+    places: ["Supermarché", "Station-service"],
+    tx: {
+      salary: "Salaire",
+      rent: "Loyer",
+      utilities: "Électricité et gaz",
+      subs: "Abonnements",
+      groceries: "Courses alimentaires",
+      fuel: "Carburant",
+      fun: "Cinéma et dîner",
+      health: "Pharmacie",
+    },
+  },
+  it: {
+    accounts: ["Conto corrente", "Risparmi", "Contanti"],
+    groups: ["Bollette", "Spese quotidiane", "Risparmio"],
+    env: {
+      housing: "Casa",
+      utilities: "Utenze",
+      subs: "Abbonamenti",
+      groceries: "Spesa",
+      transport: "Trasporti",
+      health: "Salute",
+      fun: "Svago",
+      savings: "Risparmi",
+      rainy: "Imprevisti",
+    },
+    categories: ["Acquisti", "Casa", "Auto"],
+    places: ["Supermercato", "Distributore"],
+    tx: {
+      salary: "Stipendio",
+      rent: "Affitto",
+      utilities: "Luce e gas",
+      subs: "Abbonamenti",
+      groceries: "Spesa alimentare",
+      fuel: "Carburante",
+      fun: "Cinema e cena",
+      health: "Farmacia",
+    },
+  },
+  nl: {
+    accounts: ["Betaalrekening", "Spaarrekening", "Contant"],
+    groups: ["Vaste lasten", "Dagelijks", "Sparen"],
+    env: {
+      housing: "Wonen",
+      utilities: "Energie",
+      subs: "Abonnementen",
+      groceries: "Boodschappen",
+      transport: "Vervoer",
+      health: "Gezondheid",
+      fun: "Uitjes",
+      savings: "Spaargeld",
+      rainy: "Buffer",
+    },
+    categories: ["Winkelen", "Huis", "Auto"],
+    places: ["Supermarkt", "Tankstation"],
+    tx: {
+      salary: "Salaris",
+      rent: "Huur",
+      utilities: "Stroom en gas",
+      subs: "Abonnementen",
+      groceries: "Boodschappen",
+      fuel: "Brandstof",
+      fun: "Bioscoop en etentje",
+      health: "Apotheek",
+    },
+  },
+  "pt-BR": {
+    accounts: ["Conta corrente", "Poupança", "Dinheiro"],
+    groups: ["Contas", "Dia a dia", "Reservas"],
+    env: {
+      housing: "Moradia",
+      utilities: "Contas da casa",
+      subs: "Assinaturas",
+      groceries: "Mercado",
+      transport: "Transporte",
+      health: "Saúde",
+      fun: "Lazer",
+      savings: "Poupança",
+      rainy: "Imprevistos",
+    },
+    categories: ["Compras", "Casa", "Carro"],
+    places: ["Supermercado", "Posto de gasolina"],
+    tx: {
+      salary: "Salário",
+      rent: "Aluguel",
+      utilities: "Luz e gás",
+      subs: "Assinaturas",
+      groceries: "Compras do mercado",
+      fuel: "Combustível",
+      fun: "Cinema e jantar",
+      health: "Farmácia",
+    },
+  },
+  cs: {
+    accounts: ["Běžný účet", "Spořicí účet", "Hotovost"],
+    groups: ["Pravidelné platby", "Běžný život", "Spoření"],
+    env: {
+      housing: "Bydlení",
+      utilities: "Energie",
+      subs: "Předplatné",
+      groceries: "Potraviny",
+      transport: "Doprava",
+      health: "Zdraví",
+      fun: "Zábava",
+      savings: "Úspory",
+      rainy: "Rezerva",
+    },
+    categories: ["Nákupy", "Domácnost", "Auto"],
+    places: ["Supermarket", "Čerpací stanice"],
+    tx: {
+      salary: "Výplata",
+      rent: "Nájem",
+      utilities: "Elektřina a plyn",
+      subs: "Předplatné",
+      groceries: "Nákup potravin",
+      fuel: "Palivo",
+      fun: "Kino a večeře",
+      health: "Lékárna",
+    },
+  },
+  sv: {
+    accounts: ["Lönekonto", "Sparkonto", "Kontanter"],
+    groups: ["Räkningar", "Vardag", "Sparande"],
+    env: {
+      housing: "Boende",
+      utilities: "El och värme",
+      subs: "Prenumerationer",
+      groceries: "Mat",
+      transport: "Transport",
+      health: "Hälsa",
+      fun: "Nöje",
+      savings: "Sparpengar",
+      rainy: "Buffert",
+    },
+    categories: ["Inköp", "Hem", "Bil"],
+    places: ["Livsmedelsbutik", "Bensinstation"],
+    tx: {
+      salary: "Lön",
+      rent: "Hyra",
+      utilities: "El och gas",
+      subs: "Prenumerationer",
+      groceries: "Matinköp",
+      fuel: "Bensin",
+      fun: "Bio och middag",
+      health: "Apotek",
+    },
+  },
 };
 
 const ALLOC: Record<keyof (typeof NAMES)["pl"]["env"], number> = {
@@ -120,7 +335,7 @@ const GROCERY_AMOUNTS: number[][] = [
 demoRoutes.post("/demo/seed", async (c) => {
   const { locale, userId } = seedInput.parse(await c.req.json().catch(() => ({})));
   if (ownerAssertionFails(userId, sessionUserId(c))) return c.json({ error: "budget_mismatch" }, 409);
-  const n = NAMES[(locale ?? "pl") as Locale];
+  const n = NAMES[locale ?? "pl"];
 
   const seeded = await db.transaction(async (tx) => {
     const budgetId = (await requireTier(c, "plain", tx)).id;

@@ -209,7 +209,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       commitCurrency();
 
       const userId = await assertOwnReplica();
-      await api.demoSeed(lang === "pl" ? "pl" : "en", userId);
+      await api.demoSeed(lang, userId);
       await fullResync();
       finish();
     } catch (e) {

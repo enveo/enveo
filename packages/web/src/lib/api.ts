@@ -1,4 +1,4 @@
-import { computeStateResponse, type StateResponse } from "@enveo/shared";
+import { computeStateResponse, type Lang, type StateResponse } from "@enveo/shared";
 import { useMemo, useSyncExternalStore } from "react";
 import { type Message, msg, translate, uiLang } from "./i18n";
 import { store } from "./store";
@@ -271,7 +271,7 @@ export const api = {
       import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.complete(id, input)),
   },
 
-  demoSeed: (locale: "pl" | "en", userId: string) => http<{ seeded: boolean }>("POST", "/demo/seed", { locale, userId }),
+  demoSeed: (locale: Lang, userId: string) => http<{ seeded: boolean }>("POST", "/demo/seed", { locale, userId }),
   budgetReset: (userId: string) => http<{ reset: boolean }>("POST", "/budget/reset", { confirm: "RESET", userId }),
 
   /* E2EE (sync v2) — tier switching and the key envelope; crypto EXCLUSIVELY on
