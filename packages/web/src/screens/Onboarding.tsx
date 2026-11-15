@@ -134,6 +134,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState<0 | 1 | 2>(onboardingDraft.step);
   const [migrating, setMigrating] = useState(false);
   const [busy, setBusy] = useState(false);
+  // The sample data is named in the UI language, so it may not be seeded while a picked language is still loading.
+  const [pendingLang, setPendingLang] = useState<Lang | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // The wizard is genuinely finished here (not a mode-flip remount) — the module-level draft is
@@ -331,10 +333,15 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
             {}
             <select
               value={settings.lang}
+              disabled={busy}
               /* the locale chunk is fetched BEFORE the switch — otherwise the wizard stays English until a reload */
               onChange={(e) => {
                 const id = e.target.value as Lang;
-                void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
+                setPendingLang(id);
+                void loadLocale(id).then(() => {
+                  setSettings({ ...settings, lang: id });
+                  setPendingLang((p) => (p === id ? null : p));
+                });
               }}
               style={{
                 padding: "7px 10px",
@@ -388,7 +395,12 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
             variant="teal"
           />
           <div style={{ height: 10 }} />
-          <BigButton label={busy ? t("Loading sample data…") : t("Try it with sample data")} onClick={() => void tryDemo()} disabled={busy} variant="outline" />
+          <BigButton
+            label={busy ? t("Loading sample data…") : t("Try it with sample data")}
+            onClick={() => void tryDemo()}
+            disabled={busy || pendingLang !== null}
+            variant="outline"
+          />
           <div style={{ height: 10 }} />
           <BigButton
             label={t("Move from another budgeting app")}
