@@ -1,4 +1,4 @@
-import { lazy, type ReactNode, useEffect, useRef, useState } from "react";
+import { lazy, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { LogoMark } from "../components/chrome";
 import { markInstallOffered } from "../components/InstallBanner";
@@ -209,6 +209,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   }, [step, accName, accBal, currency, rows, drafts]);
 
   // Only the mounted screen reacts to a seed's outcome; a remount takes the seed over (effect below).
+  // A LAYOUT effect: the old screen's layout cleanup and the new one's layout effect run in the same
+  // synchronous commit, so no settled seed can land in between and be cleared with nobody to report it.
   const mounted = useRef(true);
   const followSeed = (seed: Promise<void>) => {
     setBusy(true);
@@ -223,7 +225,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
         if (mounted.current) setBusy(false);
       });
   };
-  useEffect(() => {
+  useLayoutEffect(() => {
     mounted.current = true;
     if (onboardingDraft.seed) followSeed(onboardingDraft.seed);
     return () => {
