@@ -746,15 +746,15 @@ export const it: Dict = {
   "{now} · median {median}": "{now} · mediana {median}",
   "{n} envelope selected | {n} envelopes selected": { one: "{n} busta selezionata", many: "{n} buste selezionate", other: "{n} buste selezionate" },
   "{n} healthy envelope | {n} healthy envelopes": { one: "{n} busta in regola", many: "{n} buste in regola", other: "{n} buste in regola" },
-  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
-    one: "{n} busta in regola · {ignored} ignorate",
-    many: "{n} buste in regola · {ignored} ignorate",
-    other: "{n} buste in regola · {ignored} ignorate",
+  "{n} ignored | {n} ignored": {
+    one: "{n} ignorata",
+    many: "{n} ignorate",
+    other: "{n} ignorate",
   },
-  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} busta su {m} è in regola",
-    many: "{n} buste su {m} sono in regola",
-    other: "{n} buste su {m} sono in regola",
+  "Healthy: {healthy} of {n} envelope | Healthy: {healthy} of {n} envelopes": {
+    one: "In regola: {healthy} su {n} busta",
+    many: "In regola: {healthy} su {n} buste",
+    other: "In regola: {healthy} su {n} buste",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} passaggio prima di chiudere il piano · {pct}% del mese trascorso",
@@ -1407,7 +1407,11 @@ export const it: Dict = {
   "current month": "mese corrente",
   "e.g. Payday": "es. Stipendio",
   "from last month {amount}": "dal mese scorso {amount}",
-  "in {n} of {total} envelopes": "in {n} delle {total} buste",
+  "in {over} of {n} envelope | in {over} of {n} envelopes": {
+    one: "in {over} busta su {n}",
+    many: "in {over} delle {n} buste",
+    other: "in {over} delle {n} buste",
+  },
   "income {income} · spending {expense}": "entrate {income} · spese {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "entrate {income} · spese {expense} · tasso di risparmio {pct}%",
   "last {n} month · {range} | last {n} months · {range}": {

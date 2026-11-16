@@ -12,6 +12,7 @@
  * TEST_DATABASE_URL and must stay DB-free).
  */
 import { describe, expect, it } from "bun:test";
+import { LANGS } from "@enveo/shared";
 import { Hono } from "hono";
 import { demoRoutes, resetInput, seedInput } from "./demo";
 
@@ -51,6 +52,11 @@ describe("overwrite routes: /demo/seed carries the per-request owner assertion",
     expect(seedInput.safeParse({}).success).toBe(true);
     expect(seedInput.safeParse({ locale: "en", userId: "user-A" }).success).toBe(true);
     expect(seedInput.safeParse({ userId: "" }).success).toBe(false);
+  });
+
+  it("the seed accepts every UI language and nothing else", () => {
+    for (const locale of LANGS) expect({ locale, ok: seedInput.safeParse({ locale }).success }).toEqual({ locale, ok: true });
+    expect(seedInput.safeParse({ locale: "xx" }).success).toBe(false);
   });
 
   it("a seed naming ANOTHER user than the session's → 409 budget_mismatch, nothing written", async () => {

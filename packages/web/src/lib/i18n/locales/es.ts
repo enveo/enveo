@@ -754,15 +754,15 @@ export const es: Dict = {
     other: "{n} sobres seleccionados",
   },
   "{n} healthy envelope | {n} healthy envelopes": { one: "{n} sobre sin problemas", many: "{n} sobres sin problemas", other: "{n} sobres sin problemas" },
-  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
-    one: "{n} sobre sin problemas · {ignored} ignorados",
-    many: "{n} sobres sin problemas · {ignored} ignorados",
-    other: "{n} sobres sin problemas · {ignored} ignorados",
+  "{n} ignored | {n} ignored": {
+    one: "{n} ignorado",
+    many: "{n} ignorados",
+    other: "{n} ignorados",
   },
-  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} sobre de {m} está sin problemas",
-    many: "{n} de {m} sobres están sin problemas",
-    other: "{n} de {m} sobres están sin problemas",
+  "Healthy: {healthy} of {n} envelope | Healthy: {healthy} of {n} envelopes": {
+    one: "Sin problemas: {healthy} de {n} sobre",
+    many: "Sin problemas: {healthy} de {n} sobres",
+    other: "Sin problemas: {healthy} de {n} sobres",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} paso para cerrar el plan · {pct} % del mes pasado",
@@ -1415,7 +1415,11 @@ export const es: Dict = {
   "current month": "mes actual",
   "e.g. Payday": "p. ej. Nómina",
   "from last month {amount}": "del mes anterior {amount}",
-  "in {n} of {total} envelopes": "en {n} de {total} sobres",
+  "in {over} of {n} envelope | in {over} of {n} envelopes": {
+    one: "en {over} de {n} sobre",
+    many: "en {over} de {n} sobres",
+    other: "en {over} de {n} sobres",
+  },
   "income {income} · spending {expense}": "ingresos {income} · gastos {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "ingresos {income} · gastos {expense} · tasa de ahorro {pct} %",
   "last {n} month · {range} | last {n} months · {range}": {

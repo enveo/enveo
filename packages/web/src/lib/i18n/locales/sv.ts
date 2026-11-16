@@ -730,13 +730,13 @@ export const sv: Dict = {
   "{now} · median {median}": "{now} · median {median}",
   "{n} envelope selected | {n} envelopes selected": { one: "{n} kuvert markerat", other: "{n} kuvert markerade" },
   "{n} healthy envelope | {n} healthy envelopes": { one: "{n} sunt kuvert", other: "{n} sunda kuvert" },
-  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
-    one: "{n} sunt kuvert · {ignored} ignorerade",
-    other: "{n} sunda kuvert · {ignored} ignorerade",
+  "{n} ignored | {n} ignored": {
+    one: "{n} ignorerat",
+    other: "{n} ignorerade",
   },
-  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} av {m} kuvert är sunt",
-    other: "{n} av {m} kuvert är sunda",
+  "Healthy: {healthy} of {n} envelope | Healthy: {healthy} of {n} envelopes": {
+    one: "Sunda: {healthy} av {n} kuvert",
+    other: "Sunda: {healthy} av {n} kuvert",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} steg kvar till en avslutad plan · {pct}% av månaden gången",
@@ -1373,7 +1373,10 @@ export const sv: Dict = {
   "current month": "innevarande månad",
   "e.g. Payday": "t.ex. Lönedag",
   "from last month {amount}": "från föregående månad {amount}",
-  "in {n} of {total} envelopes": "i {n} av {total} kuvert",
+  "in {over} of {n} envelope | in {over} of {n} envelopes": {
+    one: "i {over} av {n} kuvert",
+    other: "i {over} av {n} kuvert",
+  },
   "income {income} · spending {expense}": "inkomster {income} · utgifter {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "inkomster {income} · utgifter {expense} · sparkvot {pct}%",
   "last {n} month · {range} | last {n} months · {range}": { one: "senaste {n} månaden · {range}", other: "senaste {n} månaderna · {range}" },

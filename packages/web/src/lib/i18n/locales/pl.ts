@@ -346,7 +346,7 @@ export const pl: Dict = {
   "Cancel editing": "Anuluj edycję",
   "Card debt is {debtShare} of what you hold · balances are always current, whatever month you view":
     "Dług na karcie to {debtShare} tego, co posiadasz · salda są zawsze aktualne, niezależnie od przeglądanego miesiąca",
-  Cash: "Gotówka",
+  Cash: "Środki",
   "Cash flow": "Cashflow",
   "Cash flow · 12 months": "Cashflow · 12 miesięcy",
   Category: "Kategoria",
@@ -928,7 +928,12 @@ export const pl: Dict = {
   "from local copy": "z lokalnej kopii",
   From: "Od",
   "funded ✓": "sfinansowany ✓",
-  "in {n} of {total} envelopes": "w {n} z {total} kopert",
+  "in {over} of {n} envelope | in {over} of {n} envelopes": {
+    one: "w {over} z {n} koperty",
+    few: "w {over} z {n} kopert",
+    many: "w {over} z {n} kopert",
+    other: "w {over} z {n} koperty",
+  },
   income: "przychód",
   "income {income} · spending {expense}": "przychody {income} · wydatki {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "przychody {income} · wydatki {expense} · stopa oszczędności {pct}%",
@@ -1301,17 +1306,17 @@ export const pl: Dict = {
     many: "{n} kopert w porządku",
     other: "{n} kopert w porządku",
   },
-  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
-    one: "{n} koperta w porządku · {ignored} pominięte",
-    few: "{n} koperty w porządku · {ignored} pominięte",
-    many: "{n} kopert w porządku · {ignored} pominięte",
-    other: "{n} kopert w porządku · {ignored} pominięte",
+  "{n} ignored | {n} ignored": {
+    one: "{n} pominięta",
+    few: "{n} pominięte",
+    many: "{n} pominiętych",
+    other: "{n} pominiętej",
   },
-  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} z {m} kopert jest w porządku",
-    few: "{n} z {m} kopert są w porządku",
-    many: "{n} z {m} kopert jest w porządku",
-    other: "{n} z {m} kopert jest w porządku",
+  "Healthy: {healthy} of {n} envelope | Healthy: {healthy} of {n} envelopes": {
+    one: "W porządku: {healthy} z {n} koperty",
+    few: "W porządku: {healthy} z {n} kopert",
+    many: "W porządku: {healthy} z {n} kopert",
+    other: "W porządku: {healthy} z {n} koperty",
   },
   // "transakcji" is the genitive of "transakcja" in BOTH singular and plural — invariant across
   // every CLDR category, so all four forms carry the same text (like "{n} of {m} envelopes"

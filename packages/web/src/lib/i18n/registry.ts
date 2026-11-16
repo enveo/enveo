@@ -1,16 +1,19 @@
 /**
- * Locale registry: ONE line per language. Adding a language = one file in ./locales + one line here.
+ * Locale registry: ONE line per language. Adding a language = its code in `@enveo/shared` LANGS + one file in ./locales + one line here.
  *
- * Deliberately free of runtime imports (only a TYPE import from ./index): lib/contexts.tsx reads
+ * Deliberately free of runtime imports (only TYPE imports from ./index and @enveo/shared): lib/contexts.tsx reads
  * detectLang() from here and ./index reads useSettings() from contexts — putting the detection in
  * ./index would close that cycle. `../settingsPersist` is safe to import at runtime: it only pulls
  * in `./idb` (and idb's own leaves, deviceStoragePolicy.ts/storageBackend.ts), none of which touch i18n —
  * so this does NOT reopen the cycle above.
  */
+
+import type { Lang } from "@enveo/shared";
 import { loadPersistedSettings } from "../settingsPersist";
 import type { Dict } from "./index";
 
-export type Lang = "en" | "pl" | "de" | "es" | "fr" | "it" | "nl" | "pt-BR" | "cs" | "sv";
+/** The language list lives in `@enveo/shared` (`LANGS`): account preferences and the sample-data seed validate against it. */
+export type { Lang };
 
 /** `endonym` is the language's name in itself (shown in Settings); `community` marks translations
  *  we did not author natively (labelled in the UI). Locale chunks are lazy (`import()`).

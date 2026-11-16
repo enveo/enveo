@@ -271,7 +271,7 @@ export function BudgetsReport({
             <span style={{ color: hc(C.headerPos, C.pos) }}>{t("All within budget")}</span>
           )
         }
-        sub={overRows.length > 0 ? t("in {n} of {total} envelopes", { n: overRows.length, total: rows.length }) : undefined}
+        sub={overRows.length > 0 ? tp("in {over} of {n} envelope | in {over} of {n} envelopes", rows.length, { over: overRows.length }) : undefined}
         bandChart={
           rows.length > 0 ? (
             <div style={{ display: "flex", gap: 6, marginTop: inWide ? 0 : 12, flexWrap: "wrap" }}>
@@ -323,10 +323,7 @@ export function BudgetsReport({
                 <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text }}>
                   {openSteps.length === 0
                     ? t("Plan closed — every envelope holds")
-                    : /* Both plural forms keep the plural noun: the noun agrees with {m}, not {n}, and this
-   branch only renders while open steps exist, so {m} >= 2 always ("1 of 4 envelopes is
-   healthy"). The all-healthy case routes to the "Plan closed" branch above. */
-                      tp("{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy", healthyCount, { m: budgetedCount })}
+                    : tp("Healthy: {healthy} of {n} envelope | Healthy: {healthy} of {n} envelopes", budgetedCount, { healthy: healthyCount })}
                 </span>
                 <span style={{ fontSize: 11, color: C.soft }}>
                   {openSteps.length === 0
@@ -449,7 +446,7 @@ export function BudgetsReport({
                 <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: C.pos, display: "block", flexShrink: 0 }} />
                 <span style={{ flex: 1, fontSize: 12, fontWeight: 650, color: C.text }}>
                   {ignoredCount > 0
-                    ? tp("{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored", healthyRows.length, { ignored: ignoredCount })
+                    ? `${tp("{n} healthy envelope | {n} healthy envelopes", healthyRows.length)} · ${tp("{n} ignored | {n} ignored", ignoredCount)}`
                     : tp("{n} healthy envelope | {n} healthy envelopes", healthyRows.length)}
                 </span>
                 <span style={{ fontSize: 11, color: C.mute }}>{expanded ? "▴" : "▾"}</span>

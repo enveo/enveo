@@ -287,13 +287,15 @@ export function WideHome({
                     letterSpacing: "0.16em",
                     textTransform: "uppercase",
                     color: C.mute,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
                     cursor: edit ? "default" : "pointer",
                   }}
                 >
-                  {title} ›
+                  {/* Only the title truncates: a long translation ("Nettoförmögenhet") must not cut the arrow. */}
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
+                  <span aria-hidden="true" style={{ flexShrink: 0 }}>
+                    &nbsp;›
+                  </span>
                 </button>
                 {edit && (
                   <div style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>

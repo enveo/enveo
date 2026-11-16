@@ -753,15 +753,15 @@ export const fr: Dict = {
     other: "{n} enveloppes sélectionnées",
   },
   "{n} healthy envelope | {n} healthy envelopes": { one: "{n} enveloppe saine", many: "{n} enveloppes saines", other: "{n} enveloppes saines" },
-  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
-    one: "{n} enveloppe saine · {ignored} ignorées",
-    many: "{n} enveloppes saines · {ignored} ignorées",
-    other: "{n} enveloppes saines · {ignored} ignorées",
+  "{n} ignored | {n} ignored": {
+    one: "{n} ignorée",
+    many: "{n} ignorées",
+    other: "{n} ignorées",
   },
-  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
-    one: "{n} enveloppe sur {m} est saine",
-    many: "{n} enveloppes sur {m} sont saines",
-    other: "{n} enveloppes sur {m} sont saines",
+  "Healthy: {healthy} of {n} envelope | Healthy: {healthy} of {n} envelopes": {
+    one: "Saines : {healthy} sur {n} enveloppe",
+    many: "Saines : {healthy} sur {n} enveloppes",
+    other: "Saines : {healthy} sur {n} enveloppes",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} étape avant de clôturer le plan · {pct} % du mois écoulé",
@@ -1419,7 +1419,11 @@ export const fr: Dict = {
   "current month": "mois en cours",
   "e.g. Payday": "p. ex. Jour de paie",
   "from last month {amount}": "du mois précédent {amount}",
-  "in {n} of {total} envelopes": "dans {n} des {total} enveloppes",
+  "in {over} of {n} envelope | in {over} of {n} envelopes": {
+    one: "dans {over} enveloppe sur {n}",
+    many: "dans {over} des {n} enveloppes",
+    other: "dans {over} des {n} enveloppes",
+  },
   "income {income} · spending {expense}": "revenus {income} · dépenses {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "revenus {income} · dépenses {expense} · taux d'épargne {pct} %",
   "last {n} month · {range} | last {n} months · {range}": {
